@@ -1,6 +1,6 @@
-# github-rusttop
+# GitSpark
 
-A Git GUI written in Rust with egui. No Electron, no web views. Calls `git` directly as a subprocess, so it needs Git on your machine and nothing else.
+GitSpark is a Git GUI written in Rust with egui. No Electron, no web views. It calls `git` directly as a subprocess, so it needs Git on your machine and nothing else.
 
 ## Features
 
