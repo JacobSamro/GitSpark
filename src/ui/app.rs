@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 use std::{env, process::Command};
 
 use eframe::egui::{self, Align, Align2, Color32, PopupCloseBehavior, RichText, Stroke, Vec2};
@@ -60,9 +63,16 @@ impl ChangeFilterOptions {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RepoRefreshReason {
+    Manual,
+    Focus,
+    Watch,
+}
+
 enum AppEvent {
     RepoLoaded(Result<RepoSnapshot, String>),
-    RepoRefreshed(Result<RepoSnapshot, String>),
+    RepoRefreshed(PathBuf, Result<RepoSnapshot, String>, RepoRefreshReason),
     BranchSwitched(Result<RepoSnapshot, String>, String),
     BranchMerged(Result<RepoSnapshot, String>, String),
     CommitCreated(Result<RepoSnapshot, String>),
@@ -96,6 +106,9 @@ pub struct GitSparkApp {
     sidebar_tab: SidebarTab,
     filter_text: String,
     change_filters: ChangeFilterOptions,
+    repo_watch_generation: Arc<AtomicU64>,
+    watched_repo_path: Option<PathBuf>,
+    last_window_focused: bool,
     event_tx: Sender<AppEvent>,
     event_rx: Receiver<AppEvent>,
 }
@@ -139,6 +152,9 @@ impl GitSparkApp {
             sidebar_tab: SidebarTab::Changes,
             filter_text: String::new(),
             change_filters: ChangeFilterOptions::default(),
+            repo_watch_generation: Arc::new(AtomicU64::new(0)),
+            watched_repo_path: None,
+            last_window_focused: true,
             event_tx,
             event_rx,
         };
@@ -160,6 +176,7 @@ impl GitSparkApp {
         self.status_message = "Loading repository...".to_string();
         self.error_message.clear();
         self.show_repo_selector = false;
+        self.stop_repo_watch();
         self.add_recent_repo(path.clone());
         let tx = self.event_tx.clone();
         let ctx = self.ctx.clone();
@@ -172,20 +189,81 @@ impl GitSparkApp {
     }
 
     fn refresh_repo(&mut self) {
+        self.request_repo_refresh(RepoRefreshReason::Manual);
+    }
+
+    fn request_repo_refresh(&mut self, reason: RepoRefreshReason) {
         let Some(path) = self.repo_path().map(PathBuf::from) else {
             self.error_message = "No repository selected.".to_string();
             return;
         };
 
-        self.status_message = "Refreshing repository...".to_string();
+        if reason == RepoRefreshReason::Manual {
+            self.status_message = "Refreshing repository...".to_string();
+        }
         self.error_message.clear();
         let tx = self.event_tx.clone();
         let ctx = self.ctx.clone();
         let git = GitClient::new();
+        let event_path = path.clone();
         thread::spawn(move || {
             let res = git.refresh_repo(&path).map_err(|e| e.to_string());
-            let _ = tx.send(AppEvent::RepoRefreshed(res));
+            let _ = tx.send(AppEvent::RepoRefreshed(event_path, res, reason));
             ctx.request_repaint();
+        });
+    }
+
+    fn stop_repo_watch(&mut self) {
+        self.repo_watch_generation.fetch_add(1, Ordering::SeqCst);
+        self.watched_repo_path = None;
+    }
+
+    fn ensure_repo_watch(&mut self, repo_path: &Path) {
+        if self.watched_repo_path.as_deref() == Some(repo_path) {
+            return;
+        }
+
+        let path = repo_path.to_path_buf();
+        let token = self.repo_watch_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        self.watched_repo_path = Some(path.clone());
+
+        let generation = Arc::clone(&self.repo_watch_generation);
+        let tx = self.event_tx.clone();
+        let ctx = self.ctx.clone();
+
+        thread::spawn(move || {
+            let git = GitClient::new();
+            let mut last_fingerprint = git.read_watch_fingerprint(&path).ok();
+
+            while generation.load(Ordering::SeqCst) == token {
+                thread::sleep(Duration::from_millis(1200));
+
+                if generation.load(Ordering::SeqCst) != token {
+                    break;
+                }
+
+                let Ok(current_fingerprint) = git.read_watch_fingerprint(&path) else {
+                    continue;
+                };
+
+                let changed = match &last_fingerprint {
+                    Some(previous) => previous != &current_fingerprint,
+                    None => true,
+                };
+
+                if !changed {
+                    continue;
+                }
+
+                last_fingerprint = Some(current_fingerprint);
+                let res = git.refresh_repo(&path).map_err(|e| e.to_string());
+                let _ = tx.send(AppEvent::RepoRefreshed(
+                    path.clone(),
+                    res,
+                    RepoRefreshReason::Watch,
+                ));
+                ctx.request_repaint();
+            }
         });
     }
 
@@ -415,6 +493,7 @@ impl GitSparkApp {
             .map(|branch| branch.name.clone())
             .unwrap_or_default();
         self.load_identity(&snapshot.repo.path);
+        self.ensure_repo_watch(&snapshot.repo.path);
         self.current_repo = Some(snapshot);
 
         let next_selected_commit = self.current_repo.as_ref().and_then(|repo| {
@@ -2441,6 +2520,12 @@ impl GitSparkApp {
 
 impl eframe::App for GitSparkApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let is_window_focused = ctx.input(|input| input.viewport().focused.unwrap_or(input.focused));
+        if is_window_focused && !self.last_window_focused && self.current_repo.is_some() {
+            self.request_repo_refresh(RepoRefreshReason::Focus);
+        }
+        self.last_window_focused = is_window_focused;
+
         while let Ok(event) = self.event_rx.try_recv() {
             match event {
                 AppEvent::RepoLoaded(Ok(snapshot)) => {
@@ -2451,13 +2536,35 @@ impl eframe::App for GitSparkApp {
                 AppEvent::RepoLoaded(Err(err)) => {
                     self.error_message = format!("Failed to open repository: {err}");
                 }
-                AppEvent::RepoRefreshed(Ok(snapshot)) => {
+                AppEvent::RepoRefreshed(path, Ok(snapshot), reason) => {
+                    let should_apply = self
+                        .repo_path()
+                        .map(PathBuf::from)
+                        .map(|current_path| current_path == path)
+                        .unwrap_or(false);
+                    if !should_apply {
+                        continue;
+                    }
                     self.adopt_snapshot(snapshot);
-                    self.status_message = "Repository refreshed.".to_string();
+                    if reason == RepoRefreshReason::Manual {
+                        self.status_message = "Repository refreshed.".to_string();
+                    }
                     self.error_message.clear();
                 }
-                AppEvent::RepoRefreshed(Err(err)) => {
-                    self.error_message = format!("Refresh failed: {err}");
+                AppEvent::RepoRefreshed(path, Err(err), reason) => {
+                    let should_apply = self
+                        .repo_path()
+                        .map(PathBuf::from)
+                        .map(|current_path| current_path == path)
+                        .unwrap_or(false);
+                    if !should_apply {
+                        continue;
+                    }
+                    if reason == RepoRefreshReason::Manual {
+                        self.error_message = format!("Refresh failed: {err}");
+                    } else {
+                        self.error_message = err;
+                    }
                 }
                 AppEvent::BranchSwitched(Ok(snapshot), branch) => {
                     self.adopt_snapshot(snapshot);
@@ -2533,6 +2640,7 @@ impl eframe::App for GitSparkApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.stop_repo_watch();
         self.persist_settings();
     }
 }

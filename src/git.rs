@@ -73,6 +73,16 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn read_watch_fingerprint(&self, path: &Path) -> Result<String> {
+        let repo_path = self.resolve_repo_root(path)?;
+        let status = self.run_git(
+            &repo_path,
+            &["status", "--porcelain=v2", "-b", "--ignore-submodules=dirty"],
+        )?;
+        let stash_count = self.stash_count(&repo_path).unwrap_or(0);
+        Ok(format!("{status}\n__stash_count={stash_count}"))
+    }
+
     pub fn fetch_origin(&self, repo_path: &Path) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let remote_name = self
