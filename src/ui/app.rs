@@ -1354,31 +1354,63 @@ impl RustTopApp {
     }
 
     fn render_filter_bar(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            let changes = self
-                .current_repo
-                .as_ref()
-                .map(|snapshot| snapshot.changes.clone())
-                .unwrap_or_default();
-            let popup_id = ui.make_persistent_id("changes_filter_options");
-            let active_filter_count = self.change_filters.active_count();
+        let changes = self
+            .current_repo
+            .as_ref()
+            .map(|snapshot| snapshot.changes.clone())
+            .unwrap_or_default();
+        let popup_id = ui.make_persistent_id("changes_filter_options");
+        let active_filter_count = self.change_filters.active_count();
+        let mut button_response = None;
 
-            let filter_button = egui::Button::new(
-                RichText::new(format!(
-                    "{}  {}",
-                    icons::FUNNEL_SIMPLE,
-                    icons::CARET_DOWN
-                ))
-                    .color(TEXT_MAIN)
-                    .size(14.0),
-            )
+        egui::Frame::default()
             .fill(SURFACE_BG)
             .stroke(Stroke::new(1.0, BORDER))
             .corner_radius(12.0)
-            .min_size(Vec2::new(52.0, 28.0));
+            .inner_margin(egui::Margin::same(0))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.set_height(32.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
 
-            let button_response = ui.add(filter_button).on_hover_text("Filter options");
+                    let response = ui
+                        .add(
+                            egui::Button::new(
+                                RichText::new(format!(
+                                    "{}  {}",
+                                    icons::FUNNEL_SIMPLE,
+                                    icons::CARET_DOWN
+                                ))
+                                .color(TEXT_MAIN)
+                                .size(14.0),
+                            )
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(Stroke::NONE)
+                            .corner_radius(0.0)
+                            .min_size(Vec2::new(52.0, 32.0)),
+                        )
+                        .on_hover_text("Filter options");
+                    button_response = Some(response);
+
+                    let divider_x = ui.min_rect().left() + 52.0;
+                    ui.painter().vline(
+                        divider_x,
+                        ui.max_rect().y_range(),
+                        Stroke::new(1.0, BORDER),
+                    );
+
+                    let edit = egui::TextEdit::singleline(&mut self.filter_text)
+                        .hint_text("Filter files")
+                        .background_color(Color32::TRANSPARENT)
+                        .desired_width(f32::INFINITY)
+                        .margin(egui::Margin::symmetric(10, 6));
+
+                    ui.add_sized([ui.available_width(), 32.0], edit);
+                });
+            });
+
+        if let Some(button_response) = button_response {
             if button_response.clicked() {
                 ui.memory_mut(|mem| mem.toggle_popup(popup_id));
             }
@@ -1390,14 +1422,6 @@ impl RustTopApp {
                 );
                 ui.painter().circle_filled(badge_center, 4.0, ACCENT_MUTED);
             }
-
-            let edit = egui::TextEdit::singleline(&mut self.filter_text)
-                .hint_text("Filter files")
-                .background_color(SURFACE_BG)
-                .desired_width(f32::INFINITY)
-                .margin(egui::Margin::symmetric(8, 5));
-
-            ui.add_sized([ui.available_width(), 28.0], edit);
 
             ui.scope(|ui| {
                 let visuals = &mut ui.style_mut().visuals;
@@ -1452,10 +1476,7 @@ impl RustTopApp {
                                 render_filter_option_checkbox(
                                     ui,
                                     &mut self.change_filters.included_in_commit,
-                                    &format!(
-                                        "Included in commit ({})",
-                                        changes.len()
-                                    ),
+                                    &format!("Included in commit ({})", changes.len()),
                                 );
                                 render_filter_option_checkbox(
                                     ui,
@@ -1490,15 +1511,16 @@ impl RustTopApp {
                     },
                 );
             });
-        });
+        }
         ui.add_space(8.0);
     }
 
     fn render_changes_header(&mut self, ui: &mut egui::Ui) {
         egui::Frame::default()
             .fill(SURFACE_BG)
-            .inner_margin(egui::Margin::same(8))
+            .inner_margin(egui::Margin::symmetric(10, 8))
             .show(ui, |ui| {
+                ui.set_width(ui.available_width());
                 let count = self
                     .current_repo
                     .as_ref()
@@ -1531,6 +1553,7 @@ impl RustTopApp {
             .fill(bg_fill)
             .inner_margin(egui::Margin::symmetric(8, 4))
             .show(ui, |ui| {
+                ui.set_width(ui.available_width());
                 ui.set_min_height(24.0);
                 ui.horizontal(|ui| {
                     // Checkbox (visual only for now)
