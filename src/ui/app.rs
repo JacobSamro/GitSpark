@@ -11,7 +11,7 @@ use crate::ai::AiClient;
 use crate::git::GitClient;
 use crate::models::{AppSettings, CommitSuggestion, DiffEntry, GitIdentity, RepoSnapshot};
 use crate::storage::{load_settings, push_recent_repo, save_settings};
-use crate::ui::components::buttons::{compact_action_button, icon_button, tab_button};
+use crate::ui::components::buttons::{compact_action_button, tab_button};
 use crate::ui::components::diff::render_diff_text;
 use crate::ui::theme::{
     ACCENT_MUTED, BG, BORDER, DANGER, DIFF_BG, PANEL_BG, SUCCESS, SURFACE_BG, SURFACE_BG_MUTED,
@@ -34,6 +34,30 @@ enum NetworkAction {
     Fetch,
     Pull,
     Push,
+}
+
+#[derive(Clone, Copy, Default)]
+struct ChangeFilterOptions {
+    included_in_commit: bool,
+    excluded_from_commit: bool,
+    new_files: bool,
+    modified_files: bool,
+    deleted_files: bool,
+}
+
+impl ChangeFilterOptions {
+    fn active_count(self) -> usize {
+        [
+            self.included_in_commit,
+            self.excluded_from_commit,
+            self.new_files,
+            self.modified_files,
+            self.deleted_files,
+        ]
+        .into_iter()
+        .filter(|active| *active)
+        .count()
+    }
 }
 
 enum AppEvent {
@@ -71,6 +95,7 @@ pub struct RustTopApp {
     main_tab: MainTab,
     sidebar_tab: SidebarTab,
     filter_text: String,
+    change_filters: ChangeFilterOptions,
     event_tx: Sender<AppEvent>,
     event_rx: Receiver<AppEvent>,
 }
@@ -113,6 +138,7 @@ impl RustTopApp {
             main_tab: MainTab::Workspace,
             sidebar_tab: SidebarTab::Changes,
             filter_text: String::new(),
+            change_filters: ChangeFilterOptions::default(),
             event_tx,
             event_rx,
         };
@@ -1158,14 +1184,23 @@ impl RustTopApp {
                                         .as_ref()
                                         .map(|s| s.changes.clone())
                                         .unwrap_or_default();
+                                    let filtered_changes: Vec<_> = changes
+                                        .iter()
+                                        .filter(|change| {
+                                            matches_filter(&self.filter_text, &change.path)
+                                                && matches_change_filters(
+                                                    change,
+                                                    self.change_filters,
+                                                )
+                                        })
+                                        .collect();
 
                                     egui::ScrollArea::vertical()
                                         .auto_shrink([false, false])
                                         .show(ui, |ui| {
-                                            for (index, change) in changes.iter().enumerate() {
-                                                if !matches_filter(&self.filter_text, &change.path) {
-                                                    continue;
-                                                }
+                                            for (index, change) in
+                                                filtered_changes.iter().enumerate()
+                                            {
                                                 self.render_change_row(ui, change, index);
                                             }
 
@@ -1173,6 +1208,14 @@ impl RustTopApp {
                                                 ui.add_space(20.0);
                                                 ui.vertical_centered(|ui| {
                                                     ui.label(RichText::new("No changes").color(TEXT_MUTED));
+                                                });
+                                            } else if filtered_changes.is_empty() {
+                                                ui.add_space(20.0);
+                                                ui.vertical_centered(|ui| {
+                                                    ui.label(
+                                                        RichText::new("No matching changed files")
+                                                            .color(TEXT_MUTED),
+                                                    );
                                                 });
                                             }
                                         });
@@ -1313,13 +1356,140 @@ impl RustTopApp {
     fn render_filter_bar(&mut self, ui: &mut egui::Ui) {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
+            let changes = self
+                .current_repo
+                .as_ref()
+                .map(|snapshot| snapshot.changes.clone())
+                .unwrap_or_default();
+            let popup_id = ui.make_persistent_id("changes_filter_options");
+            let active_filter_count = self.change_filters.active_count();
+
+            let filter_button = egui::Button::new(
+                RichText::new(format!(
+                    "{}  {}",
+                    icons::FUNNEL_SIMPLE,
+                    icons::CARET_DOWN
+                ))
+                    .color(TEXT_MAIN)
+                    .size(14.0),
+            )
+            .fill(SURFACE_BG)
+            .stroke(Stroke::new(1.0, BORDER))
+            .corner_radius(12.0)
+            .min_size(Vec2::new(52.0, 28.0));
+
+            let button_response = ui.add(filter_button).on_hover_text("Filter options");
+            if button_response.clicked() {
+                ui.memory_mut(|mem| mem.toggle_popup(popup_id));
+            }
+
+            if active_filter_count > 0 {
+                let badge_center = egui::pos2(
+                    button_response.rect.right() - 12.0,
+                    button_response.rect.top() + 8.0,
+                );
+                ui.painter().circle_filled(badge_center, 4.0, ACCENT_MUTED);
+            }
+
             let edit = egui::TextEdit::singleline(&mut self.filter_text)
                 .hint_text("Filter files")
                 .background_color(SURFACE_BG)
                 .desired_width(f32::INFINITY)
-                .margin(egui::Margin::symmetric(4, 4));
+                .margin(egui::Margin::symmetric(8, 5));
 
-            ui.add_sized([ui.available_width(), 24.0], edit);
+            ui.add_sized([ui.available_width(), 28.0], edit);
+
+            ui.scope(|ui| {
+                let visuals = &mut ui.style_mut().visuals;
+                visuals.window_fill = PANEL_BG;
+                visuals.window_stroke = Stroke::new(1.0, BORDER);
+                visuals.popup_shadow = egui::epaint::Shadow::NONE;
+
+                egui::popup_below_widget(
+                    ui,
+                    popup_id,
+                    &button_response,
+                    PopupCloseBehavior::CloseOnClickOutside,
+                    |ui| {
+                        ui.set_min_width(290.0);
+                        egui::Frame::default()
+                            .fill(PANEL_BG)
+                            .stroke(Stroke::new(1.0, BORDER))
+                            .corner_radius(12.0)
+                            .inner_margin(egui::Margin::same(16))
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        RichText::new("Filter Options")
+                                            .size(18.0)
+                                            .strong()
+                                            .color(TEXT_MAIN),
+                                    );
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(Align::Center),
+                                        |ui| {
+                                            if ui
+                                                .add(
+                                                    egui::Button::new(
+                                                        RichText::new(icons::X)
+                                                            .size(16.0)
+                                                            .color(TEXT_MAIN),
+                                                    )
+                                                    .fill(SURFACE_BG)
+                                                    .stroke(Stroke::new(1.0, ACCENT_MUTED))
+                                                    .corner_radius(8.0)
+                                                    .min_size(Vec2::new(36.0, 36.0)),
+                                                )
+                                                .clicked()
+                                            {
+                                                ui.memory_mut(|mem| mem.close_popup());
+                                            }
+                                        },
+                                    );
+                                });
+
+                                ui.add_space(12.0);
+                                render_filter_option_checkbox(
+                                    ui,
+                                    &mut self.change_filters.included_in_commit,
+                                    &format!(
+                                        "Included in commit ({})",
+                                        changes.len()
+                                    ),
+                                );
+                                render_filter_option_checkbox(
+                                    ui,
+                                    &mut self.change_filters.excluded_from_commit,
+                                    "Excluded from commit (0)",
+                                );
+                                render_filter_option_checkbox(
+                                    ui,
+                                    &mut self.change_filters.new_files,
+                                    &format!(
+                                        "New files ({})",
+                                        count_changes_by_kind(&changes, ChangeKind::New)
+                                    ),
+                                );
+                                render_filter_option_checkbox(
+                                    ui,
+                                    &mut self.change_filters.modified_files,
+                                    &format!(
+                                        "Modified files ({})",
+                                        count_changes_by_kind(&changes, ChangeKind::Modified)
+                                    ),
+                                );
+                                render_filter_option_checkbox(
+                                    ui,
+                                    &mut self.change_filters.deleted_files,
+                                    &format!(
+                                        "Deleted files ({})",
+                                        count_changes_by_kind(&changes, ChangeKind::Deleted)
+                                    ),
+                                );
+                            });
+                    },
+                );
+            });
         });
         ui.add_space(8.0);
     }
@@ -1329,25 +1499,16 @@ impl RustTopApp {
             .fill(SURFACE_BG)
             .inner_margin(egui::Margin::same(8))
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    let count = self
-                        .current_repo
-                        .as_ref()
-                        .map(|snapshot| snapshot.changes.len())
-                        .unwrap_or(0);
-                    ui.label(
-                        RichText::new(format!("{count} changed files"))
-                            .color(TEXT_MAIN)
-                            .strong(),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                        icon_button(ui, icons::PLUS, "Open Repo")
-                            .clicked()
-                            .then(|| {
-                                self.open_repo_dialog();
-                            });
-                    });
-                });
+                let count = self
+                    .current_repo
+                    .as_ref()
+                    .map(|snapshot| snapshot.changes.len())
+                    .unwrap_or(0);
+                ui.label(
+                    RichText::new(format!("{count} changed files"))
+                        .color(TEXT_MAIN)
+                        .strong(),
+                );
             });
         ui.add_space(8.0);
     }
@@ -1735,14 +1896,15 @@ impl RustTopApp {
                                                     .on_hover_text(tip)
                                                 };
 
-                                            let _ = toolbar_icon(ui, "□", "Filtered commit");
-                                            if toolbar_icon(ui, "+", "Generate with AI").clicked() {
+                                            if toolbar_icon(ui, icons::SPARKLE, "Generate with AI")
+                                                .clicked()
+                                            {
                                                 self.generate_ai_commit();
                                             }
-                                            let _ = toolbar_icon(ui, "⌘", "Co-authors");
 
-                                            ui.add_space(10.0);
-                                            if toolbar_icon(ui, icons::GEAR, "Settings").clicked() {
+                                            if toolbar_icon(ui, icons::GEAR, "Commit settings")
+                                                .clicked()
+                                            {
                                                 self.show_settings = true;
                                             }
                                         });
@@ -2453,6 +2615,67 @@ fn matches_filter(filter: &str, path: &str) -> bool {
         || path
             .to_ascii_lowercase()
             .contains(&filter.to_ascii_lowercase())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ChangeKind {
+    New,
+    Modified,
+    Deleted,
+}
+
+fn infer_change_kind(status: &str) -> Option<ChangeKind> {
+    if status.contains('?') || status.contains('A') {
+        Some(ChangeKind::New)
+    } else if status.contains('M') {
+        Some(ChangeKind::Modified)
+    } else if status.contains('D') {
+        Some(ChangeKind::Deleted)
+    } else {
+        None
+    }
+}
+
+fn matches_change_filters(change: &crate::models::ChangeEntry, filters: ChangeFilterOptions) -> bool {
+    if filters.active_count() == 0 {
+        return true;
+    }
+
+    if filters.excluded_from_commit {
+        return false;
+    }
+
+    if filters.included_in_commit
+        && !filters.new_files
+        && !filters.modified_files
+        && !filters.deleted_files
+    {
+        return true;
+    }
+
+    let kind = infer_change_kind(&change.status);
+
+    (!filters.new_files || kind == Some(ChangeKind::New))
+        && (!filters.modified_files || kind == Some(ChangeKind::Modified))
+        && (!filters.deleted_files || kind == Some(ChangeKind::Deleted))
+}
+
+fn count_changes_by_kind(changes: &[crate::models::ChangeEntry], kind: ChangeKind) -> usize {
+    changes
+        .iter()
+        .filter(|change| infer_change_kind(&change.status) == Some(kind))
+        .count()
+}
+
+fn render_filter_option_checkbox(ui: &mut egui::Ui, value: &mut bool, label: &str) {
+    ui.horizontal(|ui| {
+        let mut checkbox = *value;
+        let response = ui.checkbox(&mut checkbox, "");
+        if response.changed() {
+            *value = checkbox;
+        }
+        ui.label(RichText::new(label).color(TEXT_MAIN).size(12.5));
+    });
 }
 
 fn status_color(status: &str) -> Color32 {
