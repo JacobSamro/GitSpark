@@ -64,10 +64,7 @@ pub fn dedupe_recent_repos(paths: &[PathBuf]) -> Vec<PathBuf> {
 
 fn normalize_settings(mut settings: AppSettings) -> AppSettings {
     settings.recent_repos = dedupe_recent_repos(&settings.recent_repos);
-    settings.ai.endpoint = settings.ai.endpoint.trim().to_string();
-    if settings.ai.endpoint.is_empty() {
-        settings.ai.endpoint = AppSettings::default().ai.endpoint;
-    }
+    settings.ai.endpoint = settings.ai.provider.default_endpoint().to_string();
 
     settings.ai.model = settings.ai.model.trim().to_string();
     if settings.ai.model.is_empty() {

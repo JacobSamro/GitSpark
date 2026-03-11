@@ -77,7 +77,7 @@ impl Default for AiSettings {
     fn default() -> Self {
         Self {
             provider: AiProvider::OpenAICompatible,
-            endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
+            endpoint: AiProvider::OpenAICompatible.default_endpoint().to_string(),
             model: "gpt-4.1-mini".to_string(),
             api_key: String::new(),
             system_prompt: "Write a concise conventional commit style message for the provided git diff. Return JSON with fields subject and body.".to_string(),
@@ -87,7 +87,31 @@ impl Default for AiSettings {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AiProvider {
+    OpenRouter,
     OpenAICompatible,
+}
+
+impl AiProvider {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::OpenRouter => "OpenRouter",
+            Self::OpenAICompatible => "OpenAI Compatible",
+        }
+    }
+
+    pub fn default_endpoint(&self) -> &'static str {
+        match self {
+            Self::OpenRouter => "https://openrouter.ai/api/v1/chat/completions",
+            Self::OpenAICompatible => "https://api.openai.com/v1/chat/completions",
+        }
+    }
+
+    pub fn api_key_hint(&self) -> &'static str {
+        match self {
+            Self::OpenRouter => "sk-or-v1-...",
+            Self::OpenAICompatible => "sk-...",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]

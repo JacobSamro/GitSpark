@@ -12,7 +12,7 @@ use rfd::FileDialog;
 
 use crate::ai::AiClient;
 use crate::git::GitClient;
-use crate::models::{AppSettings, CommitSuggestion, DiffEntry, GitIdentity, RepoSnapshot};
+use crate::models::{AiProvider, AppSettings, CommitSuggestion, DiffEntry, GitIdentity, RepoSnapshot};
 use crate::storage::{load_settings, push_recent_repo, save_settings};
 use crate::ui::components::buttons::tab_button;
 use crate::ui::components::diff::{render_diff_text, render_diff_text_readonly};
@@ -2816,25 +2816,30 @@ impl GitSparkApp {
         );
 
         ui.add_space(8.0);
-        ui.label(RichText::new("Endpoint").color(TEXT_MUTED).size(11.0));
-        dark_singleline(
-            ui,
-            &mut self.settings.ai.endpoint,
-            "https://api.openai.com/v1/chat/completions",
+        ui.label(RichText::new("Provider").color(TEXT_MUTED).size(11.0));
+        self.render_ai_provider_picker(ui);
+
+        ui.add_space(10.0);
+        ui.label(RichText::new("Model").color(TEXT_MUTED).size(11.0));
+        dark_singleline(ui, &mut self.settings.ai.model, "gpt-4.1-mini");
+
+        ui.add_space(8.0);
+        ui.label(
+            RichText::new(format!(
+                "Requests go to {}",
+                self.settings.ai.provider.default_endpoint()
+            ))
+            .color(TEXT_MUTED)
+            .size(10.0),
         );
 
         ui.add_space(10.0);
-        ui.columns(2, |columns| {
-            columns[0].label(RichText::new("Provider").color(TEXT_MUTED).size(11.0));
-            columns[1].label(RichText::new("Model").color(TEXT_MUTED).size(11.0));
-
-            render_readonly_field(&mut columns[0], "OpenAI Compatible");
-            dark_singleline(&mut columns[1], &mut self.settings.ai.model, "gpt-4.1-mini");
-        });
-
-        ui.add_space(10.0);
         ui.label(RichText::new("API Key").color(TEXT_MUTED).size(11.0));
-        dark_password(ui, &mut self.settings.ai.api_key, "sk-...");
+        dark_password(
+            ui,
+            &mut self.settings.ai.api_key,
+            self.settings.ai.provider.api_key_hint(),
+        );
 
         ui.add_space(10.0);
         ui.label(RichText::new("System Prompt").color(TEXT_MUTED).size(11.0));
@@ -2854,11 +2859,43 @@ impl GitSparkApp {
                 .min_size(Vec2::new(138.0, 34.0)),
         );
         if save.clicked() {
+            self.settings.ai.endpoint = self.settings.ai.provider.default_endpoint().to_string();
             self.persist_settings();
             if self.error_message.is_empty() {
                 self.status_message = "AI settings saved.".to_string();
             }
         }
+    }
+
+    fn render_ai_provider_picker(&mut self, ui: &mut egui::Ui) {
+        let selected_text = self.settings.ai.provider.display_name();
+        ui.scope(|ui| {
+            let visuals = ui.visuals_mut();
+            visuals.widgets.inactive.bg_fill = SURFACE_BG_MUTED;
+            visuals.widgets.inactive.bg_stroke = Stroke::NONE;
+            visuals.widgets.hovered.bg_fill = SURFACE_BG_MUTED;
+            visuals.widgets.hovered.bg_stroke =
+                Stroke::new(1.0, color_with_alpha(ACCENT_MUTED, 120.0));
+            visuals.widgets.active.bg_fill = SURFACE_BG_MUTED;
+            visuals.widgets.active.bg_stroke = Stroke::new(1.0, ACCENT_MUTED);
+
+            egui::ComboBox::from_id_salt("ai_provider_picker")
+                .selected_text(RichText::new(selected_text).color(TEXT_MAIN).size(12.0))
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    ui.style_mut().visuals.panel_fill = SURFACE_BG_MUTED;
+                    for provider in [AiProvider::OpenRouter, AiProvider::OpenAICompatible] {
+                        let label = provider.display_name();
+                        if ui
+                            .selectable_value(&mut self.settings.ai.provider, provider, label)
+                            .clicked()
+                        {
+                            self.settings.ai.endpoint =
+                                self.settings.ai.provider.default_endpoint().to_string();
+                        }
+                    }
+                });
+        });
     }
 
     fn render_settings_section_header(
@@ -2948,18 +2985,6 @@ fn dark_multiline(
         )
     })
     .inner
-}
-
-fn render_readonly_field(ui: &mut egui::Ui, value: &str) {
-    egui::Frame::default()
-        .fill(SURFACE_BG_MUTED)
-        .stroke(Stroke::NONE)
-        .corner_radius(6.0)
-        .inner_margin(egui::Margin::symmetric(10, 10))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.label(RichText::new(value).color(TEXT_MAIN).size(12.0));
-        });
 }
 
 impl eframe::App for GitSparkApp {

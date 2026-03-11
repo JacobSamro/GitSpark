@@ -21,7 +21,7 @@ impl AiClient {
             bail!("AI API key is missing. Add one in settings before generating commit messages.");
         }
 
-        let endpoint = settings.endpoint.trim();
+        let endpoint = settings.provider.default_endpoint();
         if endpoint.is_empty() {
             bail!("AI endpoint is missing.");
         }
