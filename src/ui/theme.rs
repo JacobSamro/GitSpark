@@ -54,13 +54,32 @@ pub fn configure_visuals(ctx: &egui::Context) {
     let monospace = egui::FontFamily::Monospace;
 
     style.text_styles = [
-        (TextStyle::Heading, egui::FontId::new(28.0, proportional.clone())),
-        (TextStyle::Name("Heading2".into()), egui::FontId::new(14.0, proportional.clone())), // font-size-md
-        (TextStyle::Body, egui::FontId::new(12.0, proportional.clone())), // font-size
-        (TextStyle::Monospace, egui::FontId::new(11.0, monospace.clone())), // font-size-sm
-        (TextStyle::Button, egui::FontId::new(12.0, proportional.clone())), // font-size
-        (TextStyle::Small, egui::FontId::new(9.0, proportional.clone())), // font-size-xs
-    ].into();
+        (
+            TextStyle::Heading,
+            egui::FontId::new(28.0, proportional.clone()),
+        ),
+        (
+            TextStyle::Name("Heading2".into()),
+            egui::FontId::new(14.0, proportional.clone()),
+        ), // font-size-md
+        (
+            TextStyle::Body,
+            egui::FontId::new(12.0, proportional.clone()),
+        ), // font-size
+        (
+            TextStyle::Monospace,
+            egui::FontId::new(11.0, monospace.clone()),
+        ), // font-size-sm
+        (
+            TextStyle::Button,
+            egui::FontId::new(12.0, proportional.clone()),
+        ), // font-size
+        (
+            TextStyle::Small,
+            egui::FontId::new(9.0, proportional.clone()),
+        ), // font-size-xs
+    ]
+    .into();
 
     ctx.set_style(style);
 }

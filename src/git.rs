@@ -119,6 +119,92 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn discard_change(&self, repo_path: &Path, relative_path: &str) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let relative_path = relative_path.trim();
+        if relative_path.is_empty() {
+            bail!("file path cannot be empty");
+        }
+
+        if self.path_is_tracked(&repo_path, relative_path)? {
+            match self.run_git(
+                &repo_path,
+                &[
+                    "restore",
+                    "--source=HEAD",
+                    "--staged",
+                    "--worktree",
+                    "--",
+                    relative_path,
+                ],
+            ) {
+                Ok(_) => {}
+                Err(_) => {
+                    self.run_git(&repo_path, &["checkout", "--", relative_path])
+                        .with_context(|| {
+                            format!("failed to discard tracked changes for '{relative_path}'")
+                        })?;
+                }
+            }
+        } else {
+            let full_path = repo_path.join(relative_path);
+            if full_path.is_dir() {
+                fs::remove_dir_all(&full_path).with_context(|| {
+                    format!(
+                        "failed to remove untracked directory '{}'",
+                        full_path.display()
+                    )
+                })?;
+            } else if full_path.exists() {
+                fs::remove_file(&full_path).with_context(|| {
+                    format!("failed to remove untracked file '{}'", full_path.display())
+                })?;
+            }
+        }
+
+        self.snapshot(&repo_path)
+    }
+
+    pub fn append_gitignore_pattern(
+        &self,
+        repo_path: &Path,
+        pattern: &str,
+    ) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let pattern = pattern.trim();
+        if pattern.is_empty() {
+            bail!("ignore pattern cannot be empty");
+        }
+
+        let gitignore_path = repo_path.join(".gitignore");
+        let mut content = if gitignore_path.exists() {
+            fs::read_to_string(&gitignore_path)
+                .with_context(|| format!("failed to read '{}'", gitignore_path.display()))?
+        } else {
+            String::new()
+        };
+
+        let already_present = content.lines().map(str::trim).any(|line| line == pattern);
+
+        if !already_present {
+            if !content.is_empty() && !content.ends_with('\n') {
+                content.push('\n');
+            }
+            content.push_str(pattern);
+            content.push('\n');
+            fs::write(&gitignore_path, content)
+                .with_context(|| format!("failed to write '{}'", gitignore_path.display()))?;
+        }
+
+        self.snapshot(&repo_path)
+    }
+
+    pub fn read_config_value(&self, repo_path: &Path, key: &str) -> Result<Option<String>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let value = self.read_optional_config(&repo_path, key)?;
+        Ok(non_empty(value))
+    }
+
     pub fn read_identity(&self, repo_path: &Path) -> Result<GitIdentity> {
         let repo_path = self.resolve_repo_root(repo_path)?;
 
@@ -179,8 +265,7 @@ impl GitClient {
             &[
                 "log",
                 &format!("-n{limit}"),
-                "--pretty=format:%x1e%H%x1f%h%x1f%s%x1f%b%x1f%an%x1f%ae%x1f%ad",
-                "--date=iso",
+                "--pretty=format:%x1e%H%x1f%h%x1f%s%x1f%b%x1f%an%x1f%ae%x1f%ar",
             ],
         )?;
 
@@ -446,6 +531,21 @@ impl GitClient {
         })
     }
 
+    fn path_is_tracked(&self, repo_path: &Path, relative_path: &str) -> Result<bool> {
+        self.run_git(
+            repo_path,
+            &["ls-files", "--error-unmatch", "--", relative_path],
+        )
+        .map(|_| true)
+        .or_else(|error| {
+            if is_path_not_tracked(&error) {
+                Ok(false)
+            } else {
+                Err(error)
+            }
+        })
+    }
+
     fn path_is_binary(&self, repo_path: &Path, relative_path: &str) -> Result<bool> {
         let full_path = repo_path.join(relative_path);
         if !full_path.exists() {
@@ -692,4 +792,12 @@ fn is_config_missing(error: &anyhow::Error) -> bool {
 fn is_ref_missing(error: &anyhow::Error) -> bool {
     let message = error.to_string();
     message.contains("exit status: 1") || message.contains("returned non-zero exit status: 1")
+}
+
+fn is_path_not_tracked(error: &anyhow::Error) -> bool {
+    let message = error.to_string();
+    message.contains("did not match any file")
+        || message.contains("pathspec")
+        || message.contains("exit status: 1")
+        || message.contains("returned non-zero exit status: 1")
 }

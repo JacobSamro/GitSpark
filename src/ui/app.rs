@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
+use std::{env, process::Command};
 
 use eframe::egui::{self, Align, Align2, Color32, RichText, Stroke, TextStyle, Vec2};
 use egui_phosphor::regular as icons;
@@ -10,12 +11,12 @@ use crate::ai::AiClient;
 use crate::git::GitClient;
 use crate::models::{AppSettings, CommitSuggestion, DiffEntry, GitIdentity, RepoSnapshot};
 use crate::storage::{load_settings, push_recent_repo, save_settings};
+use crate::ui::components::buttons::{compact_action_button, icon_button, tab_button};
+use crate::ui::components::diff::render_diff_text;
 use crate::ui::theme::{
     ACCENT, ACCENT_MUTED, BG, BORDER, DANGER, DIFF_BG, PANEL_BG, SUCCESS, SURFACE_BG,
     SURFACE_BG_ALT, SURFACE_BG_MUTED, TEXT_MAIN, TEXT_MUTED, WARNING, configure_visuals,
 };
-use crate::ui::components::buttons::{compact_action_button, icon_button, tab_button};
-use crate::ui::components::diff::render_diff_text;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum MainTab {
@@ -555,17 +556,15 @@ impl RustTopApp {
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing = Vec2::ZERO;
+
                     for commit in &repo.history {
                         let is_selected = self.selected_commit.as_ref() == Some(&commit.oid);
 
-                        let rect = ui.available_rect_before_wrap();
-                        let desired_height = 56.0;
-                        let item_rect = egui::Rect::from_min_size(
-                            rect.min,
-                            Vec2::new(rect.width(), desired_height),
+                        let (item_rect, response) = ui.allocate_exact_size(
+                            Vec2::new(ui.available_width(), 52.0),
+                            egui::Sense::click(),
                         );
-
-                        let response = ui.allocate_rect(item_rect, egui::Sense::click());
 
                         let bg_color = if is_selected {
                             ACCENT_MUTED
@@ -579,7 +578,7 @@ impl RustTopApp {
                         ui.painter().hline(
                             item_rect.x_range(),
                             item_rect.bottom(),
-                            Stroke::new(1.0, Color32::from_black_alpha(20)),
+                            Stroke::new(1.0, BORDER),
                         );
 
                         if response.clicked() {
@@ -606,36 +605,45 @@ impl RustTopApp {
                             }
                         }
 
-                        // Summary
-                        let summary_pos = item_rect.min + Vec2::new(14.0, 10.0);
-                        ui.painter().text(
-                            summary_pos,
-                            Align2::LEFT_TOP,
-                            &commit.summary,
-                            egui::FontId::proportional(14.0),
-                            if is_selected {
-                                Color32::WHITE
-                            } else {
-                                TEXT_MAIN
-                            },
-                        );
+                        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(item_rect), |ui| {
+                            ui.add_space(8.0);
+                            ui.horizontal(|ui| {
+                                ui.add_space(12.0);
+                                ui.vertical(|ui| {
+                                    ui.spacing_mut().item_spacing.y = 4.0;
 
-                        // Author & OID
-                        let meta_pos = item_rect.min + Vec2::new(14.0, 32.0);
-                        let meta_text = format!("{} • {}", commit.author_name, commit.short_oid);
-                        ui.painter().text(
-                            meta_pos,
-                            Align2::LEFT_TOP,
-                            meta_text,
-                            egui::FontId::proportional(12.0),
-                            if is_selected {
-                                Color32::LIGHT_GRAY
-                            } else {
-                                TEXT_MUTED
-                            },
-                        );
+                                    // Summary
+                                    let summary_text = RichText::new(&commit.summary)
+                                        .color(if is_selected {
+                                            Color32::WHITE
+                                        } else {
+                                            TEXT_MAIN
+                                        })
+                                        .strong();
+                                    ui.label(summary_text);
 
-                        ui.allocate_space(Vec2::new(0.0, desired_height));
+                                    // Meta
+                                    ui.horizontal(|ui| {
+                                        ui.spacing_mut().item_spacing.x = 4.0;
+                                        ui.label(RichText::new(icons::USER_CIRCLE).color(
+                                            if is_selected {
+                                                Color32::LIGHT_GRAY
+                                            } else {
+                                                TEXT_MUTED
+                                            },
+                                        ));
+
+                                        let meta_text =
+                                            format!("{} • {}", commit.author_name, commit.date);
+                                        ui.label(RichText::new(meta_text).color(if is_selected {
+                                            Color32::LIGHT_GRAY
+                                        } else {
+                                            TEXT_MUTED
+                                        }));
+                                    });
+                                });
+                            });
+                        });
                     }
                 });
         }
@@ -735,10 +743,222 @@ impl RustTopApp {
                     });
                 });
             })
-            .response;
+            .response
+            .interact(egui::Sense::click());
 
-        if response.interact(egui::Sense::click()).clicked() {
+        if response.clicked() {
             self.selected_change = Some(change.path.clone());
+        }
+
+        response.context_menu(|ui| {
+            ui.set_min_width(280.0);
+
+            if ui.button("Discard Changes...").clicked() {
+                self.discard_change(&change.path);
+                ui.close_menu();
+            }
+            ui.separator();
+            if ui.button("Ignore File (Add to .gitignore)").clicked() {
+                self.ignore_path(&change.path);
+                ui.close_menu();
+            }
+
+            let ext = std::path::Path::new(&change.path)
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+
+            if !ext.is_empty() {
+                if ui
+                    .button(format!("Ignore All .{} Files (Add to .gitignore)", ext))
+                    .clicked()
+                {
+                    self.ignore_extension(ext);
+                    ui.close_menu();
+                }
+            }
+
+            ui.separator();
+            if ui.button("Copy File Path").clicked() {
+                if let Some(repo_path) = self.repo_path() {
+                    let full_path = repo_path.join(&change.path);
+                    ui.ctx().copy_text(full_path.to_string_lossy().to_string());
+                    self.status_message = format!("Copied absolute path for '{}'.", change.path);
+                    self.error_message.clear();
+                }
+                ui.close_menu();
+            }
+            if ui.button("Copy Relative File Path").clicked() {
+                ui.ctx().copy_text(change.path.clone());
+                self.status_message = format!("Copied relative path for '{}'.", change.path);
+                self.error_message.clear();
+                ui.close_menu();
+            }
+            ui.separator();
+            if ui.button("Reveal in Finder").clicked() {
+                self.reveal_in_finder(&change.path);
+                ui.close_menu();
+            }
+            if ui.button("Open in External Editor").clicked() {
+                self.open_in_external_editor(&change.path);
+                ui.close_menu();
+            }
+            if ui.button("Open with Default Program").clicked() {
+                if let Some(repo_path) = self.repo_path() {
+                    let full_path = repo_path.join(&change.path);
+                    match open::that(&full_path) {
+                        Ok(_) => {
+                            self.status_message =
+                                format!("Opened '{}' with the default program.", change.path);
+                            self.error_message.clear();
+                        }
+                        Err(err) => {
+                            self.error_message = format!(
+                                "Failed to open '{}' with default program: {err}",
+                                change.path
+                            );
+                        }
+                    }
+                }
+                ui.close_menu();
+            }
+        });
+    }
+
+    fn discard_change(&mut self, relative_path: &str) {
+        let Some(repo_path) = self.repo_path().map(PathBuf::from) else {
+            self.error_message = "No repository selected.".to_string();
+            return;
+        };
+
+        match self.git.discard_change(&repo_path, relative_path) {
+            Ok(snapshot) => {
+                self.adopt_snapshot(snapshot);
+                self.status_message = format!("Discarded changes for '{}'.", relative_path);
+                self.error_message.clear();
+            }
+            Err(err) => {
+                self.error_message =
+                    format!("Failed to discard changes for '{}': {err}", relative_path);
+            }
+        }
+    }
+
+    fn ignore_path(&mut self, relative_path: &str) {
+        let Some(repo_path) = self.repo_path().map(PathBuf::from) else {
+            self.error_message = "No repository selected.".to_string();
+            return;
+        };
+
+        let pattern = relative_path.replace('\\', "/");
+        match self.git.append_gitignore_pattern(&repo_path, &pattern) {
+            Ok(snapshot) => {
+                self.adopt_snapshot(snapshot);
+                self.status_message = format!("Added '{}' to .gitignore.", relative_path);
+                self.error_message.clear();
+            }
+            Err(err) => {
+                self.error_message = format!("Failed to ignore '{}': {err}", relative_path);
+            }
+        }
+    }
+
+    fn ignore_extension(&mut self, ext: &str) {
+        let Some(repo_path) = self.repo_path().map(PathBuf::from) else {
+            self.error_message = "No repository selected.".to_string();
+            return;
+        };
+
+        let pattern = format!("*.{ext}");
+        match self.git.append_gitignore_pattern(&repo_path, &pattern) {
+            Ok(snapshot) => {
+                self.adopt_snapshot(snapshot);
+                self.status_message = format!("Added '{}' to .gitignore.", pattern);
+                self.error_message.clear();
+            }
+            Err(err) => {
+                self.error_message = format!("Failed to ignore '{}': {err}", pattern);
+            }
+        }
+    }
+
+    fn reveal_in_finder(&mut self, relative_path: &str) {
+        let Some(repo_path) = self.repo_path().map(PathBuf::from) else {
+            self.error_message = "No repository selected.".to_string();
+            return;
+        };
+        let full_path = repo_path.join(relative_path);
+
+        #[cfg(target_os = "macos")]
+        let result = Command::new("open")
+            .arg("-R")
+            .arg(&full_path)
+            .spawn()
+            .map(|_| ());
+
+        #[cfg(not(target_os = "macos"))]
+        let result = open::that_detached(&full_path);
+
+        match result {
+            Ok(_) => {
+                self.status_message = format!("Revealed '{}' in Finder.", relative_path);
+                self.error_message.clear();
+            }
+            Err(err) => {
+                self.error_message = format!("Failed to reveal '{}': {err}", relative_path);
+            }
+        }
+    }
+
+    fn open_in_external_editor(&mut self, relative_path: &str) {
+        let Some(repo_path) = self.repo_path().map(PathBuf::from) else {
+            self.error_message = "No repository selected.".to_string();
+            return;
+        };
+
+        let full_path = repo_path.join(relative_path);
+        let configured_editor = self
+            .git
+            .read_config_value(&repo_path, "core.editor")
+            .ok()
+            .flatten()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| {
+                env::var("VISUAL")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+            })
+            .or_else(|| {
+                env::var("EDITOR")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+            });
+
+        let result = if let Some(editor_cmd) = configured_editor {
+            Command::new("sh")
+                .arg("-lc")
+                .arg(format!(
+                    "{} {}",
+                    editor_cmd,
+                    shell_escape(&full_path.to_string_lossy())
+                ))
+                .spawn()
+                .map(|_| ())
+        } else {
+            open::that_detached(&full_path)
+        };
+
+        match result {
+            Ok(_) => {
+                self.status_message = format!("Opened '{}' in external editor.", relative_path);
+                self.error_message.clear();
+            }
+            Err(err) => {
+                self.error_message = format!(
+                    "Failed to open '{}' in external editor: {err}",
+                    relative_path
+                );
+            }
         }
     }
 
@@ -878,7 +1098,11 @@ impl RustTopApp {
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
                                 ui.style_mut().spacing.item_spacing = Vec2::ZERO;
-                                render_diff_text(ui, &diff_text);
+                                render_diff_text(
+                                    ui,
+                                    &diff_text,
+                                    &self.selected_change.clone().unwrap_or_default(),
+                                );
                             });
                     });
             });
@@ -973,7 +1197,11 @@ impl RustTopApp {
                                                     .show(ui, |ui| {
                                                         ui.style_mut().spacing.item_spacing =
                                                             Vec2::ZERO;
-                                                        render_diff_text(ui, diff_text);
+                                                        render_diff_text(
+                                                            ui,
+                                                            diff_text,
+                                                            selected_path,
+                                                        );
                                                     });
                                             }
                                         } else {
@@ -1345,3 +1573,6 @@ fn status_symbol(status: &str) -> &'static str {
     }
 }
 
+fn shell_escape(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
