@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result, anyhow, bail};
 
@@ -69,6 +70,65 @@ impl GitClient {
 
     pub fn refresh_repo(&self, path: &Path) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(path)?;
+        self.snapshot(&repo_path)
+    }
+
+    pub fn fetch_origin(&self, repo_path: &Path) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let remote_name = self
+            .read_primary_remote(&repo_path)?
+            .ok_or_else(|| anyhow!("no remote configured for this repository"))?;
+
+        self.run_git(&repo_path, &["fetch", "--prune", &remote_name])
+            .with_context(|| format!("failed to fetch from '{remote_name}'"))?;
+
+        self.snapshot(&repo_path)
+    }
+
+    pub fn pull_origin(&self, repo_path: &Path) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let remote_name = self
+            .read_primary_remote(&repo_path)?
+            .ok_or_else(|| anyhow!("no remote configured for this repository"))?;
+
+        if self.has_upstream(&repo_path) {
+            self.run_git(&repo_path, &["pull", "--ff-only"])
+                .with_context(|| format!("failed to pull from '{remote_name}'"))?;
+        } else {
+            let status = self.read_status(&repo_path)?;
+            if status.current_branch == "HEAD" || status.current_branch == "detached HEAD" {
+                bail!("cannot pull while HEAD is detached");
+            }
+
+            self.run_git(
+                &repo_path,
+                &["pull", "--ff-only", &remote_name, &status.current_branch],
+            )
+            .with_context(|| {
+                format!(
+                    "failed to pull '{}' from '{}'",
+                    status.current_branch, remote_name
+                )
+            })?;
+        }
+
+        self.snapshot(&repo_path)
+    }
+
+    pub fn push_origin(&self, repo_path: &Path) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let remote_name = self
+            .read_primary_remote(&repo_path)?
+            .ok_or_else(|| anyhow!("no remote configured for this repository"))?;
+
+        if self.has_upstream(&repo_path) {
+            self.run_git(&repo_path, &["push", &remote_name])
+                .with_context(|| format!("failed to push to '{remote_name}'"))?;
+        } else {
+            self.run_git(&repo_path, &["push", "--set-upstream", &remote_name, "HEAD"])
+                .with_context(|| format!("failed to publish branch to '{remote_name}'"))?;
+        }
+
         self.snapshot(&repo_path)
     }
 
@@ -254,6 +314,8 @@ impl GitClient {
         let diffs = self.build_diffs(repo_path, &status.changes)?;
         let history = self.fetch_history(repo_path, 100).unwrap_or_default();
         let stash_count = self.stash_count(repo_path).unwrap_or(0);
+        let remote_name = self.read_primary_remote(repo_path).unwrap_or(None);
+        let last_fetched = self.read_last_fetched(repo_path);
 
         Ok(RepoSnapshot {
             repo: RepoSummary {
@@ -261,8 +323,10 @@ impl GitClient {
                 name: repo_name,
                 current_branch: status.current_branch,
                 head_oid: status.head_oid,
+                remote_name,
                 ahead: status.ahead,
                 behind: status.behind,
+                last_fetched,
             },
             changes: status.changes,
             diffs,
@@ -355,6 +419,70 @@ impl GitClient {
             .with_context(|| format!("'{}' is not a Git repository", candidate.display()))?;
 
         Ok(PathBuf::from(output.trim()))
+    }
+
+    fn has_upstream(&self, repo_path: &Path) -> bool {
+        self.run_git(
+            repo_path,
+            &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+        )
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+    }
+
+    fn read_primary_remote(&self, repo_path: &Path) -> Result<Option<String>> {
+        if let Ok(upstream) = self.run_git(
+            repo_path,
+            &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+        ) {
+            let upstream = upstream.trim();
+            if let Some((remote, _)) = upstream.split_once('/') {
+                if !remote.is_empty() {
+                    return Ok(Some(remote.to_string()));
+                }
+            }
+        }
+
+        let remotes = self.run_git(repo_path, &["remote"])?;
+        let mut names = remotes
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+
+        if names.is_empty() {
+            return Ok(None);
+        }
+
+        names.sort_by_key(|name| if name == "origin" { 0 } else { 1 });
+        Ok(names.into_iter().next())
+    }
+
+    fn read_last_fetched(&self, repo_path: &Path) -> Option<String> {
+        let git_dir_output = self.run_git(repo_path, &["rev-parse", "--git-dir"]).ok()?;
+        let git_dir = git_dir_output.trim();
+        if git_dir.is_empty() {
+            return None;
+        }
+
+        let git_dir_path = {
+            let path = PathBuf::from(git_dir);
+            if path.is_absolute() {
+                path
+            } else {
+                repo_path.join(path)
+            }
+        };
+
+        let fetch_head = git_dir_path.join("FETCH_HEAD");
+        let metadata = fs::metadata(fetch_head).ok()?;
+        if metadata.len() == 0 {
+            return None;
+        }
+
+        let modified = metadata.modified().ok()?;
+        Some(format_relative_time(modified))
     }
 
     fn local_branch_exists(&self, repo_path: &Path, branch_name: &str) -> Result<bool> {
@@ -800,6 +928,23 @@ fn non_empty(value: String) -> Option<String> {
 
 fn looks_binary_diff(diff: &str) -> bool {
     diff.contains("Binary files") || diff.contains("GIT binary patch")
+}
+
+fn format_relative_time(timestamp: SystemTime) -> String {
+    let elapsed = SystemTime::now()
+        .duration_since(timestamp)
+        .unwrap_or(Duration::ZERO);
+
+    let seconds = elapsed.as_secs();
+    match seconds {
+        0..=44 => "just now".to_string(),
+        45..=89 => "1 minute ago".to_string(),
+        90..=2_699 => format!("{} minutes ago", seconds / 60),
+        2_700..=5_399 => "1 hour ago".to_string(),
+        5_400..=86_399 => format!("{} hours ago", seconds / 3_600),
+        86_400..=172_799 => "1 day ago".to_string(),
+        _ => format!("{} days ago", seconds / 86_400),
+    }
 }
 
 fn is_config_missing(error: &anyhow::Error) -> bool {

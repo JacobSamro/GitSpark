@@ -3,7 +3,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::{env, process::Command};
 
-use eframe::egui::{self, Align, Align2, Color32, RichText, Stroke, Vec2};
+use eframe::egui::{self, Align, Align2, Color32, PopupCloseBehavior, RichText, Stroke, Vec2};
 use egui_phosphor::regular as icons;
 use rfd::FileDialog;
 
@@ -29,12 +29,20 @@ pub enum SidebarTab {
     History,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NetworkAction {
+    Fetch,
+    Pull,
+    Push,
+}
+
 enum AppEvent {
     RepoLoaded(Result<RepoSnapshot, String>),
     RepoRefreshed(Result<RepoSnapshot, String>),
     BranchSwitched(Result<RepoSnapshot, String>, String),
     BranchMerged(Result<RepoSnapshot, String>, String),
     CommitCreated(Result<RepoSnapshot, String>),
+    NetworkActionCompleted(Result<RepoSnapshot, String>, String),
     AiCommitGenerated(Result<CommitSuggestion, String>),
     CommitDiffLoaded(String, Result<Vec<DiffEntry>, String>),
 }
@@ -146,6 +154,52 @@ impl RustTopApp {
         thread::spawn(move || {
             let res = git.refresh_repo(&path).map_err(|e| e.to_string());
             let _ = tx.send(AppEvent::RepoRefreshed(res));
+            ctx.request_repaint();
+        });
+    }
+
+    fn fetch_origin(&mut self) {
+        self.run_network_action(NetworkAction::Fetch);
+    }
+
+    fn pull_origin(&mut self) {
+        self.run_network_action(NetworkAction::Pull);
+    }
+
+    fn push_origin(&mut self) {
+        self.run_network_action(NetworkAction::Push);
+    }
+
+    fn run_network_action(&mut self, action: NetworkAction) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.error_message = "No repository selected.".to_string();
+            return;
+        };
+
+        let remote_name = self
+            .current_repo
+            .as_ref()
+            .and_then(|snapshot| snapshot.repo.remote_name.clone())
+            .unwrap_or_else(|| "origin".to_string());
+        let action_label = action.title(&remote_name);
+
+        self.status_message = format!("{action_label}...");
+        self.error_message.clear();
+
+        let tx = self.event_tx.clone();
+        let ctx = self.ctx.clone();
+        let git = GitClient::new();
+        let action_label_for_event = action_label.clone();
+
+        thread::spawn(move || {
+            let res = match action {
+                NetworkAction::Fetch => git.fetch_origin(&path),
+                NetworkAction::Pull => git.pull_origin(&path),
+                NetworkAction::Push => git.push_origin(&path),
+            }
+            .map_err(|e| e.to_string());
+
+            let _ = tx.send(AppEvent::NetworkActionCompleted(res, action_label_for_event));
             ctx.request_repaint();
         });
     }
@@ -381,85 +435,433 @@ impl RustTopApp {
 
     fn render_top_bar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("top_bar")
-            .exact_height(52.0)
+            .exact_height(74.0)
             .frame(
                 egui::Frame::default()
-                    .fill(SURFACE_BG_MUTED)
-                    .inner_margin(egui::Margin::same(8))
+                    .fill(SURFACE_BG)
+                    .inner_margin(egui::Margin::symmetric(12, 8))
                     .stroke(Stroke::new(1.0, BORDER)),
             )
             .show(ctx, |ui| {
-                ui.with_layout(egui::Layout::left_to_right(Align::Center), |ui| {
-                    ui.add_space(4.0);
+                ui.spacing_mut().item_spacing.x = 8.0;
+                ui.set_min_height(52.0);
+                let repo_title = self
+                    .current_repo
+                    .as_ref()
+                    .map(|snapshot| snapshot.repo.name.clone())
+                    .unwrap_or_else(|| "Choose repository".to_string());
+                let branch_title = self
+                    .current_repo
+                    .as_ref()
+                    .map(|snapshot| snapshot.repo.current_branch.clone())
+                    .unwrap_or_else(|| "No branch".to_string());
+                ui.with_layout(egui::Layout::left_to_right(Align::Min), |ui| {
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(238.0, 52.0),
+                        egui::Layout::top_down(Align::Min),
+                        |ui| {
+                            self.render_dropdown_toolbar_block(
+                                ui,
+                                "toolbar_repo",
+                                icons::FOLDER_NOTCH_OPEN,
+                                "Current Repository",
+                                &repo_title,
+                                238.0,
+                                |app, ui| app.render_repository_toolbar_menu(ui),
+                            );
+                        },
+                    );
+                    let first_sep_x = ui.cursor().left() - 4.0;
+                    ui.painter().vline(
+                        first_sep_x,
+                        ui.max_rect().y_range(),
+                        Stroke::new(1.0, BORDER),
+                    );
 
-                    // Current Repository
-                    let repo_name = self
-                        .current_repo
-                        .as_ref()
-                        .map(|s| s.repo.name.as_str())
-                        .unwrap_or("Choose repository");
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(214.0, 52.0),
+                        egui::Layout::top_down(Align::Min),
+                        |ui| {
+                            self.render_dropdown_toolbar_block(
+                                ui,
+                                "toolbar_branch",
+                                icons::GIT_BRANCH,
+                                "Current Branch",
+                                &branch_title,
+                                214.0,
+                                |app, ui| app.render_branch_toolbar_menu(ui),
+                            );
+                        },
+                    );
+                    let second_sep_x = ui.cursor().left() - 4.0;
+                    ui.painter().vline(
+                        second_sep_x,
+                        ui.max_rect().y_range(),
+                        Stroke::new(1.0, BORDER),
+                    );
 
-                    ui.menu_button(RichText::new(repo_name).strong().color(TEXT_MAIN), |ui| {
-                        ui.label("Repository selection not implemented");
-                        if ui.button("Add Repository...").clicked() {
-                            ui.close_menu();
-                            self.open_repo_dialog();
-                        }
-                    });
-
-                    ui.add_space(12.0);
-
-                    // Current Branch
-                    let current_branch = self
-                        .current_repo
-                        .as_ref()
-                        .map(|s| s.repo.current_branch.clone())
-                        .unwrap_or_else(|| "No branch".to_string());
-
-                    ui.menu_button(RichText::new(&current_branch).color(TEXT_MAIN), |ui| {
-                        let branches = self
-                            .current_repo
-                            .as_ref()
-                            .map(|s| s.branches.clone())
-                            .unwrap_or_default();
-
-                        ui.label(RichText::new("Switch branch").small().color(TEXT_MUTED));
-                        ui.separator();
-
-                        for branch in branches {
-                            if ui.button(branch.name.clone()).clicked() {
-                                self.branch_target = branch.name;
-                                self.switch_branch();
-                                ui.close_menu();
-                            }
-                        }
-                    });
-
-                    ui.add_space(12.0);
-
-                    // Fetch/Push Button
-                    if let Some(snapshot) = &self.current_repo {
-                        let label = format!(
-                            "Fetch origin ({}↑ {}↓)",
-                            snapshot.repo.ahead, snapshot.repo.behind
-                        );
-                        if ui
-                            .add(
-                                egui::Button::new(RichText::new(label).color(TEXT_MAIN))
-                                    .fill(SURFACE_BG),
-                            )
-                            .clicked()
-                        {
-                            self.refresh_repo();
-                        }
-                    }
-
-                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                        // Remove "Add Repo" button as it is in the menu now
-                        let _ = ui;
-                    });
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(224.0, 52.0),
+                        egui::Layout::top_down(Align::Min),
+                        |ui| {
+                            self.render_network_toolbar_block(ui);
+                        },
+                    );
                 });
             });
+    }
+
+    fn render_dropdown_toolbar_block<F>(
+        &mut self,
+        ui: &mut egui::Ui,
+        id_source: &str,
+        icon: &str,
+        description: &str,
+        title: &str,
+        width: f32,
+        add_popup_contents: F,
+    ) where
+        F: FnOnce(&mut Self, &mut egui::Ui),
+    {
+        let popup_id = ui.make_persistent_id(id_source);
+        let response = egui::Frame::default()
+            .fill(Color32::TRANSPARENT)
+            .stroke(Stroke::NONE)
+            .corner_radius(0.0)
+            .inner_margin(egui::Margin::same(0))
+            .show(ui, |ui| {
+                ui.set_min_size(Vec2::new(width, 52.0));
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    ui.add_sized(
+                        [18.0, 52.0],
+                        egui::Label::new(RichText::new(icon).size(15.0).color(TEXT_MUTED)),
+                    );
+                    ui.add_space(12.0);
+                    render_toolbar_text_stack(
+                        ui,
+                        description,
+                        title,
+                        width - 76.0,
+                        Some(icons::CARET_DOWN),
+                    );
+                });
+            })
+            .response
+            .interact(egui::Sense::click())
+            .on_hover_cursor(egui::CursorIcon::PointingHand);
+
+        if response.clicked() {
+            ui.memory_mut(|mem| mem.toggle_popup(popup_id));
+        }
+
+        egui::popup_below_widget(
+            ui,
+            popup_id,
+            &response,
+            PopupCloseBehavior::CloseOnClickOutside,
+            |ui| {
+                ui.set_min_width(width.max(260.0));
+                add_popup_contents(self, ui);
+            },
+        );
+    }
+
+    fn render_repository_toolbar_menu(&mut self, ui: &mut egui::Ui) {
+        ui.label(RichText::new("Current Repository").small().color(TEXT_MUTED));
+        ui.add_space(6.0);
+
+        if let Some(snapshot) = &self.current_repo {
+            ui.label(RichText::new(&snapshot.repo.name).strong().color(TEXT_MAIN));
+            ui.label(
+                RichText::new(snapshot.repo.path.display().to_string())
+                    .small()
+                    .color(TEXT_MUTED),
+            );
+            ui.separator();
+        }
+
+        if self.settings.recent_repos.is_empty() {
+            ui.label(RichText::new("No recent repositories").color(TEXT_MUTED));
+        } else {
+            for path in self.settings.recent_repos.clone() {
+                let is_current = self
+                    .current_repo
+                    .as_ref()
+                    .map(|snapshot| snapshot.repo.path == path)
+                    .unwrap_or(false);
+                let repo_name = path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("Repository");
+                let button = egui::Button::new(
+                    RichText::new(if is_current {
+                        format!("✓ {repo_name}")
+                    } else {
+                        repo_name.to_string()
+                    })
+                    .color(TEXT_MAIN),
+                )
+                .fill(Color32::TRANSPARENT)
+                .stroke(Stroke::NONE)
+                .min_size(Vec2::new(ui.available_width(), 24.0));
+
+                if ui.add(button).clicked() {
+                    self.open_repo(path);
+                    ui.close_menu();
+                }
+            }
+        }
+
+        ui.separator();
+        if ui.button("Choose Repository...").clicked() {
+            self.open_repo_dialog();
+            ui.close_menu();
+        }
+        if ui.button("Refresh").clicked() {
+            self.refresh_repo();
+            ui.close_menu();
+        }
+    }
+
+    fn render_branch_toolbar_menu(&mut self, ui: &mut egui::Ui) {
+        ui.label(RichText::new("Current Branch").small().color(TEXT_MUTED));
+        ui.add_space(6.0);
+
+        let branches = self
+            .current_repo
+            .as_ref()
+            .map(|snapshot| snapshot.branches.clone())
+            .unwrap_or_default();
+
+        if branches.is_empty() {
+            ui.label(RichText::new("No branches available").color(TEXT_MUTED));
+            return;
+        }
+
+        for branch in branches.iter().filter(|branch| !branch.is_remote) {
+            let label = if branch.is_current {
+                format!("✓ {}", branch.name)
+            } else {
+                branch.name.clone()
+            };
+
+            if ui
+                .add(
+                    egui::Button::new(RichText::new(label).color(TEXT_MAIN))
+                        .fill(Color32::TRANSPARENT)
+                        .stroke(Stroke::NONE)
+                        .min_size(Vec2::new(ui.available_width(), 24.0)),
+                )
+                .clicked()
+            {
+                if !branch.is_current {
+                    self.branch_target = branch.name.clone();
+                    self.switch_branch();
+                }
+                ui.close_menu();
+            }
+        }
+
+        let remote_branches = branches
+            .into_iter()
+            .filter(|branch| branch.is_remote)
+            .collect::<Vec<_>>();
+        if !remote_branches.is_empty() {
+            ui.separator();
+            ui.label(RichText::new("Remote Branches").small().color(TEXT_MUTED));
+            for branch in remote_branches {
+                if ui
+                    .add(
+                        egui::Button::new(RichText::new(branch.name.clone()).color(TEXT_MUTED))
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(Stroke::NONE)
+                            .min_size(Vec2::new(ui.available_width(), 24.0)),
+                    )
+                    .clicked()
+                {
+                    self.branch_target = branch.name;
+                    self.switch_branch();
+                    ui.close_menu();
+                }
+            }
+        }
+    }
+
+    fn render_network_toolbar_block(&mut self, ui: &mut egui::Ui) {
+        let Some(snapshot) = self.current_repo.clone() else {
+            self.render_disabled_network_toolbar_block(ui);
+            return;
+        };
+
+        let popup_id = ui.make_persistent_id("toolbar_network");
+        let remote_name = snapshot
+            .repo
+            .remote_name
+            .clone()
+            .unwrap_or_else(|| "origin".to_string());
+        let primary_action = NetworkAction::from_snapshot(&snapshot);
+        let title = primary_action.title(&remote_name);
+        let description = snapshot
+            .repo
+            .last_fetched
+            .as_ref()
+            .map(|value| format!("Last fetched {value}"))
+            .unwrap_or_else(|| "Never fetched".to_string());
+        let block = egui::Frame::default()
+            .fill(Color32::TRANSPARENT)
+            .stroke(Stroke::NONE)
+            .corner_radius(0.0)
+            .inner_margin(egui::Margin::same(0))
+            .show(ui, |ui| {
+                ui.set_min_size(Vec2::new(224.0, 52.0));
+                ui.horizontal(|ui| {
+                    let main = ui
+                        .allocate_ui_with_layout(
+                            Vec2::new(185.0, 52.0),
+                            egui::Layout::left_to_right(Align::Center),
+                            |ui| {
+                                ui.add_space(12.0);
+                                ui.add_sized(
+                                    [18.0, 52.0],
+                                    egui::Label::new(
+                                        RichText::new(primary_action.icon())
+                                            .size(15.0)
+                                            .color(TEXT_MUTED),
+                                    ),
+                                );
+                                ui.add_space(12.0);
+                                render_network_text_stack(
+                                    ui,
+                                    &description,
+                                    &title,
+                                    snapshot.repo.ahead,
+                                    snapshot.repo.behind,
+                                    143.0,
+                                );
+                            },
+                        )
+                        .response
+                        .interact(egui::Sense::click())
+                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+
+                    let divider_x = ui.min_rect().left() + 185.0;
+                    ui.painter().vline(
+                        divider_x,
+                        ui.max_rect().y_range(),
+                        Stroke::new(1.0, BORDER),
+                    );
+                    let arrow = ui
+                        .add_sized(
+                            [39.0, 52.0],
+                            egui::Button::new(
+                                RichText::new(icons::CARET_DOWN)
+                                    .size(11.0)
+                                    .color(TEXT_MUTED),
+                            )
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(Stroke::NONE),
+                        )
+                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+
+                    (main, arrow)
+                })
+                .inner
+            });
+        let (main_response, arrow_response) = block.inner;
+
+        if main_response.clicked() {
+            self.run_network_action(primary_action);
+        }
+
+        if arrow_response.clicked() {
+            ui.memory_mut(|mem| mem.toggle_popup(popup_id));
+        }
+
+        egui::popup_below_widget(
+            ui,
+            popup_id,
+            &block.response,
+            PopupCloseBehavior::CloseOnClickOutside,
+            |ui| {
+                ui.set_min_width(246.0);
+                self.render_network_toolbar_menu(ui, &snapshot, &remote_name, primary_action);
+            },
+        );
+    }
+
+    fn render_disabled_network_toolbar_block(&self, ui: &mut egui::Ui) {
+        egui::Frame::default()
+            .fill(Color32::TRANSPARENT)
+            .stroke(Stroke::NONE)
+            .corner_radius(0.0)
+            .inner_margin(egui::Margin::same(0))
+            .show(ui, |ui| {
+                ui.set_min_size(Vec2::new(224.0, 52.0));
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    ui.add_sized(
+                        [18.0, 52.0],
+                        egui::Label::new(
+                            RichText::new(icons::ARROW_CLOCKWISE)
+                                .size(15.0)
+                                .color(TEXT_MUTED),
+                        ),
+                    );
+                    ui.add_space(12.0);
+                    render_toolbar_text_stack(
+                        ui,
+                        "Open a repository first",
+                        "Fetch origin",
+                        143.0,
+                        Some(icons::CARET_DOWN),
+                    );
+                });
+            });
+    }
+
+    fn render_network_toolbar_menu(
+        &mut self,
+        ui: &mut egui::Ui,
+        snapshot: &RepoSnapshot,
+        remote_name: &str,
+        primary_action: NetworkAction,
+    ) {
+        ui.label(RichText::new("Remote").small().color(TEXT_MUTED));
+        ui.add_space(6.0);
+
+        if ui.button(primary_action.title(remote_name)).clicked() {
+            self.run_network_action(primary_action);
+            ui.close_menu();
+        }
+
+        if primary_action != NetworkAction::Fetch && ui.button(format!("Fetch {remote_name}")).clicked() {
+            self.fetch_origin();
+            ui.close_menu();
+        }
+
+        if snapshot.repo.behind > 0
+            && primary_action != NetworkAction::Pull
+            && ui.button(format!("Pull {remote_name}")).clicked()
+        {
+            self.pull_origin();
+            ui.close_menu();
+        }
+
+        if snapshot.repo.ahead > 0
+            && primary_action != NetworkAction::Push
+            && ui.button(format!("Push {remote_name}")).clicked()
+        {
+            self.push_origin();
+            ui.close_menu();
+        }
+
+        ui.separator();
+        ui.label(
+            RichText::new(format!("{}  {}↑ {}↓", remote_name, snapshot.repo.ahead, snapshot.repo.behind))
+                .small()
+                .color(TEXT_MUTED),
+        );
     }
 
     fn render_status_bar(&mut self, ctx: &egui::Context) {
@@ -1238,146 +1640,220 @@ impl RustTopApp {
     }
 
     fn render_history_workspace(&mut self, ctx: &egui::Context) {
+        let selected_commit = self
+            .selected_commit
+            .as_deref()
+            .and_then(|oid| {
+                self.current_repo
+                    .as_ref()
+                    .and_then(|repo| repo.history.iter().find(|commit| commit.oid == oid))
+            })
+            .cloned();
+
         egui::CentralPanel::default()
             .frame(egui::Frame::default().fill(BG))
             .show(ctx, |ui| {
-                if let Some(oid) = &self.selected_commit {
-                    let commit = self
-                        .current_repo
-                        .as_ref()
-                        .and_then(|r| r.history.iter().find(|c| c.oid == *oid));
-
-                    if let Some(commit) = commit {
-                        // Top commit info
-                        egui::TopBottomPanel::top("commit_info")
-                            .frame(egui::Frame::default().fill(SURFACE_BG).inner_margin(12.0))
-                            .show_inside(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.heading(RichText::new(&commit.summary).color(TEXT_MAIN));
-                                });
-
-                                if !commit.body.is_empty() {
-                                    ui.add_space(4.0);
-                                    ui.label(RichText::new(&commit.body).color(TEXT_MUTED));
-                                }
-
-                                ui.add_space(8.0);
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        RichText::new(format!(
-                                            "{} committed {}",
-                                            commit.author_name, commit.date
-                                        ))
-                                        .color(TEXT_MUTED),
-                                    );
-                                    ui.label(
-                                        RichText::new(&commit.short_oid)
-                                            .monospace()
-                                            .color(TEXT_MUTED),
-                                    );
-                                });
-                            });
-
-                        // Content area
-                        if let Some(diffs) = &self.commit_diffs {
-                            egui::TopBottomPanel::top("commit_file_list_panel")
-                                .frame(egui::Frame::default().fill(PANEL_BG).inner_margin(0.0))
-                                .show_inside(ui, |ui| {
-                                    egui::SidePanel::left("commit_file_list")
-                                        .resizable(true)
-                                        .default_width(220.0)
-                                        .show_inside(ui, |ui| {
-                                            ui.add_space(8.0);
-                                            ui.label(
-                                                RichText::new(format!(
-                                                    "{} changed files",
-                                                    diffs.len()
-                                                ))
-                                                .strong()
-                                                .color(TEXT_MUTED),
-                                            );
-                                            ui.add_space(8.0);
-
-                                            egui::ScrollArea::vertical().show(ui, |ui| {
-                                                for diff in diffs {
-                                                    let is_selected =
-                                                        self.selected_commit_file.as_deref()
-                                                            == Some(&diff.path);
-
-                                                    if ui
-                                                        .selectable_label(is_selected, &diff.path)
-                                                        .clicked()
-                                                    {
-                                                        self.selected_commit_file =
-                                                            Some(diff.path.clone());
-                                                    }
-                                                }
-                                            });
-                                        });
-
-                                    egui::CentralPanel::default().show_inside(ui, |ui| {
-                                        if let Some(selected_path) = &self.selected_commit_file {
-                                            if let Some(diff) =
-                                                diffs.iter().find(|d| d.path == *selected_path)
-                                            {
-                                                if diff.is_binary {
-                                                    ui.centered_and_justified(|ui| {
-                                                        ui.label(
-                                                            RichText::new("Binary file changed.")
-                                                                .color(TEXT_MUTED),
-                                                        );
-                                                    });
-                                                } else if diff.diff.trim().is_empty() {
-                                                    ui.centered_and_justified(|ui| {
-                                                        ui.label(
-                                                            RichText::new(
-                                                                "No diff text available.",
-                                                            )
-                                                            .color(TEXT_MUTED),
-                                                        );
-                                                    });
-                                                } else {
-                                                    render_diff_text(ui, &diff.diff, selected_path);
-                                                }
-                                            }
-                                        } else {
-                                            ui.centered_and_justified(|ui| {
-                                                ui.label(
-                                                    RichText::new("Select a file to view diff")
-                                                        .color(TEXT_MUTED),
-                                                );
-                                            });
-                                        }
-                                    });
-                                });
-                        } else {
-                            ui.centered_and_justified(|ui| {
-                                ui.spinner();
-                            });
-                        }
-                    }
-                } else {
+                let Some(commit) = selected_commit.as_ref() else {
                     ui.centered_and_justified(|ui| {
                         ui.label(
                             RichText::new("Select a commit to view details").color(TEXT_MUTED),
                         );
                     });
-                }
+                    return;
+                };
+
+                egui::TopBottomPanel::top("commit_info")
+                    .resizable(false)
+                    .frame(egui::Frame::default().fill(SURFACE_BG).inner_margin(12.0))
+                    .show_inside(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.heading(RichText::new(&commit.summary).color(TEXT_MAIN));
+                        });
+
+                        if !commit.body.is_empty() {
+                            ui.add_space(4.0);
+                            ui.label(RichText::new(&commit.body).color(TEXT_MUTED));
+                        }
+
+                        ui.add_space(8.0);
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(format!(
+                                    "{} committed {}",
+                                    commit.author_name, commit.date
+                                ))
+                                .color(TEXT_MUTED),
+                            );
+                            ui.label(
+                                RichText::new(&commit.short_oid)
+                                    .monospace()
+                                    .color(TEXT_MUTED),
+                            );
+                        });
+                    });
+
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::default().fill(PANEL_BG).inner_margin(0.0))
+                    .show_inside(ui, |ui| {
+                        let Some(diffs) = self.commit_diffs.as_ref() else {
+                            ui.centered_and_justified(|ui| {
+                                ui.spinner();
+                            });
+                            return;
+                        };
+
+                        let existing_selected_path = self.selected_commit_file.clone();
+                        let mut next_selected_path = None::<String>;
+
+                        egui::SidePanel::left("commit_file_list")
+                            .resizable(true)
+                            .min_width(180.0)
+                            .default_width(220.0)
+                            .frame(
+                                egui::Frame::default()
+                                    .fill(PANEL_BG)
+                                    .stroke(Stroke::new(1.0, BORDER))
+                                    .inner_margin(0.0),
+                            )
+                            .show_inside(ui, |ui| {
+                                egui::TopBottomPanel::top("commit_file_list_header")
+                                    .resizable(false)
+                                    .frame(
+                                        egui::Frame::default()
+                                            .fill(SURFACE_BG)
+                                            .inner_margin(egui::Margin::symmetric(12, 10)),
+                                    )
+                                    .show_inside(ui, |ui| {
+                                        ui.label(
+                                            RichText::new(format!("{} changed files", diffs.len()))
+                                                .strong()
+                                                .color(TEXT_MAIN),
+                                        );
+                                    });
+
+                                egui::CentralPanel::default().show_inside(ui, |ui| {
+                                    egui::ScrollArea::vertical()
+                                        .auto_shrink([false, false])
+                                        .show(ui, |ui| {
+                                            ui.spacing_mut().item_spacing = Vec2::ZERO;
+
+                                            for diff in diffs {
+                                                let is_selected = existing_selected_path
+                                                    .as_deref()
+                                                    == Some(diff.path.as_str());
+
+                                                let response = egui::Frame::default()
+                                                    .fill(if is_selected {
+                                                        ACCENT_MUTED
+                                                    } else {
+                                                        Color32::TRANSPARENT
+                                                    })
+                                                    .inner_margin(egui::Margin::symmetric(10, 8))
+                                                    .show(ui, |ui| {
+                                                        ui.set_min_height(24.0);
+                                                        ui.set_width(ui.available_width());
+                                                        ui.label(
+                                                            RichText::new(&diff.path).color(
+                                                                if is_selected {
+                                                                    Color32::WHITE
+                                                                } else {
+                                                                    TEXT_MAIN
+                                                                },
+                                                            ),
+                                                        );
+                                                    })
+                                                    .response
+                                                    .interact(egui::Sense::click());
+
+                                                ui.painter().hline(
+                                                    response.rect.x_range(),
+                                                    response.rect.bottom(),
+                                                    Stroke::new(1.0, BORDER),
+                                                );
+
+                                                if response.clicked() {
+                                                    next_selected_path = Some(diff.path.clone());
+                                                }
+                                            }
+                                        });
+                                });
+                            });
+
+                        let active_selected_path = next_selected_path
+                            .clone()
+                            .or(existing_selected_path.clone());
+
+                        if let Some(path) = next_selected_path {
+                            self.selected_commit_file = Some(path);
+                        }
+
+                        egui::CentralPanel::default()
+                            .frame(egui::Frame::default().fill(DIFF_BG).inner_margin(0.0))
+                            .show_inside(ui, |ui| {
+                                if let Some(selected_path) = active_selected_path.as_deref() {
+                                    Self::render_diff_title(ui, selected_path);
+
+                                    egui::CentralPanel::default().show_inside(ui, |ui| {
+                                        if let Some(diff) =
+                                            diffs.iter().find(|d| d.path == selected_path)
+                                        {
+                                            if diff.is_binary {
+                                                ui.centered_and_justified(|ui| {
+                                                    ui.label(
+                                                        RichText::new("Binary file changed.")
+                                                            .color(TEXT_MUTED),
+                                                    );
+                                                });
+                                            } else if diff.diff.trim().is_empty() {
+                                                ui.centered_and_justified(|ui| {
+                                                    ui.label(
+                                                        RichText::new("No diff text available.")
+                                                            .color(TEXT_MUTED),
+                                                    );
+                                                });
+                                            } else {
+                                                egui::ScrollArea::both()
+                                                    .auto_shrink([false, false])
+                                                    .show(ui, |ui| {
+                                                        ui.style_mut().spacing.item_spacing =
+                                                            Vec2::ZERO;
+                                                        render_diff_text(
+                                                            ui,
+                                                            &diff.diff,
+                                                            selected_path,
+                                                        );
+                                                    });
+                                            }
+                                        }
+                                    });
+                                } else {
+                                    ui.centered_and_justified(|ui| {
+                                        ui.label(
+                                            RichText::new("Select a file to view diff")
+                                                .color(TEXT_MUTED),
+                                        );
+                                    });
+                                }
+                            });
+                    });
             });
     }
 
     fn render_diff_header(&mut self, ui: &mut egui::Ui) {
+        let path = self
+            .selected_change
+            .as_deref()
+            .unwrap_or("Select a file from the left panel");
+        Self::render_diff_title(ui, path);
+    }
+
+    fn render_diff_title(ui: &mut egui::Ui, path: &str) {
         egui::Frame::default()
             .fill(SURFACE_BG)
             .stroke(Stroke::new(1.0, BORDER))
             .inner_margin(egui::Margin::symmetric(14, 10))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    let path = self
-                        .selected_change
-                        .as_deref()
-                        .unwrap_or("Select a file from the left panel");
-
                     ui.label(RichText::new(path).color(TEXT_MAIN).size(14.0).strong());
                 });
             });
@@ -1532,6 +2008,14 @@ impl eframe::App for RustTopApp {
                 AppEvent::CommitCreated(Err(err)) => {
                     self.error_message = format!("Commit failed: {err}");
                 }
+                AppEvent::NetworkActionCompleted(Ok(snapshot), action_label) => {
+                    self.adopt_snapshot(snapshot);
+                    self.status_message = format!("{action_label} complete.");
+                    self.error_message.clear();
+                }
+                AppEvent::NetworkActionCompleted(Err(err), action_label) => {
+                    self.error_message = format!("{action_label} failed: {err}");
+                }
                 AppEvent::AiCommitGenerated(Ok(suggestion)) => {
                     self.commit_summary = suggestion.subject.clone();
                     self.commit_body = suggestion.body.clone();
@@ -1634,11 +2118,15 @@ impl RustTopApp {
 
                     ui.menu_button(RichText::new("Repository").color(Color32::WHITE), |ui| {
                         if ui.button("Push").clicked() {
-                            // Push
+                            self.push_origin();
                             ui.close_menu();
                         }
                         if ui.button("Pull").clicked() {
-                            self.refresh_repo();
+                            self.pull_origin();
+                            ui.close_menu();
+                        }
+                        if ui.button("Fetch").clicked() {
+                            self.fetch_origin();
                             ui.close_menu();
                         }
                         if ui.button("Remove...").clicked() {
@@ -1684,6 +2172,34 @@ impl RustTopApp {
     }
 }
 
+impl NetworkAction {
+    fn from_snapshot(snapshot: &RepoSnapshot) -> Self {
+        if snapshot.repo.behind > 0 {
+            Self::Pull
+        } else if snapshot.repo.ahead > 0 {
+            Self::Push
+        } else {
+            Self::Fetch
+        }
+    }
+
+    fn title(self, remote_name: &str) -> String {
+        match self {
+            Self::Fetch => format!("Fetch {remote_name}"),
+            Self::Pull => format!("Pull {remote_name}"),
+            Self::Push => format!("Push {remote_name}"),
+        }
+    }
+
+    fn icon(self) -> &'static str {
+        match self {
+            Self::Fetch => icons::ARROW_CLOCKWISE,
+            Self::Pull => icons::ARROW_DOWN,
+            Self::Push => icons::ARROW_UP,
+        }
+    }
+}
+
 fn matches_filter(filter: &str, path: &str) -> bool {
     let filter = filter.trim();
     filter.is_empty()
@@ -1720,6 +2236,118 @@ fn status_symbol(status: &str) -> &'static str {
 
 fn shell_escape(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn render_ahead_behind(ui: &mut egui::Ui, ahead: usize, behind: usize) {
+    if ahead == 0 && behind == 0 {
+        return;
+    }
+
+    ui.add_space(6.0);
+    if ahead > 0 {
+        ui.label(
+            RichText::new(format!("{ahead}{}", icons::ARROW_UP))
+                .size(11.0)
+                .color(TEXT_MUTED),
+        );
+    }
+    if behind > 0 {
+        ui.label(
+            RichText::new(format!("{behind}{}", icons::ARROW_DOWN))
+                .size(11.0)
+                .color(TEXT_MUTED),
+        );
+    }
+}
+
+fn render_toolbar_text_stack(
+    ui: &mut egui::Ui,
+    description: &str,
+    title: &str,
+    width: f32,
+    trailing_icon: Option<&str>,
+) {
+    let chevron_width = if trailing_icon.is_some() { 18.0 } else { 0.0 };
+    let text_width = (width - chevron_width).max(0.0);
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 52.0), egui::Sense::hover());
+    let painter = ui.painter();
+    let text_left = rect.left();
+    let text_top = rect.top() + 9.0;
+
+    painter.text(
+        egui::pos2(text_left, text_top),
+        Align2::LEFT_TOP,
+        truncate_single_line(description, 30),
+        egui::FontId::proportional(10.0),
+        TEXT_MUTED,
+    );
+    painter.text(
+        egui::pos2(text_left, text_top + 13.0),
+        Align2::LEFT_TOP,
+        truncate_single_line(title, 24),
+        egui::FontId::proportional(12.5),
+        TEXT_MAIN,
+    );
+
+    if let Some(icon) = trailing_icon {
+        painter.text(
+            egui::pos2(rect.left() + text_width + 4.0, rect.top() + 20.0),
+            Align2::LEFT_TOP,
+            icon,
+            egui::FontId::proportional(11.0),
+            TEXT_MUTED,
+        );
+    }
+}
+
+fn render_network_text_stack(
+    ui: &mut egui::Ui,
+    description: &str,
+    title: &str,
+    ahead: usize,
+    behind: usize,
+    width: f32,
+) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 52.0), egui::Sense::hover());
+    let painter = ui.painter();
+    let text_left = rect.left();
+    let text_top = rect.top() + 9.0;
+
+    painter.text(
+        egui::pos2(text_left, text_top),
+        Align2::LEFT_TOP,
+        truncate_single_line(description, 26),
+        egui::FontId::proportional(10.0),
+        TEXT_MUTED,
+    );
+    painter.text(
+        egui::pos2(text_left, text_top + 13.0),
+        Align2::LEFT_TOP,
+        truncate_single_line(title, 18),
+        egui::FontId::proportional(12.5),
+        TEXT_MAIN,
+    );
+
+    let mut indicator_x = text_left + 92.0;
+    if ahead > 0 {
+        painter.text(
+            egui::pos2(indicator_x, text_top + 13.0),
+            Align2::LEFT_TOP,
+            format!("{ahead}{}", icons::ARROW_UP),
+            egui::FontId::proportional(11.0),
+            TEXT_MUTED,
+        );
+        indicator_x += 22.0;
+    }
+    if behind > 0 {
+        painter.text(
+            egui::pos2(indicator_x, text_top + 13.0),
+            Align2::LEFT_TOP,
+            format!("{behind}{}", icons::ARROW_DOWN),
+            egui::FontId::proportional(11.0),
+            TEXT_MUTED,
+        );
+    }
 }
 
 fn truncate_single_line(text: &str, max_chars: usize) -> String {

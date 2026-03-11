@@ -8,8 +8,10 @@ pub struct RepoSummary {
     pub name: String,
     pub current_branch: String,
     pub head_oid: Option<String>,
+    pub remote_name: Option<String>,
     pub ahead: usize,
     pub behind: usize,
+    pub last_fetched: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
