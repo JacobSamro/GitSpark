@@ -118,6 +118,7 @@ pub struct GitSparkApp {
     commit_summary: String,
     commit_body: String,
     ai_preview: Option<CommitSuggestion>,
+    ai_generation_in_flight: bool,
     openrouter_models: OpenRouterModelsState,
     openrouter_model_filter: String,
     status_message: String,
@@ -167,6 +168,7 @@ impl GitSparkApp {
             commit_summary: String::new(),
             commit_body: String::new(),
             ai_preview: None,
+            ai_generation_in_flight: false,
             openrouter_models: OpenRouterModelsState::Idle,
             openrouter_model_filter: String::new(),
             status_message: "Open a repository to get started.".to_string(),
@@ -424,6 +426,10 @@ impl GitSparkApp {
     }
 
     fn generate_ai_commit(&mut self) {
+        if self.ai_generation_in_flight {
+            return;
+        }
+
         let Some(snapshot) = &self.current_repo else {
             self.error_message =
                 "Open a repository before generating a commit message.".to_string();
@@ -445,6 +451,7 @@ impl GitSparkApp {
 
         self.status_message = "Generating AI commit suggestion...".to_string();
         self.error_message.clear();
+        self.ai_generation_in_flight = true;
         let tx = self.event_tx.clone();
         let ctx = self.ctx.clone();
         let ai = AiClient::new();
@@ -2170,31 +2177,60 @@ impl GitSparkApp {
                                         ui.horizontal(|ui| {
                                             ui.spacing_mut().item_spacing.x = 8.0;
 
-                                            let toolbar_icon =
-                                                |ui: &mut egui::Ui, icon: &str, tip: &str| {
-                                                    ui.add(
-                                                        egui::Button::new(
-                                                            RichText::new(icon)
-                                                                .size(15.0)
-                                                                .color(TEXT_MUTED),
-                                                        )
-                                                        .fill(Color32::TRANSPARENT)
-                                                        .stroke(Stroke::NONE)
-                                                        .min_size(Vec2::new(18.0, 18.0)),
+                                            let toolbar_icon = |ui: &mut egui::Ui,
+                                                                icon: &str,
+                                                                tip: &str,
+                                                                enabled: bool,
+                                                                color: Color32,
+                                                                size: f32| {
+                                                ui.add_enabled(
+                                                    enabled,
+                                                    egui::Button::new(
+                                                        RichText::new(icon)
+                                                            .size(size)
+                                                            .color(color),
                                                     )
-                                                    .on_hover_cursor(
-                                                        egui::CursorIcon::PointingHand,
-                                                    )
-                                                    .on_hover_text(tip)
-                                                };
+                                                    .fill(Color32::TRANSPARENT)
+                                                    .stroke(Stroke::NONE)
+                                                    .min_size(Vec2::new(18.0, 18.0)),
+                                                )
+                                                .on_hover_cursor(if enabled {
+                                                    egui::CursorIcon::PointingHand
+                                                } else {
+                                                    egui::CursorIcon::Default
+                                                })
+                                                .on_hover_text(tip)
+                                            };
 
-                                            if toolbar_icon(ui, icons::SPARKLE, "Generate with AI")
-                                                .clicked()
+                                            if self.ai_generation_in_flight {
+                                                ui.ctx()
+                                                    .request_repaint_after(Duration::from_millis(16));
+                                                ui.add_enabled_ui(false, |ui| {
+                                                    ui.add(egui::Spinner::new().size(12.0));
+                                                })
+                                                .response
+                                                .on_hover_text("Generating with AI...");
+                                            } else if toolbar_icon(
+                                                ui,
+                                                icons::SPARKLE,
+                                                "Generate with AI",
+                                                true,
+                                                TEXT_MUTED,
+                                                15.0,
+                                            )
+                                            .clicked()
                                             {
                                                 self.generate_ai_commit();
                                             }
 
-                                            if toolbar_icon(ui, icons::GEAR, "Commit settings")
+                                            if toolbar_icon(
+                                                ui,
+                                                icons::GEAR,
+                                                "Commit settings",
+                                                true,
+                                                TEXT_MUTED,
+                                                15.0,
+                                            )
                                                 .clicked()
                                             {
                                                 self.show_settings = true;
@@ -3361,6 +3397,7 @@ impl eframe::App for GitSparkApp {
                     self.error_message = format!("{action_label} failed: {err}");
                 }
                 AppEvent::AiCommitGenerated(Ok(suggestion)) => {
+                    self.ai_generation_in_flight = false;
                     self.commit_summary = suggestion.subject.clone();
                     self.commit_body = suggestion.body.clone();
                     self.ai_preview = Some(suggestion);
@@ -3368,6 +3405,7 @@ impl eframe::App for GitSparkApp {
                     self.error_message.clear();
                 }
                 AppEvent::AiCommitGenerated(Err(err)) => {
+                    self.ai_generation_in_flight = false;
                     self.error_message = format!("AI generation failed: {err}");
                 }
                 AppEvent::OpenRouterModelsLoaded(Ok(models)) => {
