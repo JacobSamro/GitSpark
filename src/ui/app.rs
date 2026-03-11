@@ -1629,7 +1629,8 @@ impl GitSparkApp {
                 });
             })
             .response
-            .interact(egui::Sense::click());
+            .interact(egui::Sense::click())
+            .on_hover_cursor(egui::CursorIcon::PointingHand);
 
         if response.clicked() {
             self.selected_change = Some(change.path.clone());
@@ -1955,6 +1956,9 @@ impl GitSparkApp {
                                                         .stroke(Stroke::NONE)
                                                         .min_size(Vec2::new(18.0, 18.0)),
                                                     )
+                                                    .on_hover_cursor(
+                                                        egui::CursorIcon::PointingHand,
+                                                    )
                                                     .on_hover_text(tip)
                                                 };
 
@@ -2234,7 +2238,10 @@ impl GitSparkApp {
                                                         );
                                                     })
                                                     .response
-                                                    .interact(egui::Sense::click());
+                                                    .interact(egui::Sense::click())
+                                                    .on_hover_cursor(
+                                                        egui::CursorIcon::PointingHand,
+                                                    );
 
                                                 ui.painter().hline(
                                                     response.rect.x_range(),
