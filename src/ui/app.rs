@@ -1914,7 +1914,7 @@ impl RustTopApp {
                         ui.add_space(8.0);
 
                         egui::Frame::default()
-                            .fill(BG)
+                            .fill(SURFACE_BG)
                             .stroke(Stroke::new(1.0, BORDER))
                             .corner_radius(5.0)
                             .inner_margin(egui::Margin::same(0))
@@ -1936,10 +1936,10 @@ impl RustTopApp {
                                 );
 
                                 egui::Frame::default()
-                                    .fill(Color32::TRANSPARENT)
-                                    .inner_margin(egui::Margin::symmetric(10, 6))
+                                    .fill(SURFACE_BG)
+                                    .inner_margin(egui::Margin::symmetric(10, 3))
                                     .show(ui, |ui| {
-                                        ui.set_height(28.0);
+                                        ui.set_height(22.0);
                                         ui.horizontal(|ui| {
                                             ui.spacing_mut().item_spacing.x = 8.0;
 
@@ -1953,7 +1953,7 @@ impl RustTopApp {
                                                         )
                                                         .fill(Color32::TRANSPARENT)
                                                         .stroke(Stroke::NONE)
-                                                        .min_size(Vec2::new(20.0, 20.0)),
+                                                        .min_size(Vec2::new(18.0, 18.0)),
                                                     )
                                                     .on_hover_text(tip)
                                                 };
