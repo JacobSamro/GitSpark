@@ -18,22 +18,29 @@ impl GitClient {
 
     pub fn get_commit_diff(&self, repo_path: &Path, oid: &str) -> Result<Vec<DiffEntry>> {
         let repo_path = self.resolve_repo_root(repo_path)?;
-        
+        let oid = self.verify_commit_oid(&repo_path, oid)?;
+
         // Use diff-tree to get raw list of changed files
-        let output = self.run_git(&repo_path, &["diff-tree", "--no-commit-id", "--name-only", "-r", oid])?;
-        let files: Vec<String> = output.lines().filter(|l| !l.is_empty()).map(String::from).collect();
+        let output = self.run_git(
+            &repo_path,
+            &["diff-tree", "--no-commit-id", "--name-only", "-r", &oid],
+        )?;
+        let files: Vec<String> = output
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(String::from)
+            .collect();
 
         let mut diffs = Vec::new();
         for file in files {
-             // Fetch diff for this file in this commit
-             // "git show oid -- file" gives the patch
-             let diff_output = match self.run_git(&repo_path, &["show", oid, "--", &file]) {
+            // Fetch diff for this file in this commit.
+            let diff_output = match self.run_git(&repo_path, &["show", &oid, "--", &file]) {
                 Ok(content) => content,
                 Err(_) => "Binary file or deleted".to_string(),
             };
 
             let is_binary = looks_binary_diff(&diff_output);
-            
+
             diffs.push(DiffEntry {
                 path: file,
                 diff: diff_output,
@@ -172,31 +179,35 @@ impl GitClient {
             &[
                 "log",
                 &format!("-n{limit}"),
-                "--pretty=format:%H%x00%h%x00%s%x00%b%x00%an%x00%ae%x00%ad%x00",
+                "--pretty=format:%x1e%H%x1f%h%x1f%s%x1f%b%x1f%an%x1f%ae%x1f%ad",
                 "--date=iso",
             ],
         )?;
 
-        let binding = String::from_utf8_lossy(&output);
-        let raw = binding.trim();
+        let raw = String::from_utf8(output).context("git log output was not valid UTF-8")?;
         if raw.is_empty() {
             return Ok(Vec::new());
         }
 
         let mut commits = Vec::new();
-        let tokens: Vec<&str> = raw.split('\0').collect();
-        
-        // chunk size is 7 fields + 1 extra empty due to trailing %x00 in format
-        for chunk in tokens.chunks_exact(8) {
+        for record in raw
+            .split('\u{1e}')
+            .filter(|record| !record.trim().is_empty())
+        {
+            let chunk: Vec<&str> = record.split('\u{1f}').collect();
+            if chunk.len() != 7 {
+                continue;
+            }
+
             commits.push(CommitInfo {
-                oid: chunk[0].to_string(),
-                short_oid: chunk[1].to_string(),
-                summary: chunk[2].to_string(),
-                body: chunk[3].to_string(),
-                author_name: chunk[4].to_string(),
-                author_email: chunk[5].to_string(),
-                date: chunk[6].to_string(),
-                is_head: false, // Will be set later
+                oid: chunk[0].trim().to_string(),
+                short_oid: chunk[1].trim().to_string(),
+                summary: chunk[2].trim().to_string(),
+                body: chunk[3].trim_end().to_string(),
+                author_name: chunk[4].trim().to_string(),
+                author_email: chunk[5].trim().to_string(),
+                date: chunk[6].trim().to_string(),
+                is_head: false,
             });
         }
 
@@ -205,6 +216,20 @@ impl GitClient {
         }
 
         Ok(commits)
+    }
+
+    fn verify_commit_oid(&self, repo_path: &Path, oid: &str) -> Result<String> {
+        let candidate = oid.trim();
+        if candidate.is_empty() {
+            bail!("commit id is empty");
+        }
+
+        let resolved = self.run_git(
+            repo_path,
+            &["rev-parse", "--verify", &format!("{candidate}^{{commit}}")],
+        )?;
+
+        Ok(resolved.trim().to_string())
     }
 
     fn resolve_repo_root(&self, path: &Path) -> Result<PathBuf> {
