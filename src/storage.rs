@@ -80,6 +80,8 @@ fn normalize_settings(mut settings: AppSettings) -> AppSettings {
     }
 
     settings.ai.api_key = settings.ai.api_key.trim().to_string();
+    settings.window_size.width = settings.window_size.width.clamp(720.0, 3840.0);
+    settings.window_size.height = settings.window_size.height.clamp(520.0, 2160.0);
     settings
 }
 

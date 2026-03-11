@@ -98,9 +98,26 @@ pub struct CommitSuggestion {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WindowSize {
+    pub width: f32,
+    pub height: f32,
+}
+
+impl Default for WindowSize {
+    fn default() -> Self {
+        Self {
+            width: 1280.0,
+            height: 860.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AppSettings {
     pub recent_repos: Vec<PathBuf>,
     pub ai: AiSettings,
+    #[serde(default)]
+    pub window_size: WindowSize,
 }
 
 impl Default for AppSettings {
@@ -108,6 +125,7 @@ impl Default for AppSettings {
         Self {
             recent_repos: Vec::new(),
             ai: AiSettings::default(),
+            window_size: WindowSize::default(),
         }
     }
 }

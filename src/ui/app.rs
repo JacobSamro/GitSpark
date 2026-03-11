@@ -387,8 +387,19 @@ impl RustTopApp {
     }
 
     fn persist_settings(&mut self) {
+        self.capture_window_size();
         if let Err(err) = save_settings(&self.settings) {
             self.error_message = format!("Failed to save settings: {err}");
+        }
+    }
+
+    fn capture_window_size(&mut self) {
+        if let Some(inner_rect) = self.ctx.input(|input| input.viewport().inner_rect) {
+            let size = inner_rect.size();
+            if size.x.is_finite() && size.y.is_finite() && size.x > 0.0 && size.y > 0.0 {
+                self.settings.window_size.width = size.x;
+                self.settings.window_size.height = size.y;
+            }
         }
     }
 
@@ -2484,6 +2495,10 @@ impl eframe::App for RustTopApp {
         if self.show_settings {
             self.render_settings_window(ctx);
         }
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.persist_settings();
     }
 }
 
