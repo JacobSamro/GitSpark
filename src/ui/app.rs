@@ -1052,26 +1052,25 @@ impl RustTopApp {
             .show(ui, |ui| {
                 ui.set_min_height(40.0);
                 ui.set_width(ui.available_width());
+                let row_rect = ui.max_rect();
+                let painter = ui.painter();
+                let text_left = row_rect.left();
+                let text_top = row_rect.top();
 
-                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(0.0, 3.0);
-                    ui.add_sized(
-                        [ui.available_width(), 18.0],
-                        egui::Label::new(
-                            RichText::new(truncate_single_line(summary, 54))
-                                .color(summary_color)
-                                .strong(),
-                        )
-                        .truncate(),
-                    );
-                    ui.add_sized(
-                        [ui.available_width(), 16.0],
-                        egui::Label::new(
-                            RichText::new(truncate_single_line(&meta_text, 72)).color(meta_color),
-                        )
-                        .truncate(),
-                    );
-                });
+                painter.text(
+                    egui::pos2(text_left, text_top),
+                    Align2::LEFT_TOP,
+                    truncate_single_line(summary, 54),
+                    egui::FontId::proportional(12.5),
+                    summary_color,
+                );
+                painter.text(
+                    egui::pos2(text_left, text_top + 21.0),
+                    Align2::LEFT_TOP,
+                    truncate_single_line(&meta_text, 72),
+                    egui::FontId::proportional(11.0),
+                    meta_color,
+                );
             })
             .response
             .interact(egui::Sense::click())
@@ -1673,29 +1672,40 @@ impl RustTopApp {
                     .resizable(false)
                     .frame(egui::Frame::default().fill(SURFACE_BG).inner_margin(12.0))
                     .show_inside(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.heading(RichText::new(&commit.summary).color(TEXT_MAIN));
-                        });
+                        ui.add_sized(
+                            [ui.available_width(), 24.0],
+                            egui::Label::new(
+                                RichText::new(&commit.summary)
+                                    .color(TEXT_MAIN)
+                                    .size(18.0)
+                                    .strong(),
+                            )
+                            .truncate(),
+                        );
 
                         if !commit.body.is_empty() {
                             ui.add_space(4.0);
-                            ui.label(RichText::new(&commit.body).color(TEXT_MUTED));
+                            ui.add_sized(
+                                [ui.available_width(), 18.0],
+                                egui::Label::new(RichText::new(&commit.body).color(TEXT_MUTED))
+                                    .truncate(),
+                            );
                         }
 
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {
-                            ui.label(
-                                RichText::new(format!(
-                                    "{} committed {}",
-                                    commit.author_name, commit.date
-                                ))
-                                .color(TEXT_MUTED),
-                            );
-                            ui.label(
-                                RichText::new(&commit.short_oid)
-                                    .monospace()
+                            ui.add_sized(
+                                [ui.available_width() - 90.0, 16.0],
+                                egui::Label::new(
+                                    RichText::new(format!(
+                                        "{} committed {}",
+                                        commit.author_name, commit.date
+                                    ))
                                     .color(TEXT_MUTED),
+                                )
+                                .truncate(),
                             );
+                            ui.label(RichText::new(&commit.short_oid).monospace().color(TEXT_MUTED));
                         });
                     });
 
@@ -1759,14 +1769,18 @@ impl RustTopApp {
                                                     .show(ui, |ui| {
                                                         ui.set_min_height(24.0);
                                                         ui.set_width(ui.available_width());
-                                                        ui.label(
-                                                            RichText::new(&diff.path).color(
-                                                                if is_selected {
-                                                                    Color32::WHITE
-                                                                } else {
-                                                                    TEXT_MAIN
-                                                                },
-                                                            ),
+                                                        ui.add_sized(
+                                                            [ui.available_width(), 16.0],
+                                                            egui::Label::new(
+                                                                RichText::new(&diff.path).color(
+                                                                    if is_selected {
+                                                                        Color32::WHITE
+                                                                    } else {
+                                                                        TEXT_MAIN
+                                                                    },
+                                                                ),
+                                                            )
+                                                            .truncate(),
                                                         );
                                                     })
                                                     .response
