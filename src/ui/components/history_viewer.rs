@@ -275,9 +275,11 @@ fn render_diff_title(ui: &mut egui::Ui, path: &str) {
         .stroke(Stroke::new(1.0, BORDER))
         .inner_margin(egui::Margin::symmetric(14, 10))
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(path).color(TEXT_MAIN).size(14.0).strong());
-            });
+            ui.set_width(ui.available_width());
+            ui.add(
+                egui::Label::new(RichText::new(path).color(TEXT_MAIN).size(14.0).strong())
+                    .truncate(),
+            );
         });
 }
 
