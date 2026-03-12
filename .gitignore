@@ -2,4 +2,4 @@
 tmp/
 *.json
 /.agents
-AGENTS.md
+CLAUDE.md

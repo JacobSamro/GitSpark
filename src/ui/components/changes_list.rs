@@ -274,7 +274,9 @@ fn render_change_row(
             ui.set_min_height(24.0);
             ui.horizontal(|ui| {
                 let mut checked = true;
-                ui.checkbox(&mut checked, "");
+                ui.push_id(("change_row", &change.path), |ui| {
+                    ui.checkbox(&mut checked, "");
+                });
 
                 let path_text = if change.path.len() > 40 {
                     format!(
@@ -371,7 +373,9 @@ fn render_change_row(
 fn render_filter_checkbox(ui: &mut egui::Ui, value: &mut bool, label: &str) {
     ui.horizontal(|ui| {
         let mut checkbox = *value;
-        let response = ui.checkbox(&mut checkbox, "");
+        let response = ui
+            .push_id(label, |ui| ui.checkbox(&mut checkbox, ""))
+            .inner;
         if response.changed() {
             *value = checkbox;
         }
@@ -446,10 +450,15 @@ fn matches_change_filters(change: &ChangeEntry, filters: ChangeFilterOptions) ->
     }
 
     let kind = infer_change_kind(&change.status);
+    let any_type_filter = filters.new_files || filters.modified_files || filters.deleted_files;
 
-    (!filters.new_files || kind == Some(ChangeKind::New))
-        && (!filters.modified_files || kind == Some(ChangeKind::Modified))
-        && (!filters.deleted_files || kind == Some(ChangeKind::Deleted))
+    if !any_type_filter {
+        return true;
+    }
+
+    (filters.new_files && kind == Some(ChangeKind::New))
+        || (filters.modified_files && kind == Some(ChangeKind::Modified))
+        || (filters.deleted_files && kind == Some(ChangeKind::Deleted))
 }
 
 fn count_changes_by_kind(changes: &[ChangeEntry], kind: ChangeKind) -> usize {

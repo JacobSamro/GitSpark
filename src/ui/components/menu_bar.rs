@@ -10,6 +10,7 @@ pub enum MenuAction {
     Push,
     Pull,
     Fetch,
+    MergeBranch,
     Exit,
 }
 
@@ -114,7 +115,10 @@ pub fn render_menu_bar(ctx: &egui::Context) -> Option<MenuAction> {
                     ui.separator();
                     let _ = ui.button("Update from Default Branch");
                     let _ = ui.button("Compare to Branch");
-                    let _ = ui.button("Merge into Current Branch...");
+                    if ui.button("Merge into Current Branch...").clicked() {
+                        action = Some(MenuAction::MergeBranch);
+                        ui.close_menu();
+                    }
                 });
 
                 ui.menu_button(RichText::new("Help").color(Color32::WHITE), |ui| {

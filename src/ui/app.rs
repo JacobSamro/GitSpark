@@ -921,6 +921,7 @@ impl eframe::App for GitSparkApp {
                 MenuAction::Push => self.push_origin(),
                 MenuAction::Pull => self.pull_origin(),
                 MenuAction::Fetch => self.fetch_origin(),
+                MenuAction::MergeBranch => self.merge_branch(),
                 MenuAction::Exit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             }
         }
@@ -952,9 +953,9 @@ impl eframe::App for GitSparkApp {
         // Sidebar
         {
             let snapshot = self.repo.snapshot.as_ref();
-            let changes = snapshot
-                .map(|s| s.changes.clone())
-                .unwrap_or_default();
+            let changes: &[_] = snapshot
+                .map(|s| s.changes.as_slice())
+                .unwrap_or(&[]);
             let history: &[_] = snapshot
                 .map(|s| s.history.as_slice())
                 .unwrap_or(&[]);
@@ -978,7 +979,7 @@ impl eframe::App for GitSparkApp {
                 current_repo_name,
                 current_branch,
                 stash_count,
-                changes: &changes,
+                changes,
                 selected_change: self.selection.selected_change.as_deref(),
                 filter_text: &mut self.filters.filter_text,
                 change_filters: &mut self.filters.change_filters,
