@@ -37,6 +37,7 @@ pub fn render_toolbar(
 
     egui::TopBottomPanel::top("top_bar")
         .exact_height(68.0)
+        .show_separator_line(false)
         .frame(
             egui::Frame::default()
                 .fill(SURFACE_BG)

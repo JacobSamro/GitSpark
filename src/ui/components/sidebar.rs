@@ -76,6 +76,7 @@ pub fn render_sidebar(
         .resizable(true)
         .default_width(260.0)
         .min_width(220.0)
+        .show_separator_line(false)
         .frame(
             egui::Frame::default()
                 .fill(PANEL_BG)
@@ -96,6 +97,7 @@ pub fn render_sidebar(
                         egui::TopBottomPanel::bottom("commit_area_panel")
                             .resizable(false)
                             .min_height(170.0)
+                            .show_separator_line(false)
                             .frame(
                                 egui::Frame::default()
                                     .fill(PANEL_BG)
@@ -258,6 +260,7 @@ fn render_repository_overlay(
             // Header
             egui::TopBottomPanel::top("repo_selector_header")
                 .resizable(false)
+                .show_separator_line(false)
                 .frame(
                     egui::Frame::default()
                         .fill(PANEL_BG)

@@ -35,6 +35,7 @@ pub fn render_history_viewer(
             // Commit info header
             egui::TopBottomPanel::top("commit_info")
                 .resizable(false)
+                .show_separator_line(false)
                 .frame(egui::Frame::default().fill(SURFACE_BG).inner_margin(12.0))
                 .show_inside(ui, |ui| {
                     ui.with_layout(egui::Layout::left_to_right(Align::Min).with_main_wrap(true), |ui| {
@@ -114,9 +115,11 @@ pub fn render_history_viewer(
                                 .stroke(Stroke::new(1.0, BORDER))
                                 .inner_margin(0.0),
                         )
+                        .show_separator_line(false)
                         .show_inside(ui, |ui| {
                             egui::TopBottomPanel::top("commit_file_list_header")
                                 .resizable(false)
+                                .show_separator_line(false)
                                 .frame(
                                     egui::Frame::default()
                                         .fill(SURFACE_BG)

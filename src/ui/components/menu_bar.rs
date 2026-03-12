@@ -19,6 +19,7 @@ pub fn render_menu_bar(ctx: &egui::Context) -> Option<MenuAction> {
 
     egui::TopBottomPanel::top("menu_bar")
         .exact_height(28.0)
+        .show_separator_line(false)
         .frame(
             egui::Frame::default()
                 .fill(SURFACE_BG_MUTED)
