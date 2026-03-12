@@ -1,8 +1,8 @@
-use eframe::egui::{self, Align2, Color32, RichText, Stroke, Vec2};
+use eframe::egui::{self, RichText, Vec2};
 
 use crate::models::CommitInfo;
 use crate::ui::primitives::row::commit_row;
-use crate::ui::theme::{ACCENT_MUTED, BORDER, TEXT_MAIN, TEXT_MUTED};
+use crate::ui::theme::TEXT_MUTED;
 
 pub struct HistoryListProps<'a> {
     pub history: &'a [CommitInfo],

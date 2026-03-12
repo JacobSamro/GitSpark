@@ -8,9 +8,9 @@ use crate::ui::components::commit::{self, CommitPanelAction, CommitPanelProps};
 use crate::ui::components::history_list::{self, HistoryListProps};
 use crate::ui::primitives::button::{styled_button, tab_button, ButtonVariant};
 use crate::ui::primitives::row::selectable_row;
-use crate::ui::primitives::surface::{card_frame, panel_frame, surface_frame};
+use crate::ui::primitives::surface::{card_frame, panel_frame};
 use crate::ui::theme::{
-    ACCENT_MUTED, BORDER, PANEL_BG, SURFACE_BG, SURFACE_BG_MUTED, TEXT_MAIN, TEXT_MUTED,
+    BORDER, PANEL_BG, SURFACE_BG_MUTED, TEXT_MAIN, TEXT_MUTED,
 };
 use crate::ui::ui_state::{ChangeFilterOptions, SidebarTab};
 

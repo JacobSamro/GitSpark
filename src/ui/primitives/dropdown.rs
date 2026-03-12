@@ -2,8 +2,8 @@ use eframe::egui::{self, Align, Align2, Color32, PopupCloseBehavior, RichText, S
 use egui_phosphor::regular as icons;
 
 use crate::ui::theme::{
-    ACCENT_MUTED, BORDER, PANEL_BG, SURFACE_BG, SURFACE_BG_MUTED, TEXT_MAIN, TEXT_MUTED,
-    color_with_alpha,
+    ACCENT_MUTED, BORDER, PANEL_BG, SURFACE_BG, SURFACE_BG_ALT, SURFACE_BG_MUTED, TEXT_MAIN,
+    TEXT_MUTED, color_with_alpha,
 };
 
 pub fn styled_dropdown(
@@ -160,7 +160,7 @@ pub fn dropdown_trigger(
         ui.painter().rect_filled(
             response.rect,
             0.0,
-            color_with_alpha(SURFACE_BG_MUTED, 50.0),
+            color_with_alpha(SURFACE_BG_ALT, 50.0),
         );
     }
     

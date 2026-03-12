@@ -7,8 +7,8 @@ use crate::models::RepoSnapshot;
 use crate::ui::domain_state::NetworkAction;
 use crate::ui::primitives::dropdown::{dropdown_trigger, toolbar_dropdown};
 use crate::ui::theme::{
-    BORDER, PANEL_BG, SURFACE_BG, TEXT_MAIN, TEXT_MUTED, TOOLBAR_HEIGHT, TOOLBAR_INNER_HEIGHT,
-    TOOLBAR_PADDING, blend_color, color_with_alpha,
+    BORDER, PANEL_BG, SURFACE_BG, SURFACE_BG_ALT, TEXT_MAIN, TEXT_MUTED, TOOLBAR_HEIGHT,
+    TOOLBAR_INNER_HEIGHT, TOOLBAR_PADDING, blend_color, color_with_alpha,
 };
 
 pub enum ToolbarAction {
@@ -97,7 +97,10 @@ pub fn render_toolbar(
                          // but previously it was inside render_branch_dropdown.
                          // I need to move that logic here.
                          if let Some(snapshot) = props.snapshot {
-                             for branch in &snapshot.branches {
+                             let local_branches: Vec<_> = snapshot.branches.iter().filter(|b| !b.is_remote).collect();
+                             let remote_branches: Vec<_> = snapshot.branches.iter().filter(|b| b.is_remote).collect();
+
+                             for branch in local_branches {
                                  let is_current = branch.name == props.branch_title;
                                  if crate::ui::primitives::dropdown::dropdown_row(
                                      ui,
@@ -108,6 +111,31 @@ pub fn render_toolbar(
                                  {
                                      action = Some(ToolbarAction::SwitchBranch(branch.name.clone()));
                                      ui.close_menu();
+                                 }
+                             }
+
+                             if !remote_branches.is_empty() {
+                                 ui.add_space(8.0);
+                                 ui.separator();
+                                 ui.add_space(4.0);
+                                 ui.label(
+                                     RichText::new("Remote Branches")
+                                         .size(10.0)
+                                         .color(TEXT_MUTED)
+                                         .strong(),
+                                 );
+                                 ui.add_space(4.0);
+                                 for branch in remote_branches {
+                                     if crate::ui::primitives::dropdown::dropdown_row(
+                                         ui,
+                                         &branch.name,
+                                         false,
+                                     )
+                                     .clicked()
+                                     {
+                                         action = Some(ToolbarAction::SwitchBranch(branch.name.clone()));
+                                         ui.close_menu();
+                                     }
                                  }
                              }
                          }
@@ -259,7 +287,15 @@ fn render_network_block(
                     main.on_hover_cursor(egui::CursorIcon::PointingHand)
                 };
 
-                let divider_x = ui.min_rect().left() + 185.0;
+                if main.hovered() && !is_action_active {
+            ui.painter().rect_filled(
+                main.rect,
+                0.0,
+                color_with_alpha(SURFACE_BG_ALT, 50.0),
+            );
+        }
+
+        let divider_x = ui.min_rect().left() + 185.0;
                 ui.painter().vline(
                     divider_x,
                     ui.max_rect().y_range(),
@@ -267,7 +303,7 @@ fn render_network_block(
                 );
                 let arrow_button = egui::Button::new(
                     RichText::new(icons::CARET_DOWN)
-                        .size(11.0)
+                        .size(12.0)
                         .color(TEXT_MUTED),
                 )
                 .fill(Color32::TRANSPARENT)
@@ -278,6 +314,14 @@ fn render_network_block(
                 } else {
                     arrow.on_hover_cursor(egui::CursorIcon::PointingHand)
                 };
+
+                if arrow.hovered() && !is_action_active {
+                    ui.painter().rect_filled(
+                        arrow.rect,
+                        0.0,
+                        color_with_alpha(SURFACE_BG_ALT, 50.0),
+                    );
+                }
 
                 (main, arrow)
             })
@@ -426,24 +470,69 @@ fn render_network_text_stack(
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 52.0), egui::Sense::hover());
     let painter = ui.painter();
     let text_left = rect.left();
-    let text_top = rect.top() + 9.0;
+    let text_top = rect.top() + 10.0;
     let description_color = blend_color(TEXT_MUTED, TEXT_MAIN, active_t * 0.35);
     let title_color = blend_color(TEXT_MAIN, Color32::WHITE, active_t * 0.35);
-    let indicator_color = blend_color(TEXT_MUTED, TEXT_MAIN, active_t * 0.5);
 
-    painter.text(
-        egui::pos2(text_left, text_top),
-        Align2::LEFT_TOP,
-        truncate_single_line(description, 26),
-        egui::FontId::proportional(10.0),
-        description_color,
-    );
-    painter.text(
-        egui::pos2(text_left, text_top + 13.0),
-        Align2::LEFT_TOP,
-        truncate_single_line(title, 18),
-        egui::FontId::proportional(12.5),
+    // 1. Title (Top)
+    let font_id_title = egui::FontId::proportional(13.0);
+    let galley_title = painter.layout(
+        truncate_single_line(title, 20),
+        font_id_title,
         title_color,
+        f32::INFINITY,
+    );
+    let title_rect =
+        egui::Rect::from_min_size(egui::pos2(text_left, text_top), galley_title.size());
+    painter.galley(title_rect.min, galley_title, title_color);
+
+    // 2. Badges (Next to Title)
+    if ahead > 0 || behind > 0 {
+        let badge_left = title_rect.right() + 8.0;
+        let badge_bg = color_with_alpha(SURFACE_BG_ALT, 255.0);
+        let badge_fg = TEXT_MUTED;
+
+        let mut badge_text = String::new();
+        if ahead > 0 {
+            badge_text.push_str(&format!("{} {} ", ahead, icons::ARROW_UP));
+        }
+        if behind > 0 {
+            badge_text.push_str(&format!("{} {}", behind, icons::ARROW_DOWN));
+        }
+
+        let font_id_badge = egui::FontId::proportional(9.0);
+        let galley_badge = painter.layout(
+            badge_text.trim().to_string(),
+            font_id_badge,
+            badge_fg,
+            f32::INFINITY,
+        );
+
+        let badge_height = 16.0;
+        let badge_width = galley_badge.size().x + 12.0;
+        let badge_rect = egui::Rect::from_min_size(
+            egui::pos2(badge_left, text_top),
+            Vec2::new(badge_width, badge_height),
+        );
+        // Center vertically with title
+        let title_center_y = title_rect.center().y;
+        let badge_rect =
+            badge_rect.translate(Vec2::new(0.0, title_center_y - badge_rect.center().y));
+
+        painter.rect_filled(badge_rect, 8.0, badge_bg);
+
+        let text_pos = badge_rect.center() - galley_badge.size() / 2.0;
+        painter.galley(text_pos, galley_badge, badge_fg);
+    }
+
+    // 3. Description (Bottom)
+    let font_id_desc = egui::FontId::proportional(10.0);
+    painter.text(
+        egui::pos2(text_left, text_top + 17.0),
+        Align2::LEFT_TOP,
+        truncate_single_line(description, 28),
+        font_id_desc,
+        description_color,
     );
 
     if active_t > 0.0 {
@@ -456,27 +545,6 @@ fn render_network_text_stack(
             progress_rect,
             1.0,
             color_with_alpha(TEXT_MAIN, 100.0 + pulse * 52.0),
-        );
-    }
-
-    let mut indicator_x = text_left + 92.0;
-    if ahead > 0 {
-        painter.text(
-            egui::pos2(indicator_x, text_top + 13.0),
-            Align2::LEFT_TOP,
-            format!("{ahead}{}", icons::ARROW_UP),
-            egui::FontId::proportional(11.0),
-            indicator_color,
-        );
-        indicator_x += 22.0;
-    }
-    if behind > 0 {
-        painter.text(
-            egui::pos2(indicator_x, text_top + 13.0),
-            Align2::LEFT_TOP,
-            format!("{behind}{}", icons::ARROW_DOWN),
-            egui::FontId::proportional(11.0),
-            indicator_color,
         );
     }
 }
