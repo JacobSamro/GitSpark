@@ -2,6 +2,8 @@ use eframe::egui::{self, Align, Align2, Color32, PopupCloseBehavior, RichText, S
 use egui_phosphor::regular as icons;
 
 use crate::models::ChangeEntry;
+use crate::ui::primitives::row::selectable_row;
+use crate::ui::primitives::surface::surface_frame;
 use crate::ui::theme::{
     ACCENT_MUTED, BORDER, PANEL_BG, SURFACE_BG, TEXT_MAIN, TEXT_MUTED,
 };
@@ -77,9 +79,7 @@ pub fn render_changes_list(
 }
 
 fn render_changes_header(ui: &mut egui::Ui, count: usize) {
-    egui::Frame::default()
-        .fill(SURFACE_BG)
-        .stroke(Stroke::new(1.0, BORDER))
+    surface_frame()
         .inner_margin(egui::Margin::symmetric(10, 8))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -260,54 +260,46 @@ fn render_change_row(
 ) -> Option<ChangesListAction> {
     let mut action = None;
 
-    let (bg_fill, text_color) = if selected {
-        (ACCENT_MUTED, Color32::WHITE)
-    } else {
-        (Color32::TRANSPARENT, TEXT_MAIN)
-    };
+    let response = selectable_row(ui, ("change_row", &change.path), selected, |ui| {
+        ui.set_width(ui.available_width());
+        ui.set_min_height(24.0);
+        ui.horizontal(|ui| {
+            let mut checked = true;
+            ui.checkbox(&mut checked, "");
 
-    let response = egui::Frame::default()
-        .fill(bg_fill)
-        .inner_margin(egui::Margin::symmetric(8, 4))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.set_min_height(24.0);
-            ui.horizontal(|ui| {
-                let mut checked = true;
-                ui.push_id(("change_row", &change.path), |ui| {
-                    ui.checkbox(&mut checked, "");
-                });
+            let text_color = if selected {
+                Color32::WHITE
+            } else {
+                TEXT_MAIN
+            };
 
-                let path_text = if change.path.len() > 40 {
-                    format!(
-                        "...{}",
-                        &change.path[change.path.len().saturating_sub(37)..]
-                    )
-                } else {
-                    change.path.clone()
-                };
+            let path_text = if change.path.len() > 40 {
+                format!(
+                    "...{}",
+                    &change.path[change.path.len().saturating_sub(37)..]
+                )
+            } else {
+                change.path.clone()
+            };
 
-                ui.label(RichText::new(path_text).color(text_color));
+            ui.label(RichText::new(path_text).color(text_color));
 
-                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                    let badge_color = status_color(&change.status);
-                    let symbol = status_symbol(&change.status);
+            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                let badge_color = status_color(&change.status);
+                let symbol = status_symbol(&change.status);
 
-                    let (rect, _) =
-                        ui.allocate_exact_size(Vec2::new(16.0, 16.0), egui::Sense::hover());
-                    ui.painter().text(
-                        rect.center(),
-                        Align2::CENTER_CENTER,
-                        symbol,
-                        egui::FontId::proportional(12.0),
-                        badge_color,
-                    );
-                });
+                let (rect, _) =
+                    ui.allocate_exact_size(Vec2::new(16.0, 16.0), egui::Sense::hover());
+                ui.painter().text(
+                    rect.center(),
+                    Align2::CENTER_CENTER,
+                    symbol,
+                    egui::FontId::proportional(12.0),
+                    badge_color,
+                );
             });
-        })
-        .response
-        .interact(egui::Sense::click())
-        .on_hover_cursor(egui::CursorIcon::PointingHand);
+        });
+    });
 
     if response.clicked() {
         action = Some(ChangesListAction::SelectChange(change.path.clone()));

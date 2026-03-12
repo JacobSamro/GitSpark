@@ -26,6 +26,14 @@ pub fn selectable_row(
             .interact(egui::Sense::click())
             .on_hover_cursor(egui::CursorIcon::PointingHand);
 
+        if response.hovered() && !selected {
+            ui.painter().rect_filled(
+                response.rect,
+                0.0,
+                color_with_alpha(ACCENT_MUTED, 30.0),
+            );
+        }
+
         ui.painter().hline(
             response.rect.x_range(),
             response.rect.bottom(),

@@ -1,8 +1,8 @@
 use eframe::egui::{self, Color32, RichText, Stroke, Vec2};
 
 use crate::ui::theme::{
-    ACCENT, ACCENT_MUTED, BORDER, CORNER_RADIUS_SM, DANGER, SURFACE_BG,
-    TAB_HEIGHT, TEXT_MAIN, TEXT_MUTED,
+    ACCENT, ACCENT_MUTED, BORDER, CORNER_RADIUS_SM, DANGER, SURFACE_BG, SURFACE_BG_ALT,
+    TAB_HEIGHT, TEXT_MAIN, TEXT_MUTED, color_with_alpha,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -115,4 +115,59 @@ pub fn tab_button<T: Copy + PartialEq>(
     if response.clicked() {
         *current = this_tab;
     }
+}
+
+pub fn nav_button(
+    ui: &mut egui::Ui,
+    icon: &str,
+    title: &str,
+    subtitle: &str,
+    selected: bool,
+) -> egui::Response {
+    let fill = if selected {
+        SURFACE_BG_ALT
+    } else {
+        Color32::TRANSPARENT
+    };
+
+    let response = egui::Frame::default()
+        .fill(fill)
+        .stroke(Stroke::NONE)
+        .corner_radius(CORNER_RADIUS_SM)
+        .inner_margin(egui::Margin::symmetric(8, 4))
+        .show(ui, |ui| {
+            ui.set_min_height(36.0);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(icon).color(TEXT_MUTED).size(16.0));
+                ui.add_space(8.0);
+                ui.vertical(|ui| {
+                    ui.label(
+                        RichText::new(title)
+                            .color(TEXT_MAIN)
+                            .size(13.0)
+                            .strong(),
+                    );
+                    if !subtitle.is_empty() {
+                        ui.label(
+                            RichText::new(subtitle)
+                                .color(TEXT_MUTED)
+                                .size(10.0),
+                        );
+                    }
+                });
+            });
+        })
+        .response
+        .interact(egui::Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+
+    if response.hovered() && !selected {
+        ui.painter().rect_filled(
+            response.rect,
+            CORNER_RADIUS_SM,
+            color_with_alpha(SURFACE_BG_ALT, 50.0),
+        );
+    }
+
+    response
 }

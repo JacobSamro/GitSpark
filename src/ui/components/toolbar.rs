@@ -3,10 +3,12 @@ use std::time::Duration;
 use eframe::egui::{self, Align, Align2, Color32, PopupCloseBehavior, RichText, Stroke, Vec2};
 use egui_phosphor::regular as icons;
 
-use crate::models::{BranchInfo, RepoSnapshot};
+use crate::models::RepoSnapshot;
 use crate::ui::domain_state::NetworkAction;
+use crate::ui::primitives::dropdown::{dropdown_trigger, toolbar_dropdown};
 use crate::ui::theme::{
-    BORDER, PANEL_BG, SURFACE_BG, TEXT_MAIN, TEXT_MUTED, blend_color, color_with_alpha,
+    BORDER, PANEL_BG, SURFACE_BG, TEXT_MAIN, TEXT_MUTED, TOOLBAR_HEIGHT, TOOLBAR_INNER_HEIGHT,
+    TOOLBAR_PADDING, blend_color, color_with_alpha,
 };
 
 pub enum ToolbarAction {
@@ -36,34 +38,31 @@ pub fn render_toolbar(
     let mut action = None;
 
     egui::TopBottomPanel::top("top_bar")
-        .exact_height(68.0)
+        .exact_height(TOOLBAR_HEIGHT)
         .show_separator_line(false)
         .frame(
             egui::Frame::default()
                 .fill(SURFACE_BG)
-                .inner_margin(egui::Margin::symmetric(12, 5))
+                .inner_margin(egui::Margin::from(TOOLBAR_PADDING))
                 .stroke(Stroke::new(1.0, BORDER)),
         )
         .show(ctx, |ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
-            ui.set_min_height(52.0);
+            ui.set_min_height(TOOLBAR_INNER_HEIGHT);
             ui.with_layout(egui::Layout::left_to_right(Align::Min), |ui| {
                 // Repository block
-                ui.allocate_ui_with_layout(
-                    Vec2::new(238.0, 52.0),
-                    egui::Layout::top_down(Align::Min),
-                    |ui| {
-                        if let Some(a) = render_repository_trigger(
-                            ui,
-                            icons::FOLDER_NOTCH_OPEN,
-                            "Current Repository",
-                            props.repo_title,
-                            238.0,
-                        ) {
-                            action = Some(a);
-                        }
-                    },
+                let repo_trigger = dropdown_trigger(
+                    ui,
+                    icons::FOLDER_NOTCH_OPEN,
+                    "Current Repository",
+                    props.repo_title,
+                    238.0,
                 );
+                
+                if repo_trigger.clicked() {
+                    action = Some(ToolbarAction::ToggleRepoSelector);
+                }
+
                 let first_sep_x = ui.cursor().left() - 4.0;
                 ui.painter().vline(
                     first_sep_x,
@@ -72,19 +71,49 @@ pub fn render_toolbar(
                 );
 
                 // Branch block
-                ui.allocate_ui_with_layout(
-                    Vec2::new(214.0, 52.0),
-                    egui::Layout::top_down(Align::Min),
-                    |ui| {
-                        if let Some(a) = render_branch_dropdown(
-                            ui,
-                            props.branch_title,
-                            props.snapshot,
-                        ) {
-                            action = Some(a);
-                        }
-                    },
+                let branch_trigger = dropdown_trigger(
+                    ui,
+                    icons::GIT_BRANCH,
+                    "Current Branch",
+                    props.branch_title,
+                    214.0,
                 );
+
+                toolbar_dropdown(
+                    ui,
+                    "toolbar_branch",
+                    214.0,
+                    &branch_trigger,
+                    |ui| {
+                        // Branch popup content
+                         ui.label(
+                             RichText::new("Switch Branch")
+                                 .size(10.0)
+                                 .color(TEXT_MUTED)
+                                 .strong(),
+                         );
+                         ui.add_space(4.0);
+                         // This part requires the snapshot to list branches, 
+                         // but previously it was inside render_branch_dropdown.
+                         // I need to move that logic here.
+                         if let Some(snapshot) = props.snapshot {
+                             for branch in &snapshot.branches {
+                                 let is_current = branch.name == props.branch_title;
+                                 if crate::ui::primitives::dropdown::dropdown_row(
+                                     ui,
+                                     &branch.name,
+                                     is_current,
+                                 )
+                                 .clicked()
+                                 {
+                                     action = Some(ToolbarAction::SwitchBranch(branch.name.clone()));
+                                     ui.close_menu();
+                                 }
+                             }
+                         }
+                    }
+                );
+
                 let second_sep_x = ui.cursor().left() - 4.0;
                 ui.painter().vline(
                     second_sep_x,
@@ -112,187 +141,7 @@ pub fn render_toolbar(
     action
 }
 
-fn render_repository_trigger(
-    ui: &mut egui::Ui,
-    icon: &str,
-    description: &str,
-    title: &str,
-    width: f32,
-) -> Option<ToolbarAction> {
-    let response = egui::Frame::default()
-        .fill(Color32::TRANSPARENT)
-        .stroke(Stroke::NONE)
-        .corner_radius(0.0)
-        .inner_margin(egui::Margin::same(0))
-        .show(ui, |ui| {
-            ui.set_min_size(Vec2::new(width, 52.0));
-            ui.horizontal(|ui| {
-                ui.add_space(12.0);
-                ui.add_sized(
-                    [18.0, 52.0],
-                    egui::Label::new(RichText::new(icon).size(15.0).color(TEXT_MUTED)),
-                );
-                ui.add_space(12.0);
-                render_toolbar_text_stack(
-                    ui,
-                    description,
-                    title,
-                    width - 76.0,
-                    Some(icons::CARET_DOWN),
-                );
-            });
-        })
-        .response
-        .interact(egui::Sense::click())
-        .on_hover_cursor(egui::CursorIcon::PointingHand);
 
-    if response.clicked() {
-        Some(ToolbarAction::ToggleRepoSelector)
-    } else {
-        None
-    }
-}
-
-fn render_branch_dropdown(
-    ui: &mut egui::Ui,
-    branch_title: &str,
-    snapshot: Option<&RepoSnapshot>,
-) -> Option<ToolbarAction> {
-    let mut action = None;
-    let popup_id = ui.make_persistent_id("toolbar_branch");
-    let width = 214.0;
-
-    let response = egui::Frame::default()
-        .fill(Color32::TRANSPARENT)
-        .stroke(Stroke::NONE)
-        .corner_radius(0.0)
-        .inner_margin(egui::Margin::same(0))
-        .show(ui, |ui| {
-            ui.set_min_size(Vec2::new(width, 52.0));
-            ui.horizontal(|ui| {
-                ui.add_space(12.0);
-                ui.add_sized(
-                    [18.0, 52.0],
-                    egui::Label::new(
-                        RichText::new(icons::GIT_BRANCH).size(15.0).color(TEXT_MUTED),
-                    ),
-                );
-                ui.add_space(12.0);
-                render_toolbar_text_stack(
-                    ui,
-                    "Current Branch",
-                    branch_title,
-                    width - 76.0,
-                    Some(icons::CARET_DOWN),
-                );
-            });
-        })
-        .response
-        .interact(egui::Sense::click())
-        .on_hover_cursor(egui::CursorIcon::PointingHand);
-
-    if response.clicked() {
-        ui.memory_mut(|mem| mem.toggle_popup(popup_id));
-    }
-
-    ui.scope(|ui| {
-        let visuals = &mut ui.style_mut().visuals;
-        visuals.window_fill = PANEL_BG;
-        visuals.window_stroke = Stroke::NONE;
-        visuals.popup_shadow = egui::epaint::Shadow::NONE;
-
-        egui::popup_below_widget(
-            ui,
-            popup_id,
-            &response,
-            PopupCloseBehavior::CloseOnClickOutside,
-            |ui| {
-                ui.set_min_width(width.max(260.0));
-                egui::Frame::default()
-                    .fill(PANEL_BG)
-                    .stroke(Stroke::NONE)
-                    .corner_radius(6.0)
-                    .inner_margin(egui::Margin::same(10))
-                    .show(ui, |ui| {
-                        ui.label(
-                            RichText::new("Current Branch").small().color(TEXT_MUTED),
-                        );
-                        ui.add_space(6.0);
-
-                        let branches = snapshot
-                            .map(|s| s.branches.as_slice())
-                            .unwrap_or(&[]);
-
-                        if branches.is_empty() {
-                            ui.label(
-                                RichText::new("No branches available").color(TEXT_MUTED),
-                            );
-                            return;
-                        }
-
-                        for branch in branches.iter().filter(|b| !b.is_remote) {
-                            let label = if branch.is_current {
-                                format!("✓ {}", branch.name)
-                            } else {
-                                branch.name.clone()
-                            };
-
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        RichText::new(label).color(TEXT_MAIN),
-                                    )
-                                    .fill(Color32::TRANSPARENT)
-                                    .stroke(Stroke::NONE)
-                                    .min_size(Vec2::new(ui.available_width(), 24.0)),
-                                )
-                                .clicked()
-                            {
-                                if !branch.is_current {
-                                    action = Some(ToolbarAction::SwitchBranch(
-                                        branch.name.clone(),
-                                    ));
-                                }
-                                ui.close_menu();
-                            }
-                        }
-
-                        let remote_branches: Vec<&BranchInfo> =
-                            branches.iter().filter(|b| b.is_remote).collect();
-                        if !remote_branches.is_empty() {
-                            ui.separator();
-                            ui.label(
-                                RichText::new("Remote Branches")
-                                    .small()
-                                    .color(TEXT_MUTED),
-                            );
-                            for branch in remote_branches {
-                                if ui
-                                    .add(
-                                        egui::Button::new(
-                                            RichText::new(branch.name.clone())
-                                                .color(TEXT_MUTED),
-                                        )
-                                        .fill(Color32::TRANSPARENT)
-                                        .stroke(Stroke::NONE)
-                                        .min_size(Vec2::new(ui.available_width(), 24.0)),
-                                    )
-                                    .clicked()
-                                {
-                                    action = Some(ToolbarAction::SwitchBranch(
-                                        branch.name.clone(),
-                                    ));
-                                    ui.close_menu();
-                                }
-                            }
-                        }
-                    });
-            },
-        );
-    });
-
-    action
-}
 
 fn render_network_block(
     ui: &mut egui::Ui,
@@ -474,33 +323,15 @@ fn render_network_block(
 }
 
 fn render_disabled_network_block(ui: &mut egui::Ui) {
-    egui::Frame::default()
-        .fill(Color32::TRANSPARENT)
-        .stroke(Stroke::NONE)
-        .corner_radius(0.0)
-        .inner_margin(egui::Margin::same(0))
-        .show(ui, |ui| {
-            ui.set_min_size(Vec2::new(224.0, 52.0));
-            ui.horizontal(|ui| {
-                ui.add_space(12.0);
-                ui.add_sized(
-                    [18.0, 52.0],
-                    egui::Label::new(
-                        RichText::new(icons::ARROW_CLOCKWISE)
-                            .size(15.0)
-                            .color(TEXT_MUTED),
-                    ),
-                );
-                ui.add_space(12.0);
-                render_toolbar_text_stack(
-                    ui,
-                    "Open a repository first",
-                    "Fetch origin",
-                    143.0,
-                    Some(icons::CARET_DOWN),
-                );
-            });
-        });
+    ui.add_enabled_ui(false, |ui| {
+        crate::ui::primitives::dropdown::dropdown_trigger(
+            ui,
+            icons::ARROW_CLOCKWISE,
+            "Open a repository first",
+            "Fetch origin",
+            224.0,
+        )
+    });
 }
 
 fn render_network_menu(
@@ -581,46 +412,6 @@ fn render_network_menu(
 }
 
 // --- Text rendering helpers ---
-
-fn render_toolbar_text_stack(
-    ui: &mut egui::Ui,
-    description: &str,
-    title: &str,
-    width: f32,
-    trailing_icon: Option<&str>,
-) {
-    let chevron_width = if trailing_icon.is_some() { 18.0 } else { 0.0 };
-    let text_width = (width - chevron_width).max(0.0);
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 52.0), egui::Sense::hover());
-    let painter = ui.painter();
-    let text_left = rect.left();
-    let text_top = rect.top() + 9.0;
-
-    painter.text(
-        egui::pos2(text_left, text_top),
-        Align2::LEFT_TOP,
-        truncate_single_line(description, 30),
-        egui::FontId::proportional(10.0),
-        TEXT_MUTED,
-    );
-    painter.text(
-        egui::pos2(text_left, text_top + 13.0),
-        Align2::LEFT_TOP,
-        truncate_single_line(title, 24),
-        egui::FontId::proportional(12.5),
-        TEXT_MAIN,
-    );
-
-    if let Some(icon) = trailing_icon {
-        painter.text(
-            egui::pos2(rect.left() + text_width + 4.0, rect.top() + 20.0),
-            Align2::LEFT_TOP,
-            icon,
-            egui::FontId::proportional(11.0),
-            TEXT_MUTED,
-        );
-    }
-}
 
 fn render_network_text_stack(
     ui: &mut egui::Ui,

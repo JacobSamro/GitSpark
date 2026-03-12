@@ -2,6 +2,7 @@ use eframe::egui::{self, Align, Align2, Color32, RichText, Stroke, Vec2};
 use egui_phosphor::regular as icons;
 
 use crate::models::{AiProvider, AppSettings, RemoteModelOption};
+use crate::ui::primitives::button::{styled_button, ButtonVariant, icon_button};
 use crate::ui::primitives::dropdown::{dropdown_row, settings_field_frame, styled_dropdown};
 use crate::ui::primitives::row::settings_nav_row;
 use crate::ui::primitives::text_input::{styled_multiline, styled_password, styled_singleline};
@@ -94,14 +95,7 @@ pub fn render_settings_window(
                             );
                         });
                         ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                            let close = ui.add(
-                                egui::Button::new(
-                                    RichText::new(icons::X).size(14.0).color(TEXT_MUTED),
-                                )
-                                .frame(false)
-                                .min_size(Vec2::splat(28.0)),
-                            );
-                            if close.clicked() {
+                            if icon_button(ui, icons::X, "Close").clicked() {
                                 close_requested = true;
                             }
                         });
@@ -190,14 +184,7 @@ pub fn render_settings_window(
                         }
 
                         ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                            let close = ui.add(
-                                egui::Button::new(RichText::new("Close").color(TEXT_MAIN))
-                                    .fill(SURFACE_BG_MUTED)
-                                    .stroke(Stroke::NONE)
-                                    .corner_radius(6.0)
-                                    .min_size(Vec2::new(92.0, 34.0)),
-                            );
-                            if close.clicked() {
+                            if styled_button(ui, "Close", ButtonVariant::Secondary).clicked() {
                                 close_requested = true;
                             }
                         });
@@ -297,15 +284,9 @@ fn render_git_settings_section(
     identity.pull_rebase = Some(pull_rebase);
 
     ui.add_space(18.0);
-    let save = ui.add_enabled(
-        has_repo,
-        egui::Button::new(RichText::new("Save Git Config").color(Color32::WHITE))
-            .fill(ACCENT_MUTED)
-            .stroke(Stroke::NONE)
-            .corner_radius(6.0)
-            .min_size(Vec2::new(136.0, 34.0)),
-    );
-    if save.clicked() {
+    if ui.add_enabled_ui(has_repo, |ui| {
+        styled_button(ui, "Save Git Config", ButtonVariant::Primary)
+    }).inner.clicked() {
         action = Some(SettingsAction::SaveGitConfig);
     }
 
@@ -382,13 +363,7 @@ fn render_ai_settings_section(
     ui.add_space(18.0);
     let save = ui
         .horizontal_centered(|ui| {
-            ui.add(
-                egui::Button::new(RichText::new("Save").color(Color32::WHITE).strong())
-                    .fill(ACCENT_MUTED)
-                    .stroke(Stroke::NONE)
-                    .corner_radius(6.0)
-                    .min_size(Vec2::new(124.0, 38.0)),
-            )
+            styled_button(ui, "Save", ButtonVariant::Primary)
         })
         .inner;
     if save.clicked() {

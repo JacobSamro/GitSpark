@@ -1,4 +1,4 @@
-use eframe::egui::{self, Align2, Color32, PopupCloseBehavior, RichText, Stroke, Vec2};
+use eframe::egui::{self, Align, Align2, Color32, PopupCloseBehavior, RichText, Stroke, Vec2};
 use egui_phosphor::regular as icons;
 
 use crate::ui::theme::{
@@ -104,6 +104,69 @@ pub fn dropdown_row(ui: &mut egui::Ui, label: &str, is_selected: bool) -> egui::
     response
 }
 
+pub fn dropdown_trigger(
+    ui: &mut egui::Ui,
+    icon: &str,
+    description: &str,
+    title: &str,
+    width: f32,
+) -> egui::Response {
+    let response = egui::Frame::default()
+        .fill(Color32::TRANSPARENT)
+        .stroke(Stroke::NONE)
+        .corner_radius(0.0)
+        .inner_margin(egui::Margin::same(0))
+        .show(ui, |ui| {
+            ui.set_min_size(Vec2::new(width, 52.0));
+            ui.horizontal(|ui| {
+                ui.add_space(12.0);
+                ui.add_sized(
+                    [18.0, 52.0],
+                    egui::Label::new(RichText::new(icon).size(15.0).color(TEXT_MUTED)),
+                );
+                ui.add_space(12.0);
+                
+                // Text stack
+                let text_width = width - 76.0;
+                ui.allocate_ui_with_layout(
+                     Vec2::new(text_width, 52.0),
+                     egui::Layout::left_to_right(Align::Center),
+                     |ui| {
+                         ui.vertical(|ui| {
+                             ui.add_space(10.0);
+                             ui.label(
+                                 RichText::new(description)
+                                     .color(TEXT_MUTED)
+                                     .size(10.0),
+                             );
+                             ui.label(
+                                 RichText::new(title)
+                                     .color(TEXT_MAIN)
+                                     .size(13.0)
+                                     .strong(),
+                             );
+                         });
+                     },
+                );
+                
+                ui.label(RichText::new(icons::CARET_DOWN).color(TEXT_MUTED).size(12.0));
+            });
+        })
+        .response
+        .interact(egui::Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+        
+    if response.hovered() {
+        ui.painter().rect_filled(
+            response.rect,
+            0.0,
+            color_with_alpha(SURFACE_BG_MUTED, 50.0),
+        );
+    }
+    
+    response
+}
+
 pub fn toolbar_dropdown(
     ui: &mut egui::Ui,
     id_source: &str,
@@ -132,7 +195,7 @@ pub fn toolbar_dropdown(
                 ui.set_min_width(width.max(260.0));
                 egui::Frame::default()
                     .fill(PANEL_BG)
-                    .stroke(Stroke::NONE)
+                    .stroke(Stroke::new(1.0, BORDER))
                     .corner_radius(6.0)
                     .inner_margin(egui::Margin::same(10))
                     .show(ui, |ui| {

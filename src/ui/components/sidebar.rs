@@ -6,7 +6,9 @@ use egui_phosphor::regular as icons;
 use crate::ui::components::changes_list::{self, ChangesListAction, ChangesListProps};
 use crate::ui::components::commit::{self, CommitPanelAction, CommitPanelProps};
 use crate::ui::components::history_list::{self, HistoryListProps};
-use crate::ui::primitives::button::tab_button;
+use crate::ui::primitives::button::{styled_button, tab_button, ButtonVariant};
+use crate::ui::primitives::row::selectable_row;
+use crate::ui::primitives::surface::{card_frame, panel_frame, surface_frame};
 use crate::ui::theme::{
     ACCENT_MUTED, BORDER, PANEL_BG, SURFACE_BG, SURFACE_BG_MUTED, TEXT_MAIN, TEXT_MUTED,
 };
@@ -77,11 +79,7 @@ pub fn render_sidebar(
         .default_width(260.0)
         .min_width(220.0)
         .show_separator_line(false)
-        .frame(
-            egui::Frame::default()
-                .fill(PANEL_BG)
-                .inner_margin(egui::Margin::same(0)),
-        )
+        .frame(panel_frame())
         .show(ctx, |ui| {
             if props.show_repo_selector {
                 action = render_repository_overlay(ui, props);
@@ -211,39 +209,24 @@ fn render_sidebar_tabs(ui: &mut egui::Ui, sidebar_tab: &mut SidebarTab) {
 
 fn render_no_repo_message(ui: &mut egui::Ui, action: &mut Option<SidebarAction>) {
     egui::CentralPanel::default().show_inside(ui, |ui| {
-        egui::Frame::default()
-            .fill(SURFACE_BG_MUTED)
-            .inner_margin(egui::Margin::same(12))
-            .stroke(Stroke::new(1.0, BORDER))
-            .show(ui, |ui| {
-                ui.label(
-                    RichText::new("No repository loaded")
-                        .color(TEXT_MAIN)
-                        .strong(),
-                );
-                ui.label(
-                    RichText::new(
-                        "Use the + button in the header or open a repository to get started.",
-                    )
+        card_frame().show(ui, |ui| {
+            ui.label(RichText::new("No repository loaded").color(TEXT_MAIN).strong());
+            ui.label(
+                RichText::new("Use the + button in the header or open a repository to get started.")
                     .color(TEXT_MUTED),
-                );
+            );
 
-                ui.add_space(10.0);
-                if ui
-                    .add(
-                        egui::Button::new(
-                            RichText::new("Open Repository").color(Color32::WHITE),
-                        )
-                        .fill(ACCENT_MUTED)
-                        .stroke(Stroke::NONE)
-                        .corner_radius(6.0)
-                        .min_size(Vec2::new(140.0, 32.0)),
-                    )
-                    .clicked()
-                {
-                    *action = Some(SidebarAction::OpenRepoDialog);
-                }
-            });
+            ui.add_space(10.0);
+            if styled_button(
+                ui,
+                "Open Repository",
+                ButtonVariant::Primary,
+            )
+            .clicked()
+            {
+                *action = Some(SidebarAction::OpenRepoDialog);
+            }
+        });
     });
 }
 
@@ -253,10 +236,7 @@ fn render_repository_overlay(
 ) -> Option<SidebarAction> {
     let mut action = None;
 
-    egui::Frame::default()
-        .fill(PANEL_BG)
-        .inner_margin(egui::Margin::same(0))
-        .show(ui, |ui| {
+    panel_frame().show(ui, |ui| {
             // Header
             egui::TopBottomPanel::top("repo_selector_header")
                 .resizable(false)
@@ -316,13 +296,7 @@ fn render_repository_overlay(
                                 .margin(egui::Margin::symmetric(8, 6));
                         ui.add_sized([ui.available_width() - 96.0, 32.0], filter);
 
-                        let add_button = egui::Button::new(
-                            RichText::new("Add  ▾").color(TEXT_MAIN).strong(),
-                        )
-                        .fill(SURFACE_BG)
-                        .stroke(Stroke::new(1.0, BORDER))
-                        .corner_radius(8.0);
-                        if ui.add_sized([88.0, 32.0], add_button).clicked() {
+                        if styled_button(ui, "Add  ▾", ButtonVariant::Secondary).clicked() {
                             action = Some(SidebarAction::OpenRepoDialog);
                         }
                     });
@@ -371,15 +345,11 @@ fn render_repository_overlay(
                                     continue;
                                 }
 
-                                let response = egui::Frame::default()
-                                    .fill(if is_current {
-                                        SURFACE_BG
-                                    } else {
-                                        Color32::TRANSPARENT
-                                    })
-                                    .inner_margin(egui::Margin::symmetric(2, 8))
-                                    .show(ui, |ui| {
-                                        ui.set_width(ui.available_width());
+                                if selectable_row(
+                                    ui,
+                                    path.display().to_string(),
+                                    is_current,
+                                    |ui| {
                                         ui.horizontal(|ui| {
                                             ui.label(
                                                 RichText::new(if is_current {
@@ -400,20 +370,11 @@ fn render_repository_overlay(
                                                 .truncate(),
                                             );
                                         });
-                                    })
-                                    .response
-                                    .interact(egui::Sense::click())
-                                    .on_hover_cursor(egui::CursorIcon::PointingHand);
-
-                                ui.painter().hline(
-                                    response.rect.x_range(),
-                                    response.rect.bottom(),
-                                    Stroke::new(1.0, BORDER),
-                                );
-
-                                if response.clicked() {
-                                    action =
-                                        Some(SidebarAction::OpenRepo(path.clone()));
+                                    },
+                                )
+                                .clicked()
+                                {
+                                    action = Some(SidebarAction::OpenRepo(path.clone()));
                                 }
                             }
                         });
