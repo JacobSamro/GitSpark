@@ -1,4 +1,5 @@
 use eframe::egui::{self, Align, Color32, RichText, Stroke, Vec2};
+use egui_phosphor::regular as icons;
 
 use crate::models::{CommitInfo, DiffEntry};
 use crate::ui::components::diff::render_diff_text_readonly;
@@ -61,23 +62,30 @@ pub fn render_history_viewer(
 
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        ui.add(
-                            egui::Label::new(
-                                RichText::new(format!(
-                                    "{} committed {}",
-                                    commit.author_name, commit.date
-                                ))
-                                .color(TEXT_MUTED),
-                            )
-                            .truncate(),
+                        ui.label(
+                            RichText::new(format!(
+                                "{} committed {}",
+                                commit.author_name, commit.date
+                            ))
+                            .color(TEXT_MUTED),
                         );
-                        ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                            ui.label(
-                                RichText::new(&commit.short_oid)
-                                    .monospace()
-                                    .color(TEXT_MUTED),
-                            );
-                        });
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new(&commit.short_oid)
+                                .monospace()
+                                .color(TEXT_MUTED),
+                        );
+                        let copy_btn = ui.add(
+                            egui::Button::new(
+                                RichText::new(icons::COPY).size(13.0).color(TEXT_MUTED),
+                            )
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(Stroke::NONE)
+                            .min_size(Vec2::new(20.0, 20.0)),
+                        ).on_hover_text("Copy commit hash");
+                        if copy_btn.clicked() {
+                            ui.ctx().copy_text(commit.oid.clone());
+                        }
                     });
                 });
 
