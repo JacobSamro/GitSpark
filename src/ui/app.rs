@@ -16,9 +16,10 @@ use crate::ai::AiClient;
 use crate::git::GitClient;
 use crate::models::{
     AiProvider, AppSettings, BranchInfo, CommitSuggestion, DiffEntry, GitIdentity,
-    RemoteModelOption, RepoSnapshot,
+    RemoteModelOption, RepoSnapshot, UpdateChannel, UpdateStatus,
 };
 use crate::storage::{push_recent_repo, save_settings};
+use crate::updater;
 use crate::ui::domain_state::{
     CommitState, NetworkAction, NetworkState, RepoState, SelectionState,
 };
@@ -55,6 +56,7 @@ pub(crate) enum AppEvent {
     CommitDiffLoaded(String, Result<Vec<DiffEntry>, String>),
     RepoOperationCompleted(Result<RepoSnapshot, String>, String, String),
     CommitDiffCopied(String, Result<String, String>),
+    UpdateCheckCompleted(Result<Option<String>, String>),
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +103,8 @@ pub enum SettingsAction {
     ChangeProvider(AiProvider),
     SelectOpenRouterModel(String),
     RetryOpenRouterModels,
+    ChangeUpdateChannel(UpdateChannel),
+    CheckForUpdates,
     Close,
 }
 
@@ -161,6 +165,8 @@ pub struct GitSparkApp {
     pub(crate) settings_modal: SettingsModalState,
     // Zoom
     rem_size: f32,
+    // Update state
+    pub(crate) update_status: UpdateStatus,
 }
 
 impl GitSparkApp {
@@ -198,6 +204,7 @@ impl GitSparkApp {
             repo_filter_cursor: 0,
             settings_modal: SettingsModalState::new(cx),
             rem_size: DEFAULT_REM_SIZE,
+            update_status: UpdateStatus::Idle,
         };
 
         // Register zoom actions at the window level so they work regardless of focus
@@ -456,6 +463,23 @@ impl GitSparkApp {
                     self.messages.error_message =
                         format!("Failed to copy diff for {}: {err}", short_commit_label(&oid));
                 }
+                AppEvent::UpdateCheckCompleted(Ok(Some(version))) => {
+                    self.update_status = UpdateStatus::Available(version.clone());
+                    self.messages.status_message =
+                        format!("Update available: v{version}");
+                    self.messages.error_message.clear();
+                }
+                AppEvent::UpdateCheckCompleted(Ok(None)) => {
+                    self.update_status = UpdateStatus::UpToDate;
+                    self.messages.status_message =
+                        format!("GitSpark v{} is up to date.", updater::CURRENT_VERSION);
+                    self.messages.error_message.clear();
+                }
+                AppEvent::UpdateCheckCompleted(Err(err)) => {
+                    self.update_status = UpdateStatus::Error(err.clone());
+                    self.messages.error_message =
+                        format!("Update check failed: {err}");
+                }
             }
         }
         // Only trigger a re-render if we actually processed events.
@@ -583,6 +607,16 @@ impl GitSparkApp {
             SettingsAction::RetryOpenRouterModels => {
                 self.filters.openrouter_models = OpenRouterModelsState::Idle;
                 self.ensure_openrouter_models(cx);
+            }
+            SettingsAction::ChangeUpdateChannel(channel) => {
+                self.settings.update_channel = channel;
+                self.persist_settings();
+                self.messages.status_message =
+                    format!("Update channel set to {}.", channel.display_name());
+                self.messages.error_message.clear();
+            }
+            SettingsAction::CheckForUpdates => {
+                self.check_for_updates(cx);
             }
             SettingsAction::Close => {
                 self.close_settings_modal();
@@ -1410,6 +1444,34 @@ impl GitSparkApp {
     fn persist_settings(&mut self) {
         if let Err(err) = save_settings(&self.settings) {
             self.messages.error_message = format!("Failed to save settings: {err}");
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Update checking
+    // ------------------------------------------------------------------
+
+    pub(crate) fn check_for_updates(&mut self, _cx: &mut Context<Self>) {
+        if self.update_status == UpdateStatus::Checking {
+            return;
+        }
+        self.update_status = UpdateStatus::Checking;
+        self.messages.status_message = "Checking for updates\u{2026}".to_string();
+        self.messages.error_message.clear();
+
+        let channel = self.settings.update_channel;
+        let tx = self.event_tx.clone();
+        thread::spawn(move || {
+            let result = updater::check_for_update(channel)
+                .map_err(|e| format!("{e:#}"));
+            tx.send(AppEvent::UpdateCheckCompleted(result));
+        });
+    }
+
+    pub(crate) fn open_update_release_page(&self) {
+        if let UpdateStatus::Available(ref version) = self.update_status {
+            let url = updater::release_page_url(version);
+            let _ = open::that(&url);
         }
     }
 

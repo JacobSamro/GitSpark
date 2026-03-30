@@ -11,6 +11,7 @@ pub enum SettingsSection {
     Git,
     Ai,
     Appearance,
+    Updates,
     Integrations,
 }
 

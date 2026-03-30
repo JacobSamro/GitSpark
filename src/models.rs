@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -149,6 +150,8 @@ pub struct AppSettings {
     pub ai: AiSettings,
     #[serde(default)]
     pub window_size: WindowSize,
+    #[serde(default)]
+    pub update_channel: UpdateChannel,
 }
 
 impl Default for AppSettings {
@@ -157,6 +160,89 @@ impl Default for AppSettings {
             recent_repos: Vec::new(),
             ai: AiSettings::default(),
             window_size: WindowSize::default(),
+            update_channel: UpdateChannel::default(),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-update types
+// ---------------------------------------------------------------------------
+
+/// Which update channel the user is subscribed to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpdateChannel {
+    Release,
+    Beta,
+}
+
+impl Default for UpdateChannel {
+    fn default() -> Self {
+        Self::Release
+    }
+}
+
+impl UpdateChannel {
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::Release => "Release",
+            Self::Beta => "Beta",
+        }
+    }
+
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::Release => "release",
+            Self::Beta => "beta",
+        }
+    }
+
+    /// Infer channel from a version tag string.
+    /// Tags containing a pre-release suffix (e.g. `-beta.1`) map to `Beta`;
+    /// everything else maps to `Release`.
+    pub fn from_tag(tag: &str) -> Self {
+        let version = tag.strip_prefix('v').unwrap_or(tag);
+        if version.contains('-') {
+            Self::Beta
+        } else {
+            Self::Release
+        }
+    }
+}
+
+/// Per-platform asset entry inside an update manifest.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateAsset {
+    pub url: String,
+    pub sha256: String,
+}
+
+/// The JSON manifest served from GitHub Pages at
+/// `updates/{channel}/latest.json`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateManifest {
+    pub channel: String,
+    pub version: String,
+    pub pub_date: String,
+    pub notes_url: String,
+    pub assets: HashMap<String, UpdateAsset>,
+}
+
+/// Current state of the update check lifecycle.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UpdateStatus {
+    /// No check has been performed yet.
+    Idle,
+    /// Actively checking for a new version.
+    Checking,
+    /// A newer version is available.
+    Available(String),
+    /// The update payload is being downloaded.
+    Downloading(String),
+    /// The update has been downloaded and is ready to install on restart.
+    ReadyToRestart(String),
+    /// The check completed and the app is already up to date.
+    UpToDate,
+    /// The check or download failed.
+    Error(String),
 }

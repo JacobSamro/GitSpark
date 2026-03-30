@@ -7,10 +7,11 @@ use gpui_component::spinner::Spinner;
 use gpui_component::switch::Switch;
 use gpui_component::{Disableable, h_flex, v_flex};
 
-use crate::models::{AiProvider, RemoteModelOption};
+use crate::models::{AiProvider, RemoteModelOption, UpdateChannel, UpdateStatus};
 use crate::ui::app::{GitSparkApp, SettingsAction};
 use crate::ui::theme;
 use crate::ui::ui_state::{OpenRouterModelsState, SettingsSection};
+use crate::updater;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SettingsField {
@@ -55,7 +56,9 @@ pub(crate) fn default_settings_field(section: SettingsSection) -> SettingsField 
     match section {
         SettingsSection::Git => SettingsField::GitUserName,
         SettingsSection::Ai => SettingsField::AiModel,
-        SettingsSection::Appearance | SettingsSection::Integrations => SettingsField::GitUserName,
+        SettingsSection::Appearance
+        | SettingsSection::Updates
+        | SettingsSection::Integrations => SettingsField::GitUserName,
     }
 }
 
@@ -93,7 +96,7 @@ pub(crate) fn render_settings_modal(
                 }))
                 .into_any_element(),
         ),
-        SettingsSection::Appearance | SettingsSection::Integrations => None,
+        SettingsSection::Appearance | SettingsSection::Updates | SettingsSection::Integrations => None,
     };
 
     let content = match app.nav.settings_section {
@@ -127,6 +130,7 @@ pub(crate) fn render_settings_modal(
                 )
                 .into_any_element()
         }
+        SettingsSection::Updates => render_updates_section(app, cx).into_any_element(),
         SettingsSection::Integrations => {
             v_flex()
                 .flex_1()
@@ -306,6 +310,14 @@ fn render_nav(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElem
             "Theme and visual preferences",
             app.nav.settings_section == SettingsSection::Appearance,
             SettingsSection::Appearance,
+            cx,
+        ))
+        .child(render_nav_radio(
+            "settings-nav-updates",
+            "Updates",
+            "Update channel and version",
+            app.nav.settings_section == SettingsSection::Updates,
+            SettingsSection::Updates,
             cx,
         ))
         .child(render_nav_radio(
@@ -491,6 +503,168 @@ fn render_ai_section(
             true,
             Some("Used verbatim when generating commit suggestions."),
         ))
+}
+
+fn render_updates_section(
+    app: &GitSparkApp,
+    cx: &mut Context<GitSparkApp>,
+) -> impl IntoElement {
+    let current_channel = app.settings.update_channel;
+
+    let status_element = match &app.update_status {
+        UpdateStatus::Idle => div()
+            .text_size(theme::z(12.0))
+            .text_color(theme::text_muted())
+            .child(format!("Current version: v{}", updater::CURRENT_VERSION))
+            .into_any_element(),
+        UpdateStatus::Checking => div()
+            .text_size(theme::z(12.0))
+            .text_color(theme::text_muted())
+            .child("Checking for updates\u{2026}")
+            .into_any_element(),
+        UpdateStatus::Available(version) => h_flex()
+            .gap(theme::z(8.0))
+            .items_center()
+            .child(
+                div()
+                    .text_size(theme::z(12.0))
+                    .text_color(theme::accent())
+                    .child(format!("Update available: v{version}")),
+            )
+            .child(
+                render_secondary_button("settings-open-release", "View Release", cx)
+                    .on_click(cx.listener(|app, _evt, _window, _cx| {
+                        app.open_update_release_page();
+                    })),
+            )
+            .into_any_element(),
+        UpdateStatus::UpToDate => div()
+            .text_size(theme::z(12.0))
+            .text_color(theme::text_muted())
+            .child(format!(
+                "v{} is up to date.",
+                updater::CURRENT_VERSION
+            ))
+            .into_any_element(),
+        UpdateStatus::Error(err) => div()
+            .text_size(theme::z(12.0))
+            .text_color(theme::danger())
+            .child(format!("Update check failed: {err}"))
+            .into_any_element(),
+        UpdateStatus::Downloading(version) => div()
+            .text_size(theme::z(12.0))
+            .text_color(theme::text_muted())
+            .child(format!("Downloading v{version}\u{2026}"))
+            .into_any_element(),
+        UpdateStatus::ReadyToRestart(version) => div()
+            .text_size(theme::z(12.0))
+            .text_color(theme::accent())
+            .child(format!("v{version} ready — restart to apply."))
+            .into_any_element(),
+    };
+
+    let is_checking = app.update_status == UpdateStatus::Checking;
+
+    v_flex()
+        .w_full()
+        .gap(theme::z(20.0))
+        .child(render_section_header(
+            "Updates",
+            "Auto-update preferences",
+            "Choose your update channel and check for new versions.",
+        ))
+        // Channel selector
+        .child(
+            v_flex()
+                .w_full()
+                .gap(theme::z(10.0))
+                .child(render_field_label("Update Channel", None))
+                .child(
+                    h_flex()
+                        .w_full()
+                        .gap(theme::z(12.0))
+                        .items_start()
+                        .child(render_channel_radio(
+                            app,
+                            "settings-channel-release",
+                            UpdateChannel::Release,
+                            "Release",
+                            "Stable releases only.",
+                            cx,
+                        ))
+                        .child(render_channel_radio(
+                            app,
+                            "settings-channel-beta",
+                            UpdateChannel::Beta,
+                            "Beta",
+                            "Preview of next stable. May contain rough edges.",
+                            cx,
+                        )),
+                ),
+        )
+        // Version status
+        .child(
+            v_flex()
+                .w_full()
+                .gap(theme::z(10.0))
+                .child(render_field_label("Version", None))
+                .child(status_element),
+        )
+        // Check for Updates button
+        .child(
+            h_flex().child(
+                render_secondary_button(
+                    "settings-check-updates",
+                    if is_checking {
+                        "Checking\u{2026}"
+                    } else {
+                        "Check for Updates"
+                    },
+                    cx,
+                )
+                .disabled(is_checking)
+                .on_click(cx.listener(|app, _evt, _window, cx| {
+                    app.handle_settings_action(SettingsAction::CheckForUpdates, cx);
+                })),
+            ),
+        )
+}
+
+fn render_channel_radio(
+    app: &GitSparkApp,
+    id: &'static str,
+    channel: UpdateChannel,
+    title: &'static str,
+    description: &'static str,
+    cx: &mut Context<GitSparkApp>,
+) -> impl IntoElement {
+    let selected = app.settings.update_channel == channel;
+    Radio::new(id)
+        .checked(selected)
+        .label(title)
+        .on_click(cx.listener(move |app, _checked: &bool, _window, cx| {
+            app.handle_settings_action(SettingsAction::ChangeUpdateChannel(channel), cx);
+        }))
+        .flex_1()
+        .p(theme::z(12.0))
+        .rounded(theme::z(theme::CORNER_RADIUS))
+        .border_1()
+        .border_color(if selected {
+            theme::accent()
+        } else {
+            theme::border()
+        })
+        .bg(if selected {
+            theme::surface_bg()
+        } else {
+            theme::surface_bg_muted()
+        })
+        .child(
+            div()
+                .text_size(theme::z(11.0))
+                .text_color(theme::text_muted())
+                .child(description),
+        )
 }
 
 fn render_provider_group(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElement {
