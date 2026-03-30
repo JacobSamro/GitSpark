@@ -18,6 +18,7 @@ env:
   APP_NAME: gitspark
   APP_DISPLAY_NAME: GitSpark
   MACOS_BUNDLE_ID: com.github.samro.gitspark
+  PAGES_BASE_URL: https://jacobsamro.github.io/GitSpark
 
 concurrency:
   group: release-${{ github.event_name }}-${{ github.ref_name || inputs.tag }}
@@ -28,8 +29,11 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       release_tag: ${{ steps.vars.outputs.release_tag }}
+      release_channel: ${{ steps.vars.outputs.release_channel }}
+      version: ${{ steps.vars.outputs.version }}
+      is_prerelease: ${{ steps.vars.outputs.is_prerelease }}
     steps:
-      - name: Resolve release tag
+      - name: Resolve release tag and channel
         id: vars
         shell: bash
         run: |
@@ -44,7 +48,27 @@ jobs:
             exit 1
           fi
 
-          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
+          # Strip leading 'v' for the bare version string
+          version="${tag#v}"
+
+          # Infer channel: any pre-release suffix (e.g. -beta.1, -rc.2) → beta
+          if [[ "$version" == *-* ]]; then
+            channel="beta"
+            is_prerelease="true"
+          else
+            channel="release"
+            is_prerelease="false"
+          fi
+
+          echo "release_tag=$tag"           >> "$GITHUB_OUTPUT"
+          echo "release_channel=$channel"   >> "$GITHUB_OUTPUT"
+          echo "version=$version"           >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$is_prerelease" >> "$GITHUB_OUTPUT"
+
+          echo "Tag: $tag"
+          echo "Version: $version"
+          echo "Channel: $channel"
+          echo "Pre-release: $is_prerelease"
 
   build:
     name: Build ${{ matrix.label }}
@@ -260,13 +284,187 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          IS_PRERELEASE: ${{ needs.prepare.outputs.is_prerelease }}
         run: |
+          prerelease_flag=""
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            prerelease_flag="--prerelease"
+          fi
+
           if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" dist/* --repo "$GH_REPO" --clobber
+            if [[ "$IS_PRERELEASE" == "true" ]]; then
+              gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --prerelease
+            fi
           else
             gh release create "$RELEASE_TAG" dist/* \
               --repo "$GH_REPO" \
               --verify-tag \
               --generate-notes \
-              --title "$RELEASE_TAG"
+              --title "$RELEASE_TAG" \
+              $prerelease_flag
           fi
+
+  publish-metadata:
+    name: Publish update metadata
+    needs:
+      - prepare
+      - release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          ref: gh-pages
+          fetch-depth: 1
+        continue-on-error: true
+
+      - name: Initialize gh-pages if needed
+        shell: bash
+        run: |
+          if [[ ! -f index.html ]]; then
+            git init
+            git checkout --orphan gh-pages
+            echo '<html><body><p>GitSpark update metadata</p></body></html>' > index.html
+            git add index.html
+          fi
+
+      - name: Download checksums
+        uses: actions/download-artifact@v5
+        with:
+          path: _artifacts
+          merge-multiple: true
+
+      - name: Generate channel metadata
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          CHANNEL: ${{ needs.prepare.outputs.release_channel }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          pub_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          notes_url="https://github.com/${GH_REPO}/releases/tag/${RELEASE_TAG}"
+          dl_base="https://github.com/${GH_REPO}/releases/download/${RELEASE_TAG}"
+
+          # Parse SHA-256 checksums from the release artifacts
+          linux_archive="${APP_NAME}-${RELEASE_TAG}-x86_64-unknown-linux-gnu.tar.gz"
+          windows_archive="${APP_NAME}-${RELEASE_TAG}-x86_64-pc-windows-msvc.zip"
+          macos_archive="${APP_NAME}-${RELEASE_TAG}-universal2-apple-darwin.dmg"
+
+          linux_sha=""
+          windows_sha=""
+          macos_sha=""
+
+          if [[ -f "_artifacts/SHA256SUMS.txt" ]]; then
+            linux_sha=$(grep "${linux_archive}" "_artifacts/SHA256SUMS.txt" | awk '{print $1}' || true)
+            windows_sha=$(grep "${windows_archive}" "_artifacts/SHA256SUMS.txt" | awk '{print $1}' || true)
+            macos_sha=$(grep "${macos_archive}" "_artifacts/SHA256SUMS.txt" | awk '{print $1}' || true)
+          fi
+
+          # Create latest.json for this channel
+          mkdir -p "updates/${CHANNEL}"
+          cat > "updates/${CHANNEL}/latest.json" <<MANIFEST
+          {
+            "channel": "${CHANNEL}",
+            "version": "${VERSION}",
+            "pub_date": "${pub_date}",
+            "notes_url": "${notes_url}",
+            "assets": {
+              "linux-x64": {
+                "url": "${dl_base}/${linux_archive}",
+                "sha256": "${linux_sha}"
+              },
+              "windows-x64": {
+                "url": "${dl_base}/${windows_archive}",
+                "sha256": "${windows_sha}"
+              },
+              "macos-universal": {
+                "url": "${dl_base}/${macos_archive}",
+                "sha256": "${macos_sha}"
+              }
+            }
+          }
+          MANIFEST
+
+          # For a stable release, also update the release channel so
+          # beta users see the stable version when they switch back
+          if [[ "$CHANNEL" == "release" ]]; then
+            echo "Stable release — release channel updated."
+          fi
+
+          echo "Generated updates/${CHANNEL}/latest.json"
+          cat "updates/${CHANNEL}/latest.json"
+
+      - name: Generate Sparkle appcast
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          CHANNEL: ${{ needs.prepare.outputs.release_channel }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          pub_date=$(date -u -R)
+          dl_base="https://github.com/${GH_REPO}/releases/download/${RELEASE_TAG}"
+          macos_archive="${APP_NAME}-${RELEASE_TAG}-universal2-apple-darwin.dmg"
+          macos_url="${dl_base}/${macos_archive}"
+
+          sparkle_channel=""
+          if [[ "$CHANNEL" == "beta" ]]; then
+            sparkle_channel='<sparkle:channel>beta</sparkle:channel>'
+          fi
+
+          mkdir -p sparkle
+
+          # Build a new item entry
+          new_item=$(cat <<ITEM
+              <item>
+                <title>Version ${VERSION}</title>
+                <pubDate>${pub_date}</pubDate>
+                <sparkle:version>${VERSION}</sparkle:version>
+                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+                ${sparkle_channel}
+                <link>https://github.com/${GH_REPO}/releases/tag/${RELEASE_TAG}</link>
+                <enclosure
+                  url="${macos_url}"
+                  type="application/octet-stream"
+                />
+              </item>
+          ITEM
+          )
+
+          # If an existing appcast exists, insert the new item
+          if [[ -f sparkle/appcast.xml ]]; then
+            # Insert before </channel>
+            sed -i "s|</channel>|${new_item}\n    </channel>|" sparkle/appcast.xml
+          else
+            cat > sparkle/appcast.xml <<APPCAST
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0"
+               xmlns:sparkle="http://www.andymatuschak.net/xml-namespaces/sparkle">
+            <channel>
+              <title>${APP_DISPLAY_NAME}</title>
+              ${new_item}
+            </channel>
+          </rss>
+          APPCAST
+          fi
+
+          echo "Generated sparkle/appcast.xml"
+          cat sparkle/appcast.xml
+
+      - name: Commit and push metadata
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          CHANNEL: ${{ needs.prepare.outputs.release_channel }}
+        run: |
+          rm -rf _artifacts
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add updates/ sparkle/ index.html
+          git commit -m "Update ${CHANNEL} metadata for v${VERSION}" || echo "No changes to commit"
+          git push origin gh-pages || echo "Push failed — gh-pages branch may need to be created manually"
