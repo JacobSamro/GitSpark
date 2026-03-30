@@ -324,7 +324,7 @@ jobs:
       - name: Initialize gh-pages if needed
         shell: bash
         run: |
-          if [[ ! -f index.html ]]; then
+          if [[ ! -d ".git" ]]; then
             git init
             git checkout --orphan gh-pages
             echo '<html><body><p>GitSpark update metadata</p></body></html>' > index.html
@@ -388,12 +388,6 @@ jobs:
             }
           }
           MANIFEST
-
-          # For a stable release, also update the release channel so
-          # beta users see the stable version when they switch back
-          if [[ "$CHANNEL" == "release" ]]; then
-            echo "Stable release — release channel updated."
-          fi
 
           echo "Generated updates/${CHANNEL}/latest.json"
           cat "updates/${CHANNEL}/latest.json"

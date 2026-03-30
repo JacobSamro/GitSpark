@@ -222,7 +222,9 @@ impl Sha256 {
         self.total_len += data.len() as u64;
 
         while self.buffer.len() >= 64 {
-            let block: [u8; 64] = self.buffer[..64].try_into().unwrap();
+            let block: [u8; 64] = self.buffer[..64]
+                .try_into()
+                .expect("SHA-256 buffer always has >= 64 bytes here");
             self.buffer.drain(..64);
             self.compress(&block);
         }
@@ -251,7 +253,9 @@ impl Sha256 {
 
         let mut w = [0u32; 64];
         for (i, chunk) in block.chunks_exact(4).enumerate() {
-            w[i] = u32::from_be_bytes(chunk.try_into().unwrap());
+            w[i] = u32::from_be_bytes(
+                chunk.try_into().expect("chunks_exact(4) guarantees 4-byte slices"),
+            );
         }
         for i in 16..64 {
             let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
@@ -307,7 +311,7 @@ impl Sha256 {
         for chunk_start in (0..self.buffer.len()).step_by(64) {
             let block: [u8; 64] = self.buffer[chunk_start..chunk_start + 64]
                 .try_into()
-                .unwrap();
+                .expect("SHA-256 padding guarantees buffer length is a multiple of 64");
             self.compress(&block);
         }
 
