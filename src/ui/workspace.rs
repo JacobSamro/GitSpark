@@ -98,6 +98,20 @@ pub fn expand_diff_in_memory(
 
     let target = hunk_index.min(hunks.len().saturating_sub(1));
 
+    // Extract suffix text after @@ from original headers (e.g. " impl GitClient {")
+    let hunk_suffixes: Vec<String> = hunks
+        .iter()
+        .map(|(dl_idx, _)| {
+            let line = diff_lines[*dl_idx];
+            // Find the closing @@ and take everything after it
+            if let Some(pos) = line.find(" @@") {
+                line[pos + 3..].to_string()
+            } else {
+                String::new()
+            }
+        })
+        .collect();
+
     // Copy diff header lines (before first hunk)
     let first_hunk_line = hunks[0].0;
     let mut out: Vec<String> = diff_lines[..first_hunk_line]
@@ -133,10 +147,11 @@ pub fn expand_diff_in_memory(
             DiffExpandDirection::Up => {
                 let step = EXPAND_STEP.min(hunk_file_start);
                 let ctx_start = hunk_file_start - step; // 0-based
+                let suffix = hunk_suffixes.get(hi).map(|s| s.as_str()).unwrap_or("");
 
                 // Updated header
                 out.push(format!(
-                    "@@ -{},{} +{},{} @@",
+                    "@@ -{},{} +{},{} @@{suffix}",
                     bounds.old_start.saturating_sub(step),
                     bounds.old_count + step,
                     bounds.new_start.saturating_sub(step),
@@ -156,10 +171,11 @@ pub fn expand_diff_in_memory(
             DiffExpandDirection::Down => {
                 let room = total_file.saturating_sub(hunk_file_end);
                 let step = EXPAND_STEP.min(room);
+                let suffix = hunk_suffixes.get(hi).map(|s| s.as_str()).unwrap_or("");
 
                 // Updated header
                 out.push(format!(
-                    "@@ -{},{} +{},{} @@",
+                    "@@ -{},{} +{},{} @@{suffix}",
                     bounds.old_start,
                     bounds.old_count + step,
                     bounds.new_start,
@@ -179,9 +195,10 @@ pub fn expand_diff_in_memory(
             DiffExpandDirection::All => {
                 let above = hunk_file_start;
                 let below = total_file.saturating_sub(hunk_file_end);
+                let suffix = hunk_suffixes.get(hi).map(|s| s.as_str()).unwrap_or("");
 
                 out.push(format!(
-                    "@@ -{},{} +{},{} @@",
+                    "@@ -{},{} +{},{} @@{suffix}",
                     1,
                     bounds.old_count + above + below,
                     1,
@@ -228,8 +245,9 @@ pub fn expand_diff_in_memory(
                     if let Some(last_hunk_pos) = out.iter().rposition(|l| l.starts_with("@@ ")) {
                         let new_old_count = prev_bounds.old_count + gap_lines + bounds.old_count;
                         let new_new_count = prev_bounds.new_count + gap_lines + bounds.new_count;
+                        let prev_suffix = hunk_suffixes.get(hi - 1).map(|s| s.as_str()).unwrap_or("");
                         out[last_hunk_pos] = format!(
-                            "@@ -{},{} +{},{} @@",
+                            "@@ -{},{} +{},{} @@{prev_suffix}",
                             prev_bounds.old_start, new_old_count,
                             prev_bounds.new_start, new_new_count,
                         );
@@ -720,7 +738,7 @@ fn render_hunk_header(
                 let vh_click = vh.clone();
                 let fp = file_path.to_string();
                 let hi = hunk_index;
-                return h_flex()
+                let row = h_flex()
                     .id(SharedString::from(format!("hunk-row-{hunk_index}")))
                     .w_full()
                     .h(row_h)
@@ -733,19 +751,19 @@ fn render_hunk_header(
                     .child(icon_el("icons/chevrons-up.svg"))
                     .child(hunk_text)
                     .on_click(move |_evt, _win, cx| {
-                        eprintln!("[HUNK-UP] clicked hunk={hi}");
                         let fp = fp.clone();
                         vh_click.update(cx, |app, cx| {
                             app.expand_diff_context(fp, hi, DiffExpandDirection::Up);
                             cx.notify();
                         });
-                    })
+                    });
+                return add_hunk_context_menu(row, vh, file_path, hunk_index, has_original_diff)
                     .into_any_element();
             }
             ExpansionType::Down => {
                 let vh_click = vh.clone();
                 let fp = file_path.to_string();
-                return h_flex()
+                let row = h_flex()
                     .id(SharedString::from(format!("hunk-row-{hunk_index}")))
                     .w_full()
                     .h(row_h)
@@ -763,7 +781,8 @@ fn render_hunk_header(
                             app.expand_diff_context(fp, hunk_index, DiffExpandDirection::Down);
                             cx.notify();
                         });
-                    })
+                    });
+                return add_hunk_context_menu(row, vh, file_path, hunk_index, has_original_diff)
                     .into_any_element();
             }
             ExpansionType::Both => {
@@ -831,7 +850,7 @@ fn render_hunk_header(
             ExpansionType::Short => {
                 let vh_click = vh.clone();
                 let fp = file_path.to_string();
-                return h_flex()
+                let row = h_flex()
                     .id(SharedString::from(format!("hunk-row-{hunk_index}")))
                     .w_full()
                     .h(row_h)
@@ -849,7 +868,8 @@ fn render_hunk_header(
                             app.expand_diff_context(fp, hunk_index, DiffExpandDirection::MergeWithPrevious);
                             cx.notify();
                         });
-                    })
+                    });
+                return add_hunk_context_menu(row, vh, file_path, hunk_index, has_original_diff)
                     .into_any_element();
             }
             ExpansionType::None => {}

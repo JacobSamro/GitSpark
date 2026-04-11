@@ -1043,12 +1043,8 @@ impl GitSparkApp {
             return;
         };
         let Some(file_lines) = &entry.file_contents else {
-            eprintln!("[expand] no file_contents for {file_path}");
             return;
         };
-
-        eprintln!("[expand] file={file_path} hunk={hunk_index} dir={direction:?} file_lines={} diff_lines={}",
-            file_lines.len(), entry.diff.lines().count());
 
         // Save original diff for collapse (only on first expansion)
         if entry.original_diff.is_none() {
@@ -1061,17 +1057,6 @@ impl GitSparkApp {
             hunk_index,
             direction,
         );
-        let old_count = entry.diff.lines().count();
-        let new_count = new_diff.lines().count();
-        // Log the first 5 new lines to verify content
-        if new_count > old_count {
-            for (i, line) in new_diff.lines().enumerate() {
-                if i >= old_count && i < old_count + 5 {
-                    eprintln!("[expand]   new_line[{i}]: {line}");
-                }
-            }
-        }
-        eprintln!("[expand] old_lines={old_count} new_lines={new_count}");
         entry.diff = new_diff;
     }
 
@@ -2812,7 +2797,7 @@ impl GitSparkApp {
                     resizable_panel().child(crate::ui::workspace::render_workspace(
                         selected_file,
                         selected_diff,
-                        Some(&view),
+                        None, // History diffs are read-only, no expand controls
                     )),
                 )
         } else {
