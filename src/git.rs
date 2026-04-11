@@ -762,8 +762,13 @@ impl GitClient {
             sections.push(("Working tree", unstaged));
         }
 
-        if sections.is_empty() && change.status == "??" {
-            return self.build_untracked_diff(repo_path, &change.path);
+        if sections.is_empty() {
+            // No staged or unstaged diff — file might be untracked or entirely new
+            let is_untracked = change.status == "??"
+                || !self.path_is_tracked(repo_path, &change.path).unwrap_or(true);
+            if is_untracked {
+                return self.build_untracked_diff(repo_path, &change.path);
+            }
         }
 
         let combined = if sections.len() <= 1 {
