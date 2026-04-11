@@ -55,16 +55,41 @@ impl AiClient {
             ]
         });
 
-        let response = ureq::post(endpoint)
+        let agent = ureq::Agent::new_with_config(
+            ureq::config::Config::builder()
+                .http_status_as_error(false)
+                .build(),
+        );
+
+        let response = agent
+            .post(endpoint)
             .header("Authorization", &format!("Bearer {api_key}"))
             .header("Content-Type", "application/json")
+            .header("HTTP-Referer", "https://github.com/jacobsamro/gitspark")
+            .header("X-Title", "GitSpark")
             .send_json(payload)
             .map_err(|error| anyhow!("AI request failed: {error}"))?;
+
+        let status = response.status();
 
         let body = response
             .into_body()
             .read_to_string()
             .context("failed to read AI response body")?;
+
+        if status.as_u16() >= 400 {
+            // Try to extract error message from JSON response
+            let error_msg = serde_json::from_str::<Value>(&body)
+                .ok()
+                .and_then(|v| {
+                    v.get("error")
+                        .and_then(|e| e.get("message").or(Some(e)))
+                        .and_then(Value::as_str)
+                        .map(String::from)
+                })
+                .unwrap_or_else(|| body.chars().take(200).collect());
+            bail!("AI request failed (HTTP {}): {}", status.as_u16(), error_msg);
+        }
 
         let value: Value =
             serde_json::from_str(&body).context("failed to parse AI response as JSON")?;

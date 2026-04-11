@@ -667,6 +667,7 @@ fn render_openrouter_models(
                     .into_any_element()
             } else {
                 // Expanded: search + model list
+                let vh_close = cx.entity().clone();
                 let filtered: Vec<RemoteModelOption> = models
                     .iter()
                     .filter(|model| {
@@ -678,8 +679,15 @@ fn render_openrouter_models(
                     .collect();
 
                 v_flex()
+                    .id("model-picker-expanded")
                     .w_full()
                     .gap(theme::z(6.0))
+                    .on_mouse_down_out(move |_evt, _win, cx| {
+                        vh_close.update(cx, |app, cx| {
+                            app.settings_modal.show_model_picker = false;
+                            cx.notify();
+                        });
+                    })
                     .child(render_text_input(
                         app,
                         window,
