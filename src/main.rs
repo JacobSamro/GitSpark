@@ -70,13 +70,36 @@ fn main() {
                 (1280.0, 860.0)
             };
 
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+        let (window_bounds, restore_display_id) = if settings.window_size.has_position {
+            // Find the saved display by ID so the window opens on the correct monitor
+            let display_id = settings.window_size.display_id.and_then(|saved_id| {
+                cx.displays().into_iter().find_map(|d| {
+                    let id: u32 = d.id().into();
+                    if id == saved_id { Some(d.id()) } else { None }
+                })
+            });
+            (
+                WindowBounds::Windowed(Bounds::new(
+                    point(px(settings.window_size.x), px(settings.window_size.y)),
+                    size(px(initial_width), px(initial_height)),
+                )),
+                display_id,
+            )
+        } else {
+            (
+                WindowBounds::Windowed(Bounds::centered(
                     None,
                     size(px(initial_width), px(initial_height)),
                     cx,
-                ))),
+                )),
+                None,
+            )
+        };
+
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(window_bounds),
+                display_id: restore_display_id,
                 titlebar: Some(platform_titlebar_options()),
                 ..Default::default()
             },

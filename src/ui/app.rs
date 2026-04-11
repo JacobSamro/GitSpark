@@ -161,6 +161,7 @@ pub struct GitSparkApp {
     pub(crate) settings_modal: SettingsModalState,
     // Zoom
     rem_size: f32,
+    render_count: u32,
 }
 
 impl GitSparkApp {
@@ -198,6 +199,7 @@ impl GitSparkApp {
             repo_filter_cursor: 0,
             settings_modal: SettingsModalState::new(cx),
             rem_size: DEFAULT_REM_SIZE,
+            render_count: 0,
         };
 
         // Register zoom actions at the window level so they work regardless of focus
@@ -1407,7 +1409,7 @@ impl GitSparkApp {
         self.persist_settings();
     }
 
-    fn persist_settings(&mut self) {
+    pub fn persist_settings(&mut self) {
         if let Err(err) = save_settings(&self.settings) {
             self.messages.error_message = format!("Failed to save settings: {err}");
         }
@@ -1475,6 +1477,33 @@ impl GitSparkApp {
 
 impl Render for GitSparkApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Capture window bounds and persist when they change.
+        // Skip the first 10 renders to let GPUI settle the window position.
+        self.render_count = self.render_count.saturating_add(1);
+        if self.render_count > 10 {
+            let bounds = window.bounds();
+            let new_x = bounds.origin.x / px(1.0);
+            let new_y = bounds.origin.y / px(1.0);
+            let new_w = bounds.size.width / px(1.0);
+            let new_h = bounds.size.height / px(1.0);
+            let ws = &self.settings.window_size;
+            let changed = !ws.has_position
+                || (ws.x - new_x).abs() > 1.0
+                || (ws.y - new_y).abs() > 1.0
+                || (ws.width - new_w).abs() > 1.0
+                || (ws.height - new_h).abs() > 1.0;
+            if changed {
+                self.settings.window_size.x = new_x;
+                self.settings.window_size.y = new_y;
+                self.settings.window_size.width = new_w;
+                self.settings.window_size.height = new_h;
+                self.settings.window_size.has_position = true;
+                self.settings.window_size.display_id =
+                    window.display(cx).map(|d| d.id().into());
+                self.persist_settings();
+            }
+        }
+
         // Clamp cursors to valid positions (e.g. after AI fill or clear)
         self.summary_cursor = self.summary_cursor.min(self.commit.summary.len());
         self.description_cursor = self.description_cursor.min(self.commit.body.len());

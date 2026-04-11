@@ -132,6 +132,16 @@ pub struct RemoteModelOption {
 pub struct WindowSize {
     pub width: f32,
     pub height: f32,
+    #[serde(default)]
+    pub x: f32,
+    #[serde(default)]
+    pub y: f32,
+    /// Whether x/y have been explicitly saved (0.0/0.0 is a valid position).
+    #[serde(default)]
+    pub has_position: bool,
+    /// The display ID the window was on (for multi-monitor restore).
+    #[serde(default)]
+    pub display_id: Option<u32>,
 }
 
 impl Default for WindowSize {
@@ -139,6 +149,10 @@ impl Default for WindowSize {
         Self {
             width: 0.0, // 0 = use 60% of screen
             height: 0.0,
+            x: 0.0,
+            y: 0.0,
+            has_position: false,
+            display_id: None,
         }
     }
 }
