@@ -553,36 +553,38 @@ enum CheckState {
 
 fn render_tristate_checkbox(state: CheckState) -> Div {
     let size = 14.0;
+    let check_bg: Hsla = gpui::rgb(0x58a6ff).into();
+    let check_fg: Hsla = gpui::rgb(0x0d1117).into();
     match state {
-        CheckState::On => div()
+        CheckState::On => h_flex()
             .w(z(size))
             .h(z(size))
             .rounded(z(3.0))
-            .bg(theme::accent())
+            .bg(check_bg)
             .border_1()
-            .border_color(theme::accent())
+            .border_color(check_bg)
             .flex_shrink_0()
             .items_center()
             .justify_center()
             .child(
                 Icon::new(IconName::Check)
                     .size(z(10.0))
-                    .text_color(gpui::white()),
+                    .text_color(check_fg),
             ),
-        CheckState::Mixed => div()
+        CheckState::Mixed => h_flex()
             .w(z(size))
             .h(z(size))
             .rounded(z(3.0))
-            .bg(theme::accent())
+            .bg(check_bg)
             .border_1()
-            .border_color(theme::accent())
+            .border_color(check_bg)
             .flex_shrink_0()
             .items_center()
             .justify_center()
             .child(
                 Icon::new(IconName::Minus)
                     .size(z(10.0))
-                    .text_color(gpui::white()),
+                    .text_color(check_fg),
             ),
         CheckState::Off => div()
             .w(z(size))
