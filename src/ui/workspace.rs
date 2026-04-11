@@ -1127,8 +1127,8 @@ pub fn render_workspace(
 
     v_flex()
         .w_full()
-        .h_full()
         .flex_1()
+        .min_h_0()
         .items_start()
         .bg(theme::bg())
         .child(render_diff_header(file_path))

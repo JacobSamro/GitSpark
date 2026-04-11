@@ -117,6 +117,10 @@ pub fn hover_bg() -> Hsla {
     gpui::rgb(0x151b23).into() // neutral-2
 }
 
+pub fn list_hover_bg() -> Hsla {
+    gpui::rgb(0x1c2128).into() // slightly lighter than hover_bg for list rows
+}
+
 pub fn commit_button_bg() -> Hsla {
     gpui::rgb(0x0969da).into() // GitHub $blue
 }

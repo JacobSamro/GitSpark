@@ -254,7 +254,7 @@ pub fn render_sidebar_interactive(
                                         render_change_row(change, is_selected, is_included, checkbox_view, checkbox_path)
                                             .id(SharedString::from(format!("change-{}", change.path)))
                                             .cursor_pointer()
-                                            .hover(|s| s.bg(theme::hover_bg()))
+                                            .hover(|s| s.bg(if is_selected { theme::accent() } else { theme::list_hover_bg() }))
                                             .on_click(move |_evt, _win, cx| {
                                                 let path = path.clone();
                                                 click_view.update(cx, |app, cx| {
@@ -297,7 +297,7 @@ pub fn render_sidebar_interactive(
                                         render_history_row(commit, is_selected)
                                         .id(SharedString::from(format!("commit-{}", commit.oid)))
                                         .cursor_pointer()
-                                        .hover(|s| s.bg(theme::hover_bg()))
+                                        .hover(move |s| s.bg(if is_selected { theme::accent() } else { theme::list_hover_bg() }))
                                         .on_click(move |_evt, _win, cx| {
                                             let oid = oid.clone();
                                             click_view.update(cx, |app, cx| {
@@ -432,7 +432,7 @@ pub fn render_change_row(
     checkbox_path: String,
 ) -> Div {
     let bg = if selected {
-        theme::hover_bg()
+        theme::accent()
     } else {
         gpui::transparent_black()
     };
@@ -442,7 +442,7 @@ pub fn render_change_row(
     let text_color = if selected {
         gpui::white().into()
     } else if !included {
-        theme::text_muted() // dim excluded files
+        theme::text_muted()
     } else {
         theme::text_main()
     };
@@ -867,7 +867,7 @@ fn kbd_badge(key: &str) -> Div {
 
 pub fn render_history_row(commit: &CommitInfo, selected: bool) -> Div {
     let bg = if selected {
-        accent_selection_bg()
+        theme::accent()
     } else {
         gpui::transparent_black()
     };
@@ -876,6 +876,12 @@ pub fn render_history_row(commit: &CommitInfo, selected: bool) -> Div {
         gpui::white().into()
     } else {
         theme::text_main()
+    };
+
+    let meta_color = if selected {
+        gpui::white().into()
+    } else {
+        theme::text_muted()
     };
 
     let meta = format!("{} \u{00b7} {}", commit.author_name, commit.date);
@@ -914,7 +920,7 @@ pub fn render_history_row(commit: &CommitInfo, selected: bool) -> Div {
         .child(
             div()
                 .text_size(z(11.0))
-                .text_color(theme::text_muted())
+                .text_color(meta_color)
                 .whitespace_nowrap()
                 .child(meta),
         )

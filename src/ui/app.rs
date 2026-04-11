@@ -1636,6 +1636,7 @@ impl Render for GitSparkApp {
         let left_column =
             v_flex()
                 .size_full()
+                .min_h_0()
                 .child(toolbar_left)
                 .child(if self.nav.show_repo_selector {
                     self.render_repo_selector_panel(cx).into_any_element()
@@ -1648,10 +1649,12 @@ impl Render for GitSparkApp {
         // Branch selector overlay lives inside the right column so it aligns naturally
         let right_column = div()
             .size_full()
+            .min_h_0()
             .relative()
             .child(
                 v_flex()
                     .size_full()
+                    .min_h_0()
                     .child(toolbar_right)
                     .child(self.render_workspace(cx.entity().clone(), cx)),
             )
@@ -1688,14 +1691,20 @@ impl Render for GitSparkApp {
                     .bg(theme::panel_bg()), // slightly lighter than bg for titlebar strip
             )
             .child(
-                h_resizable("main-panels")
+                div()
+                    .w_full()
+                    .flex_1()
+                    .min_h_0()
                     .child(
-                        resizable_panel()
-                            .size(px(260.0))
-                            .size_range(px(200.0)..px(400.0))
-                            .child(left_column),
-                    )
-                    .child(resizable_panel().child(right_column)),
+                        h_resizable("main-panels")
+                            .child(
+                                resizable_panel()
+                                    .size(px(260.0))
+                                    .size_range(px(200.0)..px(400.0))
+                                    .child(left_column),
+                            )
+                            .child(resizable_panel().child(right_column)),
+                    ),
             )
             .child(self.render_status_bar());
 
@@ -2843,7 +2852,7 @@ impl GitSparkApp {
                             .px(theme::z(10.0))
                             .items_center()
                             .bg(if is_selected {
-                                theme::hover_bg()
+                                theme::accent()
                             } else {
                                 gpui::transparent_black()
                             })
@@ -2855,7 +2864,7 @@ impl GitSparkApp {
                                 gpui::transparent_black()
                             })
                             .cursor_pointer()
-                            .hover(|s| s.bg(theme::hover_bg()))
+                            .hover(move |s| s.bg(if is_selected { theme::accent() } else { theme::list_hover_bg() }))
                             .on_click(move |_evt, _win, cx| {
                                 let path = path.clone();
                                 vh.update(cx, |app, cx| {
