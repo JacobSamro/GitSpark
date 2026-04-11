@@ -133,7 +133,7 @@ pub fn render_network_parts(
                         "spin",
                         Animation::new(Duration::from_secs(1)).repeat(),
                         |svg, delta| {
-                            svg.with_transformation(Transformation::rotate(percentage(delta * 100.0)))
+                            svg.with_transformation(Transformation::rotate(percentage(delta)))
                         },
                     ),
                 ).into_any_element()
@@ -180,7 +180,7 @@ pub fn render_network_parts(
 
     // Badges at the top level of main_area for vertical centering
     if let Some(b) = badges {
-        main_area = main_area.child(b);
+        main_area = main_area.child(b).pr(z(SECTION_INNER_PADDING));
     }
 
     let caret_bg = if show_dropdown {
@@ -189,8 +189,9 @@ pub fn render_network_parts(
         gpui::transparent_black()
     };
 
-    let caret_zone = h_flex()
+    let caret_zone = div()
         .id("network-caret")
+        .flex()
         .h_full()
         .flex_shrink_0()
         .px(z(8.0))

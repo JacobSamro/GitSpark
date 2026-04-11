@@ -1580,6 +1580,11 @@ impl Render for GitSparkApp {
                 Some(self.render_branch_selector_overlay(branch_filter_focused, cx))
             } else {
                 None
+            })
+            .children(if self.nav.show_network_dropdown {
+                Some(self.render_network_dropdown_overlay(cx))
+            } else {
+                None
             });
 
         // Apply zoom level
@@ -1654,8 +1659,8 @@ impl GitSparkApp {
             .and_then(|s| s.repo.remote_name.as_deref())
             .unwrap_or("origin");
         let is_in_flight = self.network.active_action.is_some();
-        let network_label = if is_in_flight {
-            network_action.pending_title(remote_name)
+        let network_label = if let Some(active) = self.network.active_action {
+            active.pending_title(remote_name)
         } else {
             network_action.title(remote_name)
         };
@@ -1730,11 +1735,6 @@ impl GitSparkApp {
             cx.notify();
         }));
 
-        let mut network_dropdown = div();
-        if self.nav.show_network_dropdown {
-            network_dropdown = self.render_network_dropdown(cx);
-        }
-
         let right = h_flex()
             .w_full()
             .h(theme::z(theme::TOOLBAR_HEIGHT))
@@ -1747,16 +1747,14 @@ impl GitSparkApp {
             .child(
                 div()
                     .flex_none()
-                    .w(px(300.0))
+                    .w(px(231.0))
                     .h_full()
-                    .relative()
                     .child(
                         h_flex()
                             .size_full()
                             .child(network_main)
                             .child(network_caret),
-                    )
-                    .child(network_dropdown),
+                    ),
             );
 
         (left, right)
@@ -3270,6 +3268,42 @@ impl GitSparkApp {
             )
     }
 
+    fn render_network_dropdown_overlay(&self, cx: &mut Context<Self>) -> Div {
+        let backdrop = div()
+            .id("network-dropdown-backdrop")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .on_click(cx.listener(|app, _evt, _win, cx| {
+                app.nav.show_network_dropdown = false;
+                cx.stop_propagation();
+                cx.notify();
+            }));
+
+        let panel = self.render_network_dropdown(cx)
+            .id("network-dropdown-panel")
+            .on_click(|_evt, _win, cx| cx.stop_propagation());
+
+        // Position using h_flex: spacer pushes panel to align under the network section
+        let positioned = h_flex()
+            .absolute()
+            .top(theme::z(theme::TOOLBAR_HEIGHT))
+            .left_0()
+            .w_full()
+            .child(div().flex_none().w(px(300.0))) // matches branch section width
+            .child(div().flex_none().w(px(1.0)))   // matches divider
+            .child(panel);
+
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .child(backdrop)
+            .child(positioned)
+    }
+
     fn render_network_dropdown(&self, cx: &mut Context<Self>) -> Div {
         let snapshot = self.repo.snapshot.as_ref();
         let remote_name = snapshot
@@ -3280,9 +3314,6 @@ impl GitSparkApp {
         let fetch_desc = format!("Fetch the latest changes from {remote_name}");
 
         v_flex()
-            .absolute()
-            .top(theme::z(theme::TOOLBAR_HEIGHT))
-            .right_0()
             .w(px(300.0))
             .bg(theme::panel_bg())
             .border_1()
@@ -3324,6 +3355,7 @@ impl GitSparkApp {
                             ),
                     )
                     .on_click(cx.listener(|app, _evt, _win, cx| {
+                        cx.stop_propagation();
                         app.nav.show_network_dropdown = false;
                         app.handle_toolbar_action(
                             ToolbarAction::RunNetworkAction(NetworkAction::Fetch),
