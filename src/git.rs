@@ -29,7 +29,7 @@ impl GitClient {
         // Use diff-tree to get raw list of changed files
         let output = self.run_git(
             &repo_path,
-            &["diff-tree", "--no-commit-id", "--name-only", "-r", &oid],
+            &["diff-tree", "--root", "--no-commit-id", "--name-only", "-r", &oid],
         )?;
         let files: Vec<String> = output
             .lines()
