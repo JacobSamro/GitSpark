@@ -53,6 +53,8 @@ pub(crate) enum AppEvent {
     AiCommitGenerated(Result<CommitSuggestion, String>),
     OpenRouterModelsLoaded(Result<Vec<RemoteModelOption>, String>),
     CommitDiffLoaded(String, Result<Vec<DiffEntry>, String>),
+    /// A single file's diff was refreshed (path, updated entry).
+    FileDiffRefreshed(String, Result<DiffEntry, String>),
     RepoOperationCompleted(Result<RepoSnapshot, String>, String, String),
     CommitDiffCopied(String, Result<String, String>),
 }
@@ -440,6 +442,15 @@ impl GitSparkApp {
                 AppEvent::CommitDiffLoaded(_, Err(err)) => {
                     self.messages.error_message = format!("Failed to load commit details: {err}");
                 }
+                AppEvent::FileDiffRefreshed(path, Ok(entry)) => {
+                    // Update the diff for this file in the current snapshot
+                    if let Some(snapshot) = &mut self.repo.snapshot {
+                        if let Some(existing) = snapshot.diffs.iter_mut().find(|d| d.path == path) {
+                            *existing = entry;
+                        }
+                    }
+                }
+                AppEvent::FileDiffRefreshed(_, Err(_)) => {}
                 AppEvent::RepoOperationCompleted(Ok(snapshot), _action_label, success_message) => {
                     self.adopt_snapshot(snapshot);
                     self.messages.status_message = success_message;
@@ -1005,6 +1016,20 @@ impl GitSparkApp {
         thread::spawn(move || {
             let res = git.get_commit_diff(&path, &oid).map_err(|e| e.to_string());
             let _ = tx.send(AppEvent::CommitDiffLoaded(oid, res));
+        });
+    }
+
+    /// Re-fetch the diff for a single file in the working directory.
+    pub fn refresh_file_diff(&mut self, file_path: String) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            return;
+        };
+        let tx = self.event_tx.clone();
+        let git = GitClient::new();
+        let fp = file_path.clone();
+        thread::spawn(move || {
+            let res = git.get_file_diff(&path, &fp).map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::FileDiffRefreshed(fp, res));
         });
     }
 
@@ -3614,7 +3639,6 @@ impl GitSparkApp {
             .bg(theme::panel_bg())
             .border_r_1()
             .border_color(theme::border())
-            .child(header)
             .child(filter_bar)
             .child(section_header)
             .child(repo_list)
@@ -4039,7 +4063,6 @@ impl GitSparkApp {
         v_flex()
             .size_full()
             .bg(theme::panel_bg())
-            .child(header)
             .child(tab_bar)
             .child(filter_bar)
             .child(branch_list)

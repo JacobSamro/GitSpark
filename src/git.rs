@@ -719,6 +719,16 @@ impl GitClient {
         Ok(branches)
     }
 
+    /// Build a diff for a single file path (used for on-click refresh).
+    pub fn get_file_diff(&self, repo_path: &Path, file_path: &str) -> Result<DiffEntry> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let change = ChangeEntry {
+            path: file_path.to_string(),
+            status: String::new(),
+        };
+        self.build_diff_entry(&repo_path, &change)
+    }
+
     fn build_diffs(&self, repo_path: &Path, changes: &[ChangeEntry]) -> Result<Vec<DiffEntry>> {
         changes
             .iter()

@@ -258,7 +258,8 @@ pub fn render_sidebar_interactive(
                                             .on_click(move |_evt, _win, cx| {
                                                 let path = path.clone();
                                                 click_view.update(cx, |app, cx| {
-                                                    app.selection.selected_change = Some(path);
+                                                    app.selection.selected_change = Some(path.clone());
+                                                    app.refresh_file_diff(path);
                                                     cx.notify();
                                                 });
                                             }),
