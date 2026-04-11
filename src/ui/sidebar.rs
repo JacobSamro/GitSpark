@@ -610,70 +610,79 @@ pub fn render_no_changes_state(
         );
 
         cards = cards.child(
-            v_flex()
+            h_flex()
                 .id("card-push")
                 .w_full()
-                .p(z(12.0))
-                .gap(z(6.0))
+                .p(z(16.0))
+                .gap(z(12.0))
+                .items_start()
                 .rounded(z(theme::CORNER_RADIUS))
                 .bg(theme::push_card_bg())
                 .border_1()
                 .border_color(theme::push_card_border())
-                // Title
+                // Left: text content
                 .child(
-                    div()
-                        .text_size(z(12.0))
-                        .text_color(theme::text_main())
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(push_title),
-                )
-                // Subtitle
-                .child(
-                    div()
-                        .text_size(z(11.0))
-                        .text_color(theme::push_card_text())
-                        .child(push_subtitle),
-                )
-                // Shortcut hint
-                .child(
-                    h_flex()
+                    v_flex()
+                        .flex_1()
+                        .min_w_0()
                         .gap(z(4.0))
-                        .items_center()
                         .child(
                             div()
-                                .text_size(z(11.0))
-                                .text_color(theme::push_card_text())
-                                .child("Always available in the toolbar or"),
+                                .text_size(z(14.0))
+                                .text_color(theme::text_main())
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(push_title),
                         )
-                        .child(kbd_badge("\u{2318}"))
-                        .child(kbd_badge("P")),
+                        .child(
+                            div()
+                                .text_size(z(13.0))
+                                .text_color(theme::text_main())
+                                .child(push_subtitle),
+                        )
+                        .child({
+                            let mut row = h_flex()
+                                .gap(z(4.0))
+                                .items_center()
+                                .flex_wrap()
+                                .child(
+                                    div()
+                                        .text_size(z(13.0))
+                                        .text_color(theme::push_card_text())
+                                        .child("Always available in the toolbar when there are local commits waiting to be pushed or"),
+                                );
+                            row = row.child(kbd_badge("\u{2318}"));
+                            row = row.child(kbd_badge("P"));
+                            row
+                        }),
                 )
-                // Action button
+                // Right: action button
                 .child(
-                    h_flex().justify_end().child(
-                        div()
-                            .id("push-btn")
-                            .px(z(12.0))
-                            .py(z(4.0))
-                            .rounded(z(theme::CORNER_RADIUS))
-                            .bg(theme::commit_button_bg())
-                            .text_size(z(12.0))
-                            .text_color(gpui::white())
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .cursor_pointer()
-                            .hover(|s| s.bg(theme::commit_button_hover_bg()))
-                            .child("Push origin")
-                            .on_click(move |_evt, _win, cx| {
-                                vh_push.update(cx, |app, cx| {
-                                    app.handle_toolbar_action(
-                                        crate::ui::app::ToolbarAction::RunNetworkAction(
-                                            crate::ui::domain_state::NetworkAction::Push,
-                                        ),
-                                        cx,
-                                    );
-                                });
-                            }),
-                    ),
+                    div()
+                        .flex_shrink_0()
+                        .child(
+                            div()
+                                .id("push-btn")
+                                .px(z(12.0))
+                                .py(z(2.0))
+                                .rounded(z(theme::CORNER_RADIUS))
+                                .bg(theme::commit_button_bg())
+                                .text_size(z(13.0))
+                                .text_color(gpui::white())
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .cursor_pointer()
+                                .hover(|s| s.bg(theme::commit_button_hover_bg()))
+                                .child("Push origin")
+                                .on_click(move |_evt, _win, cx| {
+                                    vh_push.update(cx, |app, cx| {
+                                        app.handle_toolbar_action(
+                                            crate::ui::app::ToolbarAction::RunNetworkAction(
+                                                crate::ui::domain_state::NetworkAction::Push,
+                                            ),
+                                            cx,
+                                        );
+                                    });
+                                }),
+                        ),
                 ),
         );
     }
@@ -746,17 +755,17 @@ pub fn render_no_changes_state(
                             // Header
                             .child(
                                 v_flex()
-                                    .gap(z(4.0))
+                                    .gap(z(6.0))
                                     .child(
                                         div()
-                                            .text_size(z(14.0))
+                                            .text_size(z(28.0))
                                             .text_color(theme::text_main())
-                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .font_weight(FontWeight::BOLD)
                                             .child("No local changes"),
                                     )
                                     .child(
                                         div()
-                                            .text_size(z(12.0))
+                                            .text_size(z(14.0))
                                             .text_color(theme::text_muted())
                                             .child("There are no uncommitted changes in this repository. Here are some friendly suggestions for what to do next."),
                                     ),
@@ -785,7 +794,7 @@ fn suggestion_card(
         .items_center()
         .child(
             div()
-                .text_size(z(11.0))
+                .text_size(z(13.0))
                 .text_color(theme::text_muted())
                 .child(shortcut_prefix.to_string()),
         );
@@ -793,41 +802,48 @@ fn suggestion_card(
         shortcut_row = shortcut_row.child(kbd_badge(key));
     }
 
-    v_flex()
+    h_flex()
         .w_full()
-        .p(z(12.0))
-        .gap(z(6.0))
+        .p(z(16.0))
+        .gap(z(12.0))
+        .items_center()
         .rounded(z(theme::CORNER_RADIUS))
         .border_1()
         .border_color(theme::border())
-        // Title
+        // Left: text content
+        .child(
+            v_flex()
+                .flex_1()
+                .gap(z(4.0))
+                .child(
+                    div()
+                        .text_size(z(14.0))
+                        .text_color(theme::text_main())
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(title.to_string()),
+                )
+                .child(shortcut_row),
+        )
+        // Right: action button
         .child(
             div()
-                .text_size(z(12.0))
-                .text_color(theme::text_main())
-                .font_weight(FontWeight::SEMIBOLD)
-                .child(title.to_string()),
-        )
-        // Shortcut hint
-        .child(shortcut_row)
-        // Action button — right-aligned
-        .child(
-            h_flex().justify_end().child(
-                div()
-                    .id(SharedString::from(id.to_string()))
-                    .px(z(12.0))
-                    .py(z(4.0))
-                    .rounded(z(theme::CORNER_RADIUS))
-                    .bg(theme::surface_bg())
-                    .border_1()
-                    .border_color(theme::border())
-                    .text_size(z(12.0))
-                    .text_color(theme::text_main())
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme::hover_bg()))
-                    .child(button_label.to_string())
-                    .on_click(on_click),
-            ),
+                .flex_shrink_0()
+                .child(
+                    div()
+                        .id(SharedString::from(id.to_string()))
+                        .px(z(12.0))
+                        .py(z(2.0))
+                        .rounded(z(theme::CORNER_RADIUS))
+                        .bg(theme::surface_bg())
+                        .border_1()
+                        .border_color(theme::border())
+                        .text_size(z(13.0))
+                        .text_color(theme::text_main())
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme::hover_bg()))
+                        .child(button_label.to_string())
+                        .on_click(on_click),
+                ),
         )
 }
 
