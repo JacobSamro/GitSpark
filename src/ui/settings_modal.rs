@@ -35,6 +35,14 @@ pub(crate) struct SettingsModalState {
     pub ai_system_prompt_cursor: usize,
     pub openrouter_model_filter_cursor: usize,
     pub show_model_picker: bool,
+    // Per-field selection anchors
+    pub git_user_name_selection: Option<usize>,
+    pub git_user_email_selection: Option<usize>,
+    pub git_default_branch_selection: Option<usize>,
+    pub ai_model_selection: Option<usize>,
+    pub ai_api_key_selection: Option<usize>,
+    pub ai_system_prompt_selection: Option<usize>,
+    pub openrouter_model_filter_selection: Option<usize>,
 }
 
 impl SettingsModalState {
@@ -50,6 +58,13 @@ impl SettingsModalState {
             ai_system_prompt_cursor: 0,
             openrouter_model_filter_cursor: 0,
             show_model_picker: false,
+            git_user_name_selection: None,
+            git_user_email_selection: None,
+            git_default_branch_selection: None,
+            ai_model_selection: None,
+            ai_api_key_selection: None,
+            ai_system_prompt_selection: None,
+            openrouter_model_filter_selection: None,
         }
     }
 }
@@ -924,8 +939,11 @@ fn render_text_input(
     multiline: bool,
     note: Option<&str>,
 ) -> impl IntoElement {
+    use crate::ui::text_field;
+
     let value = app.settings_field_value(field);
     let cursor = app.settings_field_cursor(field).min(value.len());
+    let selection = app.settings_field_selection(field);
     let focused = app.settings_field_focused(field, window);
 
     let display_value = if password && !focused {
@@ -934,52 +952,14 @@ fn render_text_input(
         value.to_string()
     };
 
-    let text = if display_value.is_empty() && !focused {
-        div()
-            .text_size(theme::z(12.0))
-            .text_color(theme::text_muted())
-            .child(placeholder.to_string())
-    } else if focused {
-        let before = display_value[..cursor].to_string();
-        let after = display_value[cursor..].to_string();
-        h_flex()
-            .items_start()
-            .w_full()
-            .child(
-                div()
-                    .text_size(theme::z(12.0))
-                    .text_color(theme::text_main())
-                    .child(before),
-            )
-            .child(
-                div()
-                    .w(px(1.0))
-                    .h(if multiline {
-                        theme::z(16.0)
-                    } else {
-                        theme::z(14.0)
-                    })
-                    .bg(theme::text_main())
-                    .flex_shrink_0(),
-            )
-            .child(
-                div()
-                    .text_size(theme::z(12.0))
-                    .text_color(theme::text_main())
-                    .child(after),
-            )
-    } else {
-        div()
-            .text_size(theme::z(12.0))
-            .text_color(theme::text_main())
-            .child(display_value)
-    };
-
-    let text_container = if multiline {
-        div().w_full()
-    } else {
-        div().w_full().truncate()
-    };
+    let text = text_field::render_text_content(
+        &display_value,
+        cursor,
+        selection,
+        focused,
+        placeholder,
+        multiline,
+    );
 
     let field_shell = div()
         .id(id)
@@ -987,9 +967,10 @@ fn render_text_input(
         .min_h(if multiline {
             theme::z(160.0)
         } else {
-            theme::z(42.0)
+            theme::z(36.0)
         })
-        .p(theme::z(12.0))
+        .px(theme::z(12.0))
+        .py(theme::z(8.0))
         .rounded(theme::z(theme::CORNER_RADIUS))
         .bg(theme::bg())
         .border_1()
@@ -999,7 +980,7 @@ fn render_text_input(
             theme::border()
         })
         .cursor_text()
-        .child(text_container.child(text))
+        .child(text)
         .on_click(cx.listener(move |app, _evt, window, cx| {
             app.activate_settings_field(field, window, cx);
         }));

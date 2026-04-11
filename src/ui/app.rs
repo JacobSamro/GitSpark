@@ -2449,6 +2449,18 @@ impl GitSparkApp {
         }
     }
 
+    pub(crate) fn settings_field_selection(&self, field: SettingsField) -> Option<usize> {
+        match field {
+            SettingsField::GitUserName => self.settings_modal.git_user_name_selection,
+            SettingsField::GitUserEmail => self.settings_modal.git_user_email_selection,
+            SettingsField::GitDefaultBranch => self.settings_modal.git_default_branch_selection,
+            SettingsField::AiModel => self.settings_modal.ai_model_selection,
+            SettingsField::AiApiKey => self.settings_modal.ai_api_key_selection,
+            SettingsField::AiSystemPrompt => self.settings_modal.ai_system_prompt_selection,
+            SettingsField::OpenRouterModelFilter => self.settings_modal.openrouter_model_filter_selection,
+        }
+    }
+
     pub(crate) fn settings_field_focused(&self, field: SettingsField, window: &Window) -> bool {
         self.settings_modal.focus.is_focused(window)
             && self.settings_modal.active_field == Some(field)
@@ -2485,63 +2497,82 @@ impl GitSparkApp {
 
         let multiline = matches!(field, SettingsField::AiSystemPrompt);
 
-        match field {
-            SettingsField::GitUserName => edit_string_field(
-                &mut self.repo.identity.user_name,
-                &mut self.settings_modal.git_user_name_cursor,
-                multiline,
-                event,
-                cx,
-            ),
-            SettingsField::GitUserEmail => edit_string_field(
-                &mut self.repo.identity.user_email,
-                &mut self.settings_modal.git_user_email_cursor,
-                multiline,
-                event,
-                cx,
-            ),
-            SettingsField::GitDefaultBranch => {
-                let value = self
-                    .repo
-                    .identity
-                    .default_branch
-                    .get_or_insert_with(String::new);
-                edit_string_field(
-                    value,
-                    &mut self.settings_modal.git_default_branch_cursor,
-                    multiline,
-                    event,
-                    cx,
-                );
+        // Get mutable references to the value, cursor, and selection for the active field
+        let handled = match field {
+            SettingsField::GitUserName => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.settings_modal.git_user_name_cursor,
+                    selection: self.settings_modal.git_user_name_selection,
+                };
+                let h = crate::ui::text_field::handle_text_key(&mut self.repo.identity.user_name, &mut state, multiline, event, cx);
+                self.settings_modal.git_user_name_cursor = state.cursor;
+                self.settings_modal.git_user_name_selection = state.selection;
+                h
             }
-            SettingsField::AiModel => edit_string_field(
-                &mut self.settings.ai.model,
-                &mut self.settings_modal.ai_model_cursor,
-                multiline,
-                event,
-                cx,
-            ),
-            SettingsField::AiApiKey => edit_string_field(
-                &mut self.settings.ai.api_key,
-                &mut self.settings_modal.ai_api_key_cursor,
-                multiline,
-                event,
-                cx,
-            ),
-            SettingsField::AiSystemPrompt => edit_string_field(
-                &mut self.settings.ai.system_prompt,
-                &mut self.settings_modal.ai_system_prompt_cursor,
-                multiline,
-                event,
-                cx,
-            ),
-            SettingsField::OpenRouterModelFilter => edit_string_field(
-                &mut self.filters.openrouter_model_filter,
-                &mut self.settings_modal.openrouter_model_filter_cursor,
-                multiline,
-                event,
-                cx,
-            ),
+            SettingsField::GitUserEmail => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.settings_modal.git_user_email_cursor,
+                    selection: self.settings_modal.git_user_email_selection,
+                };
+                let h = crate::ui::text_field::handle_text_key(&mut self.repo.identity.user_email, &mut state, multiline, event, cx);
+                self.settings_modal.git_user_email_cursor = state.cursor;
+                self.settings_modal.git_user_email_selection = state.selection;
+                h
+            }
+            SettingsField::GitDefaultBranch => {
+                let value = self.repo.identity.default_branch.get_or_insert_with(String::new);
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.settings_modal.git_default_branch_cursor,
+                    selection: self.settings_modal.git_default_branch_selection,
+                };
+                let h = crate::ui::text_field::handle_text_key(value, &mut state, multiline, event, cx);
+                self.settings_modal.git_default_branch_cursor = state.cursor;
+                self.settings_modal.git_default_branch_selection = state.selection;
+                h
+            }
+            SettingsField::AiModel => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.settings_modal.ai_model_cursor,
+                    selection: self.settings_modal.ai_model_selection,
+                };
+                let h = crate::ui::text_field::handle_text_key(&mut self.settings.ai.model, &mut state, multiline, event, cx);
+                self.settings_modal.ai_model_cursor = state.cursor;
+                self.settings_modal.ai_model_selection = state.selection;
+                h
+            }
+            SettingsField::AiApiKey => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.settings_modal.ai_api_key_cursor,
+                    selection: self.settings_modal.ai_api_key_selection,
+                };
+                let h = crate::ui::text_field::handle_text_key(&mut self.settings.ai.api_key, &mut state, multiline, event, cx);
+                self.settings_modal.ai_api_key_cursor = state.cursor;
+                self.settings_modal.ai_api_key_selection = state.selection;
+                h
+            }
+            SettingsField::AiSystemPrompt => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.settings_modal.ai_system_prompt_cursor,
+                    selection: self.settings_modal.ai_system_prompt_selection,
+                };
+                let h = crate::ui::text_field::handle_text_key(&mut self.settings.ai.system_prompt, &mut state, multiline, event, cx);
+                self.settings_modal.ai_system_prompt_cursor = state.cursor;
+                self.settings_modal.ai_system_prompt_selection = state.selection;
+                h
+            }
+            SettingsField::OpenRouterModelFilter => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.settings_modal.openrouter_model_filter_cursor,
+                    selection: self.settings_modal.openrouter_model_filter_selection,
+                };
+                let h = crate::ui::text_field::handle_text_key(&mut self.filters.openrouter_model_filter, &mut state, multiline, event, cx);
+                self.settings_modal.openrouter_model_filter_cursor = state.cursor;
+                self.settings_modal.openrouter_model_filter_selection = state.selection;
+                h
+            }
+        };
+        if handled {
+            cx.notify();
         }
     }
 
