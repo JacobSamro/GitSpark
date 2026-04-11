@@ -169,6 +169,9 @@ pub struct AppSettings {
     pub ai: AiSettings,
     #[serde(default)]
     pub window_size: WindowSize,
+    /// Default branch name for new repos (persisted locally).
+    #[serde(default)]
+    pub default_branch: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -177,6 +180,7 @@ impl Default for AppSettings {
             recent_repos: Vec::new(),
             ai: AiSettings::default(),
             window_size: WindowSize::default(),
+            default_branch: None,
         }
     }
 }

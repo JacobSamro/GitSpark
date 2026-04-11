@@ -872,7 +872,9 @@ impl GitClient {
     }
 
     fn read_optional_config(&self, repo_path: &Path, key: &str) -> Result<String> {
-        match self.run_git(repo_path, &["config", "--local", "--get", key]) {
+        // Read from all sources (local > global > system) so user.name/email from
+        // global config are shown when not overridden locally.
+        match self.run_git(repo_path, &["config", "--get", key]) {
             Ok(value) => Ok(value.trim().to_string()),
             Err(error) if is_config_missing(&error) => Ok(String::new()),
             Err(error) => Err(error).with_context(|| format!("failed reading config '{key}'")),

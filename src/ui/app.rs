@@ -998,6 +998,9 @@ impl GitSparkApp {
 
         match self.git.write_identity(&path, &self.repo.identity) {
             Ok(()) => {
+                // Also persist default branch in app settings
+                self.settings.default_branch = self.repo.identity.default_branch.clone();
+                self.persist_settings();
                 self.messages.status_message = "Git config saved.".to_string();
                 self.messages.error_message.clear();
             }
@@ -1009,7 +1012,11 @@ impl GitSparkApp {
 
     fn load_identity(&mut self, path: &Path) {
         match self.git.read_identity(path) {
-            Ok(identity) => {
+            Ok(mut identity) => {
+                // Fall back to app settings default branch if git config doesn't have one
+                if identity.default_branch.is_none() {
+                    identity.default_branch = self.settings.default_branch.clone();
+                }
                 self.repo.identity = identity;
             }
             Err(err) => {
