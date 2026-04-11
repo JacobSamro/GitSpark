@@ -3464,7 +3464,7 @@ impl GitSparkApp {
             )
             // Add button
             .child(
-                div()
+                h_flex()
                     .id("repo-add-btn")
                     .flex_shrink_0()
                     .h(px(28.0))
@@ -3824,7 +3824,7 @@ impl GitSparkApp {
                     .child(text_child)
             })
             .child(
-                div()
+                h_flex()
                     .id("branch-new-btn")
                     .flex_shrink_0()
                     .h(px(28.0))
