@@ -727,40 +727,44 @@ pub fn render_no_changes_state(
         },
     ));
 
-    // Outer wrapper: scroll the whole thing, content at top, max 600px card width
-    div().flex_1().items_center().child(
+    // Outer wrapper: full-size, scrollable, cards centered at max 600px
+    div().size_full().child(
         div()
-        .id("no-changes-scroll")
-        .flex_1()
-        .min_h_0()
-        .max_w(px(600.0))
-        .overflow_y_scrollbar()
-        .child(
-            v_flex()
-                .w_full()
-                .p(z(20.0))
-                .gap(z(16.0))
-                // Header
-                .child(
-                    v_flex()
-                        .gap(z(4.0))
-                        .child(
-                            div()
-                                .text_size(z(14.0))
-                                .text_color(theme::text_main())
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child("No local changes"),
-                        )
-                        .child(
-                            div()
-                                .text_size(z(12.0))
-                                .text_color(theme::text_muted())
-                                .child("There are no uncommitted changes in this repository. Here are some friendly suggestions for what to do next."),
-                        ),
-                )
-                // Cards
-                .child(cards),
-        ),
+            .id("no-changes-scroll")
+            .size_full()
+            .min_h_0()
+            .overflow_y_scrollbar()
+            .child(
+                h_flex()
+                    .w_full()
+                    .justify_center()
+                    .child(
+                        v_flex()
+                            .w(px(600.0))
+                            .p(z(20.0))
+                            .gap(z(16.0))
+                            // Header
+                            .child(
+                                v_flex()
+                                    .gap(z(4.0))
+                                    .child(
+                                        div()
+                                            .text_size(z(14.0))
+                                            .text_color(theme::text_main())
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .child("No local changes"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(z(12.0))
+                                            .text_color(theme::text_muted())
+                                            .child("There are no uncommitted changes in this repository. Here are some friendly suggestions for what to do next."),
+                                    ),
+                            )
+                            // Cards
+                            .child(cards),
+                    ),
+            ),
     )
 }
 
