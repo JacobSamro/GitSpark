@@ -1,3 +1,4 @@
+use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::divider::Divider;
@@ -166,21 +167,24 @@ pub(crate) fn render_settings_modal(
         .rounded(theme::z(theme::CORNER_RADIUS))
         .overflow_hidden()
         .child(render_header(cx))
+        .child(render_nav(app, cx))
         .child(Divider::horizontal().color(theme::border()))
         .child(
-            h_flex()
+            div()
                 .flex_1()
                 .overflow_hidden()
-                .child(render_nav(app, cx))
-                .child(Divider::vertical().color(theme::border()).h_full())
                 .child(
-                    div().flex_1().overflow_y_scrollbar().child(
-                        v_flex()
-                            .w_full()
-                            .p(theme::z(24.0))
-                            .gap(theme::z(18.0))
-                            .child(content),
-                    ),
+                    div()
+                        .id("settings-content-scroll")
+                        .size_full()
+                        .overflow_y_scrollbar()
+                        .child(
+                            v_flex()
+                                .w_full()
+                                .p(theme::z(24.0))
+                                .gap(theme::z(18.0))
+                                .child(content),
+                        ),
                 ),
         )
         .child(Divider::horizontal().color(theme::border()))
@@ -279,87 +283,62 @@ fn render_header(cx: &mut Context<GitSparkApp>) -> impl IntoElement {
 }
 
 fn render_nav(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElement {
-    v_flex()
-        .w(theme::z(240.0))
-        .h_full()
-        .p(theme::z(18.0))
-        .gap(theme::z(10.0))
-        .child(render_nav_radio(
-            "settings-nav-git",
-            "Git",
-            "Identity and pull behavior",
-            app.nav.settings_section == SettingsSection::Git,
-            SettingsSection::Git,
-            cx,
-        ))
-        .child(render_nav_radio(
-            "settings-nav-ai",
-            "AI Commit",
-            "Provider, model, and prompt",
-            app.nav.settings_section == SettingsSection::Ai,
-            SettingsSection::Ai,
-            cx,
-        ))
-        .child(render_nav_radio(
-            "settings-nav-appearance",
-            "Appearance",
-            "Theme and visual preferences",
-            app.nav.settings_section == SettingsSection::Appearance,
-            SettingsSection::Appearance,
-            cx,
-        ))
-        .child(render_nav_radio(
-            "settings-nav-integrations",
-            "Integrations",
-            "External editor and shell",
-            app.nav.settings_section == SettingsSection::Integrations,
-            SettingsSection::Integrations,
-            cx,
-        ))
-}
+    let sections = [
+        (SettingsSection::Git, "Git"),
+        (SettingsSection::Ai, "AI Commit"),
+        (SettingsSection::Appearance, "Appearance"),
+        (SettingsSection::Integrations, "Integrations"),
+    ];
 
-fn render_nav_radio(
-    id: &'static str,
-    label: &'static str,
-    description: &'static str,
-    selected: bool,
-    section: SettingsSection,
-    cx: &mut Context<GitSparkApp>,
-) -> impl IntoElement {
-    Radio::new(id)
-        .checked(selected)
-        .label(label)
-        .on_click(cx.listener(move |app, _checked: &bool, window, cx| {
-            app.nav.settings_section = section;
-            let field = if section == SettingsSection::Ai
-                && app.settings.ai.provider == AiProvider::OpenRouter
-            {
-                SettingsField::OpenRouterModelFilter
-            } else {
-                default_settings_field(section)
-            };
-            app.activate_settings_field(field, window, cx);
-        }))
+    let mut row = h_flex()
         .w_full()
-        .p(theme::z(12.0))
-        .rounded(theme::z(theme::CORNER_RADIUS))
-        .border_1()
-        .border_color(if selected {
-            theme::accent()
-        } else {
-            theme::border()
-        })
-        .bg(if selected {
-            theme::surface_bg()
-        } else {
-            theme::surface_bg_muted()
-        })
-        .child(
-            div()
-                .text_size(theme::z(11.0))
-                .text_color(theme::text_muted())
-                .child(description),
-        )
+        .flex_shrink_0()
+        .border_b_1()
+        .border_color(theme::border());
+
+    for (section, label) in sections {
+        let is_active = app.nav.settings_section == section;
+        row = row.child(
+            h_flex()
+                .id(SharedString::from(format!("settings-tab-{label}")))
+                .flex_1()
+                .h(theme::z(36.0))
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .border_b_2()
+                .border_color(if is_active {
+                    theme::accent()
+                } else {
+                    gpui::transparent_black()
+                })
+                .hover(|s| s.bg(theme::hover_bg()))
+                .child(
+                    div()
+                        .text_size(theme::z(theme::FONT_SIZE))
+                        .text_color(if is_active {
+                            theme::text_main()
+                        } else {
+                            theme::text_muted()
+                        })
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(label),
+                )
+                .on_click(cx.listener(move |app, _evt, window, cx| {
+                    app.nav.settings_section = section;
+                    let field = if section == SettingsSection::Ai
+                        && app.settings.ai.provider == AiProvider::OpenRouter
+                    {
+                        SettingsField::OpenRouterModelFilter
+                    } else {
+                        default_settings_field(section)
+                    };
+                    app.activate_settings_field(field, window, cx);
+                })),
+        );
+    }
+
+    row
 }
 
 fn render_git_section(
@@ -708,16 +687,15 @@ fn render_openrouter_models(
         }
     };
 
-    v_flex().w_full().gap(theme::z(8.0)).child(
-        div()
-            .w_full()
-            .p(theme::z(14.0))
-            .rounded(theme::z(theme::CORNER_RADIUS))
-            .border_1()
-            .border_color(theme::border())
-            .bg(theme::surface_bg_muted())
-            .child(body),
-    )
+    v_flex()
+        .w_full()
+        .gap(theme::z(8.0))
+        .rounded(theme::z(theme::CORNER_RADIUS))
+        .border_1()
+        .border_color(theme::border())
+        .bg(theme::surface_bg_muted())
+        .p(theme::z(8.0))
+        .child(body)
 }
 
 fn render_model_option(
@@ -727,35 +705,87 @@ fn render_model_option(
 ) -> impl IntoElement {
     let selected = model.id == selected_model;
     let model_id = model.id.clone();
-    Radio::new(SharedString::from(format!("settings-model-{}", model.id)))
-        .checked(selected)
-        .label(truncate_single_line(&model.name, 48))
-        .on_click(move |_checked: &bool, _window, cx| {
+
+    h_flex()
+        .id(SharedString::from(format!("settings-model-{}", model.id)))
+        .w_full()
+        .px(theme::z(10.0))
+        .py(theme::z(6.0))
+        .gap(theme::z(8.0))
+        .items_center()
+        .cursor_pointer()
+        .rounded(theme::z(theme::CORNER_RADIUS_SM))
+        .bg(if selected {
+            theme::accent()
+        } else {
+            gpui::transparent_black()
+        })
+        .hover(move |s| {
+            s.bg(if selected {
+                theme::accent()
+            } else {
+                theme::list_hover_bg()
+            })
+        })
+        .on_click(move |_evt, _win, cx| {
             let model_id = model_id.clone();
             view.update(cx, |app, cx| {
                 app.handle_settings_action(SettingsAction::SelectOpenRouterModel(model_id), cx);
             });
         })
-        .w_full()
-        .p(theme::z(10.0))
-        .rounded(theme::z(theme::CORNER_RADIUS_SM))
-        .border_1()
-        .border_color(if selected {
-            theme::accent()
-        } else {
-            theme::border()
-        })
-        .bg(if selected {
-            theme::surface_bg()
-        } else {
-            theme::panel_bg()
-        })
+        // Radio dot
         .child(
             div()
-                .text_size(theme::z(11.0))
-                .text_color(theme::text_muted())
-                .truncate()
-                .child(model.id.clone()),
+                .w(theme::z(14.0))
+                .h(theme::z(14.0))
+                .rounded_full()
+                .border_1()
+                .border_color(if selected {
+                    gpui::white()
+                } else {
+                    theme::text_muted()
+                })
+                .flex_shrink_0()
+                .items_center()
+                .justify_center()
+                .when(selected, |el| {
+                    el.child(
+                        div()
+                            .w(theme::z(8.0))
+                            .h(theme::z(8.0))
+                            .rounded_full()
+                            .bg(gpui::white()),
+                    )
+                }),
+        )
+        // Model name + id
+        .child(
+            v_flex()
+                .flex_1()
+                .overflow_hidden()
+                .child(
+                    div()
+                        .text_size(theme::z(13.0))
+                        .text_color(if selected {
+                            gpui::white().into()
+                        } else {
+                            theme::text_main()
+                        })
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .truncate()
+                        .child(model.name.clone()),
+                )
+                .child(
+                    div()
+                        .text_size(theme::z(11.0))
+                        .text_color(if selected {
+                            theme::with_alpha(gpui::white().into(), 0.7)
+                        } else {
+                            theme::text_muted()
+                        })
+                        .truncate()
+                        .child(model.id.clone()),
+                ),
         )
 }
 
