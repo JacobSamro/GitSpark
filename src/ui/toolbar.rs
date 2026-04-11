@@ -104,10 +104,10 @@ pub fn render_network_parts(
     let badges: Option<Div> = if ahead > 0 || behind > 0 {
         let mut row = h_flex().gap(z(4.0));
         if ahead > 0 {
-            row = row.child(count_badge(&format!("{ahead}\u{2191}")));
+            row = row.child(count_badge(&format!("{ahead} \u{2191}")));
         }
         if behind > 0 {
-            row = row.child(count_badge(&format!("{behind}\u{2193}")));
+            row = row.child(count_badge(&format!("{behind} \u{2193}")));
         }
         Some(row)
     } else {
