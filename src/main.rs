@@ -101,6 +101,7 @@ fn main() {
                 window_bounds: Some(window_bounds),
                 display_id: restore_display_id,
                 titlebar: Some(platform_titlebar_options()),
+                window_min_size: Some(size(px(720.0), px(480.0))),
                 ..Default::default()
             },
             |_window, cx| cx.new(|cx| GitSparkApp::new(settings.clone(), cx)),
