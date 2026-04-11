@@ -25,6 +25,12 @@ pub struct DiffEntry {
     pub path: String,
     pub diff: String,
     pub is_binary: bool,
+    /// The original diff text before any expansion (for collapse).
+    #[serde(skip)]
+    pub original_diff: Option<String>,
+    /// The file contents (new/working tree version) for in-memory expansion.
+    #[serde(skip)]
+    pub file_contents: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

@@ -1,15 +1,281 @@
 use gpui::*;
+use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
 use gpui_component::{h_flex, v_flex};
 
 use crate::models::DiffEntry;
+use crate::ui::app::{DiffExpandDirection, GitSparkApp};
 use gpui_component::scroll::ScrollableElement;
 
 use crate::ui::theme;
 use crate::ui::theme::z;
 
-// --- Intra-line character range ---
+// --- Constants ---
 
 const MAX_INTRA_LINE_CHARS: usize = 1024;
+const EXPAND_STEP: usize = 20;
+
+// --- Hunk boundary info for expansion ---
+
+#[derive(Clone, Debug)]
+struct HunkBounds {
+    /// Line number where this hunk starts in the new file (1-based).
+    new_start: usize,
+    /// Number of lines in this hunk in the new file.
+    new_count: usize,
+    /// Line number where this hunk starts in the old file (1-based).
+    old_start: usize,
+    /// Number of lines in this hunk in the old file.
+    old_count: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ExpansionType {
+    None,
+    Up,
+    Down,
+    Both,
+    Short, // gap <= EXPAND_STEP lines, single unfold button
+}
+
+/// Determine expansion type for each hunk based on boundaries and file length.
+fn compute_expansion_types(hunks: &[HunkBounds], file_line_count: usize) -> Vec<ExpansionType> {
+    if hunks.is_empty() {
+        return vec![];
+    }
+    let mut types = Vec::with_capacity(hunks.len());
+
+    for (i, hunk) in hunks.iter().enumerate() {
+        if i == 0 {
+            // First hunk: can expand up if there's content above
+            if hunk.new_start > 1 && hunk.old_start > 1 {
+                types.push(ExpansionType::Up);
+            } else {
+                types.push(ExpansionType::None);
+            }
+        } else {
+            // Distance from end of previous hunk to start of this hunk
+            let prev = &hunks[i - 1];
+            let prev_end = prev.new_start + prev.new_count;
+            let gap = hunk.new_start.saturating_sub(prev_end);
+            if gap == 0 {
+                types.push(ExpansionType::None);
+            } else if gap <= EXPAND_STEP {
+                types.push(ExpansionType::Short);
+            } else {
+                types.push(ExpansionType::Both);
+            }
+        }
+    }
+
+    types
+}
+
+
+/// Expand a diff in-memory by inserting context lines from `file_lines`.
+/// Returns new diff text with expanded context.
+///
+/// `file_lines` is 0-indexed; hunk line numbers are 1-based.
+pub fn expand_diff_in_memory(
+    diff_text: &str,
+    file_lines: &[String],
+    hunk_index: usize,
+    direction: DiffExpandDirection,
+) -> String {
+    let diff_lines: Vec<&str> = diff_text.lines().collect();
+    let total_file = file_lines.len();
+
+    // Collect (diff_line_index, bounds) for each hunk header
+    let mut hunks: Vec<(usize, HunkBounds)> = Vec::new();
+    for (i, line) in diff_lines.iter().enumerate() {
+        if let Some(b) = parse_hunk_header(line) {
+            hunks.push((i, b));
+        }
+    }
+
+    if hunks.is_empty() || total_file == 0 {
+        return diff_text.to_string();
+    }
+
+    let target = hunk_index.min(hunks.len().saturating_sub(1));
+
+    // Copy diff header lines (before first hunk)
+    let first_hunk_line = hunks[0].0;
+    let mut out: Vec<String> = diff_lines[..first_hunk_line]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+    for (hi, (dl, bounds)) in hunks.iter().enumerate() {
+        let next_dl = hunks
+            .get(hi + 1)
+            .map(|(i, _)| *i)
+            .unwrap_or(diff_lines.len());
+
+        if hi != target {
+            // Copy hunk as-is
+            for li in *dl..next_dl {
+                out.push(diff_lines[li].to_string());
+            }
+            continue;
+        }
+
+        // --- Expand this hunk ---
+        // file_lines is 0-based; new_start is 1-based.
+        // The first line of this hunk in the file is at index (new_start - 1).
+        // The last line of this hunk's content ends at index (new_start - 1 + new_count - 1).
+        // Context lines ABOVE the hunk: file indices 0..new_start-1 (before the hunk).
+        // Context lines BELOW the hunk: file indices (new_start-1+new_count)..total_file.
+
+        let hunk_file_start = bounds.new_start.saturating_sub(1); // 0-based first line of hunk
+        let hunk_file_end = hunk_file_start + bounds.new_count; // 0-based exclusive end
+
+        match direction {
+            DiffExpandDirection::Up => {
+                let step = EXPAND_STEP.min(hunk_file_start);
+                let ctx_start = hunk_file_start - step; // 0-based
+
+                // Updated header
+                out.push(format!(
+                    "@@ -{},{} +{},{} @@",
+                    bounds.old_start.saturating_sub(step),
+                    bounds.old_count + step,
+                    bounds.new_start.saturating_sub(step),
+                    bounds.new_count + step,
+                ));
+
+                // New context lines from file (above)
+                for fi in ctx_start..hunk_file_start {
+                    out.push(format!(" {}", file_lines[fi]));
+                }
+
+                // Original hunk content lines (skip header)
+                for li in (*dl + 1)..next_dl {
+                    out.push(diff_lines[li].to_string());
+                }
+            }
+            DiffExpandDirection::Down => {
+                let room = total_file.saturating_sub(hunk_file_end);
+                let step = EXPAND_STEP.min(room);
+
+                // Updated header
+                out.push(format!(
+                    "@@ -{},{} +{},{} @@",
+                    bounds.old_start,
+                    bounds.old_count + step,
+                    bounds.new_start,
+                    bounds.new_count + step,
+                ));
+
+                // Original hunk content lines (skip header)
+                for li in (*dl + 1)..next_dl {
+                    out.push(diff_lines[li].to_string());
+                }
+
+                // New context lines from file (below)
+                for fi in hunk_file_end..(hunk_file_end + step) {
+                    out.push(format!(" {}", file_lines[fi]));
+                }
+            }
+            DiffExpandDirection::All => {
+                let above = hunk_file_start;
+                let below = total_file.saturating_sub(hunk_file_end);
+
+                out.push(format!(
+                    "@@ -{},{} +{},{} @@",
+                    1,
+                    bounds.old_count + above + below,
+                    1,
+                    bounds.new_count + above + below,
+                ));
+
+                // All lines above
+                for fi in 0..hunk_file_start {
+                    out.push(format!(" {}", file_lines[fi]));
+                }
+
+                // Original hunk content (skip header)
+                for li in (*dl + 1)..next_dl {
+                    out.push(diff_lines[li].to_string());
+                }
+
+                // All lines below
+                for fi in hunk_file_end..total_file {
+                    out.push(format!(" {}", file_lines[fi]));
+                }
+            }
+            DiffExpandDirection::MergeWithPrevious => {
+                // Fill the gap between the previous hunk and this one.
+                // Find where the previous hunk ends in the file.
+                if hi > 0 {
+                    let prev_bounds = &hunks[hi - 1].1;
+                    let prev_end = prev_bounds.new_start.saturating_sub(1) + prev_bounds.new_count;
+                    let gap_lines = hunk_file_start.saturating_sub(prev_end);
+
+                    // Remove the last hunk header we pushed (prev hunk's header)
+                    // and merge: extend prev hunk to include the gap + this hunk.
+                    // Instead: don't emit a new header for this hunk, just add gap lines
+                    // to the previous hunk's output and then this hunk's content.
+
+                    // Insert gap context lines (these go at the end of prev hunk's output)
+                    for fi in prev_end..hunk_file_start {
+                        if fi < total_file {
+                            out.push(format!(" {}", file_lines[fi]));
+                        }
+                    }
+
+                    // Now update the previous hunk's header in `out` to include the gap + this hunk
+                    // Find the last @@ line in out and update its counts
+                    if let Some(last_hunk_pos) = out.iter().rposition(|l| l.starts_with("@@ ")) {
+                        let new_old_count = prev_bounds.old_count + gap_lines + bounds.old_count;
+                        let new_new_count = prev_bounds.new_count + gap_lines + bounds.new_count;
+                        out[last_hunk_pos] = format!(
+                            "@@ -{},{} +{},{} @@",
+                            prev_bounds.old_start, new_old_count,
+                            prev_bounds.new_start, new_new_count,
+                        );
+                    }
+
+                    // Append this hunk's content (skip its header)
+                    for li in (*dl + 1)..next_dl {
+                        out.push(diff_lines[li].to_string());
+                    }
+                } else {
+                    // No previous hunk, just copy as-is
+                    for li in *dl..next_dl {
+                        out.push(diff_lines[li].to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    out.join("\n")
+}
+
+fn parse_hunk_header(line: &str) -> Option<HunkBounds> {
+    let rest = line.strip_prefix("@@ -")?;
+    let parts: Vec<&str> = rest.splitn(2, " +").collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let old_parts: Vec<&str> = parts[0].split(',').collect();
+    let old_start: usize = old_parts.first()?.parse().ok()?;
+    let old_count: usize = old_parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(1);
+
+    let new_part = parts[1].split(' ').next()?;
+    let new_parts: Vec<&str> = new_part.split(',').collect();
+    let new_start: usize = new_parts.first()?.parse().ok()?;
+    let new_count: usize = new_parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(1);
+
+    Some(HunkBounds {
+        new_start,
+        new_count,
+        old_start,
+        old_count,
+    })
+}
+
+// --- Intra-line character range ---
 
 #[derive(Clone, Debug)]
 struct CharRange {
@@ -410,6 +676,247 @@ fn render_diff_line(line: &DiffLine) -> Div {
     row
 }
 
+/// Render a hunk header row. The entire row is clickable to expand.
+/// For Both type, the row is split into two clickable halves.
+fn render_hunk_header(
+    line: &DiffLine,
+    hunk_index: usize,
+    expansion_type: ExpansionType,
+    file_path: &str,
+    view: Option<&Entity<GitSparkApp>>,
+    has_original_diff: bool,
+) -> AnyElement {
+    let row_h = z(theme::DIFF_ROW_HEIGHT);
+
+    // Icon in the gutter area
+    let icon_el = |icon_path: &'static str| -> Div {
+        h_flex()
+            .w(z(theme::DIFF_LINE_NUM_WIDTH * 2.0))
+            .flex_shrink_0()
+            .items_center()
+            .justify_center()
+            .child(
+                gpui::svg()
+                    .path(icon_path)
+                    .size(z(16.0))
+                    .text_color(theme::text_muted()),
+            )
+    };
+
+    // Hunk text (@@...@@) for the content area
+    let hunk_text = div()
+        .flex_1()
+        .pl(z(5.0))
+        .text_color(theme::text_muted())
+        .child(line.content.clone());
+
+    let hover_blue = |s: StyleRefinement| s.bg(gpui::rgb(0x0969da));
+
+    if let Some(vh) = view {
+        let content = line.content.clone();
+
+        match expansion_type {
+            ExpansionType::Up => {
+                let vh_click = vh.clone();
+                let fp = file_path.to_string();
+                let hi = hunk_index;
+                return h_flex()
+                    .id(SharedString::from(format!("hunk-row-{hunk_index}")))
+                    .w_full()
+                    .h(row_h)
+                    .flex_shrink_0()
+                    .font_family("monospace")
+                    .text_size(z(12.0))
+                    .bg(theme::diff_hunk_bg())
+                    .cursor_pointer()
+                    .hover(hover_blue)
+                    .child(icon_el("icons/chevrons-up.svg"))
+                    .child(hunk_text)
+                    .on_click(move |_evt, _win, cx| {
+                        eprintln!("[HUNK-UP] clicked hunk={hi}");
+                        let fp = fp.clone();
+                        vh_click.update(cx, |app, cx| {
+                            app.expand_diff_context(fp, hi, DiffExpandDirection::Up);
+                            cx.notify();
+                        });
+                    })
+                    .into_any_element();
+            }
+            ExpansionType::Down => {
+                let vh_click = vh.clone();
+                let fp = file_path.to_string();
+                return h_flex()
+                    .id(SharedString::from(format!("hunk-row-{hunk_index}")))
+                    .w_full()
+                    .h(row_h)
+                    .flex_shrink_0()
+                    .font_family("monospace")
+                    .text_size(z(12.0))
+                    .bg(theme::diff_hunk_bg())
+                    .cursor_pointer()
+                    .hover(hover_blue)
+                    .child(icon_el("icons/chevrons-down.svg"))
+                    .child(hunk_text)
+                    .on_click(move |_evt, _win, cx| {
+                        let fp = fp.clone();
+                        vh_click.update(cx, |app, cx| {
+                            app.expand_diff_context(fp, hunk_index, DiffExpandDirection::Down);
+                            cx.notify();
+                        });
+                    })
+                    .into_any_element();
+            }
+            ExpansionType::Both => {
+                // Top row: expand UP (fill gap above this hunk, shows vv icon)
+                // Bottom row: expand DOWN (add context below, shows ^^ icon + @@ text)
+                let vh_up = vh.clone();
+                let vh_down = vh.clone();
+                let fp_up = file_path.to_string();
+                let fp_down = file_path.to_string();
+
+                // Top row expands the PREVIOUS hunk downward (fills gap from above)
+                let prev_hunk = hunk_index.saturating_sub(1);
+                let expand_up_row = h_flex()
+                    .id(SharedString::from(format!("hunk-up-gap-{hunk_index}")))
+                    .w_full()
+                    .h(row_h)
+                    .flex_shrink_0()
+                    .bg(theme::diff_hunk_bg())
+                    .cursor_pointer()
+                    .hover(hover_blue)
+                    .child(icon_el("icons/chevrons-down.svg"))
+                    .child(
+                        div().flex_1().pl(z(5.0))
+                            .font_family("monospace")
+                            .text_size(z(12.0))
+                            .text_color(theme::text_muted()),
+                    )
+                    .on_click(move |_evt, _win, cx| {
+                        let fp = fp_up.clone();
+                        vh_up.update(cx, |app, cx| {
+                            app.expand_diff_context(fp, prev_hunk, DiffExpandDirection::Down);
+                            cx.notify();
+                        });
+                    });
+
+                let expand_down_row = h_flex()
+                    .id(SharedString::from(format!("hunk-expand-up-{hunk_index}")))
+                    .w_full()
+                    .h(row_h)
+                    .flex_shrink_0()
+                    .font_family("monospace")
+                    .text_size(z(12.0))
+                    .bg(theme::diff_hunk_bg())
+                    .cursor_pointer()
+                    .hover(hover_blue)
+                    .child(icon_el("icons/chevrons-up.svg"))
+                    .child(
+                        div().flex_1().pl(z(5.0))
+                            .text_color(theme::text_muted())
+                            .child(content),
+                    )
+                    .on_click(move |_evt, _win, cx| {
+                        let fp = fp_down.clone();
+                        vh_down.update(cx, |app, cx| {
+                            app.expand_diff_context(fp, hunk_index, DiffExpandDirection::Up);
+                            cx.notify();
+                        });
+                    });
+
+                return v_flex()
+                    .child(expand_up_row)
+                    .child(expand_down_row)
+                    .into_any_element();
+            }
+            ExpansionType::Short => {
+                let vh_click = vh.clone();
+                let fp = file_path.to_string();
+                return h_flex()
+                    .id(SharedString::from(format!("hunk-row-{hunk_index}")))
+                    .w_full()
+                    .h(row_h)
+                    .flex_shrink_0()
+                    .font_family("monospace")
+                    .text_size(z(12.0))
+                    .bg(theme::diff_hunk_bg())
+                    .cursor_pointer()
+                    .hover(hover_blue)
+                    .child(icon_el("icons/unfold-vertical.svg"))
+                    .child(hunk_text)
+                    .on_click(move |_evt, _win, cx| {
+                        let fp = fp.clone();
+                        vh_click.update(cx, |app, cx| {
+                            app.expand_diff_context(fp, hunk_index, DiffExpandDirection::MergeWithPrevious);
+                            cx.notify();
+                        });
+                    })
+                    .into_any_element();
+            }
+            ExpansionType::None => {}
+        }
+    }
+
+    // Fallback: non-interactive hunk header
+    h_flex()
+        .w_full()
+        .h(row_h)
+        .flex_shrink_0()
+        .font_family("monospace")
+        .text_size(z(12.0))
+        .bg(theme::diff_hunk_bg())
+        .child(
+            h_flex()
+                .w(z(theme::DIFF_LINE_NUM_WIDTH * 2.0))
+                .flex_shrink_0(),
+        )
+        .child(hunk_text)
+        .into_any_element()
+}
+
+/// Add right-click context menu to a hunk row.
+fn add_hunk_context_menu(
+    row: Stateful<Div>,
+    vh: &Entity<GitSparkApp>,
+    file_path: &str,
+    hunk_index: usize,
+    has_original_diff: bool,
+) -> gpui_component::menu::ContextMenu<Stateful<Div>> {
+    let vh_ctx = vh.clone();
+    let fp = file_path.to_string();
+    row.context_menu(move |menu, _window, _cx| {
+        let vh = vh_ctx.clone();
+        let fp = fp.clone();
+        if has_original_diff {
+            let vh2 = vh.clone();
+            let fp2 = fp.clone();
+            menu.item(
+                PopupMenuItem::new("Collapse Expanded Lines")
+                    .on_click(move |_evt, _win, cx| {
+                        let fp = fp2.clone();
+                        vh2.update(cx, |app, cx| {
+                            app.collapse_diff(fp);
+                            cx.notify();
+                        });
+                    }),
+            )
+        } else {
+            let vh2 = vh.clone();
+            let fp2 = fp.clone();
+            menu.item(
+                PopupMenuItem::new("Expand Whole File")
+                    .on_click(move |_evt, _win, cx| {
+                        let fp = fp2.clone();
+                        vh2.update(cx, |app, cx| {
+                            app.expand_diff_context(fp, 0, DiffExpandDirection::All);
+                            cx.notify();
+                        });
+                    }),
+            )
+        }
+    })
+}
+
+/// Render a dummy EOF row with expand-down. Entire row is clickable.
 /// Render the diff header bar showing the selected file path.
 fn render_diff_header(file_path: &str) -> Div {
     h_flex()
@@ -450,7 +957,11 @@ fn render_empty_state() -> Div {
 ///
 /// Fills the remaining horizontal space (flex-1) and displays either
 /// a unified diff for the selected file or a placeholder message.
-pub fn render_workspace(selected_file: Option<&str>, diff: Option<&DiffEntry>) -> Div {
+pub fn render_workspace(
+    selected_file: Option<&str>,
+    diff: Option<&DiffEntry>,
+    view: Option<&Entity<GitSparkApp>>,
+) -> Div {
     let Some(file_path) = selected_file else {
         return render_empty_state();
     };
@@ -482,18 +993,102 @@ pub fn render_workspace(selected_file: Option<&str>, diff: Option<&DiffEntry>) -
             .into_any_element(),
         Some(entry) => {
             let parsed = parse_diff(&entry.diff);
-            let mut scroll_content = v_flex().w_full();
+
+            // Collect hunk boundaries for expansion type computation
+            let hunk_bounds: Vec<HunkBounds> = entry
+                .diff
+                .lines()
+                .filter_map(|l| parse_hunk_header(l))
+                .collect();
+            let file_line_count = entry
+                .file_contents
+                .as_ref()
+                .map(|c| c.len())
+                .unwrap_or(0);
+            let expansion_types = compute_expansion_types(&hunk_bounds, file_line_count);
+
+            let mut scroll_content = div().flex().flex_col().w_full();
+            let mut hunk_index = 0usize;
             for line in &parsed {
-                scroll_content = scroll_content.child(render_diff_line(line));
+                if matches!(line.kind, DiffLineKind::HunkHeader) {
+                    let exp_type = expansion_types
+                        .get(hunk_index)
+                        .copied()
+                        .unwrap_or(ExpansionType::None);
+                    scroll_content = scroll_content.child(render_hunk_header(
+                        line,
+                        hunk_index,
+                        exp_type,
+                        file_path,
+                        view,
+                        entry.original_diff.is_some(),
+                    ));
+                    hunk_index += 1;
+                } else {
+                    scroll_content = scroll_content.child(render_diff_line(line));
+                }
+            }
+
+            // Expand-down row after the last hunk if file has more lines
+            if let Some(last_bounds) = hunk_bounds.last() {
+                let last_end = last_bounds.new_start + last_bounds.new_count;
+                if last_end <= file_line_count && entry.file_contents.is_some() {
+                    if let Some(vh) = view {
+                        let vh_click = vh.clone();
+                        let fp = file_path.to_string();
+                        let last_hi = hunk_index.saturating_sub(1);
+                        let row_h = z(theme::DIFF_ROW_HEIGHT);
+                        let hover_blue = |s: StyleRefinement| s.bg(gpui::rgb(0x0969da));
+                        scroll_content = scroll_content.child(
+                            h_flex()
+                                .id("expand-eof")
+                                .w_full()
+                                .h(row_h)
+                                .flex_shrink_0()
+                                .bg(theme::diff_hunk_bg())
+                                .cursor_pointer()
+                                .hover(hover_blue)
+                                .child(
+                                    h_flex()
+                                        .w(z(theme::DIFF_LINE_NUM_WIDTH * 2.0))
+                                        .flex_shrink_0()
+                                        .items_center()
+                                        .justify_center()
+                                        .child(
+                                            gpui::svg()
+                                                .path("icons/chevrons-down.svg")
+                                                .size(z(16.0))
+                                                .text_color(theme::text_muted()),
+                                        ),
+                                )
+                                .on_click(move |_evt, _win, cx| {
+                                    let fp = fp.clone();
+                                    vh_click.update(cx, |app, cx| {
+                                        app.expand_diff_context(
+                                            fp,
+                                            last_hi,
+                                            DiffExpandDirection::Down,
+                                        );
+                                        cx.notify();
+                                    });
+                                })
+                                .into_any_element(),
+                        );
+                    }
+                }
             }
 
             div()
-                .id("diff-scroll")
                 .w_full()
                 .flex_1()
                 .min_h_0()
-                .overflow_y_scrollbar()
-                .child(scroll_content)
+                .child(
+                    div()
+                        .id("diff-scroll")
+                        .size_full()
+                        .overflow_y_scrollbar()
+                        .child(scroll_content.pb(z(300.0))),
+                )
                 .into_any_element()
         }
         None => div()
@@ -514,7 +1109,6 @@ pub fn render_workspace(selected_file: Option<&str>, diff: Option<&DiffEntry>) -
         .w_full()
         .h_full()
         .flex_1()
-        .overflow_hidden()
         .items_start()
         .bg(theme::bg())
         .child(render_diff_header(file_path))

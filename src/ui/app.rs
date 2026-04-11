@@ -59,6 +59,16 @@ pub(crate) enum AppEvent {
     CommitDiffCopied(String, Result<String, String>),
 }
 
+/// Direction for diff context expansion.
+#[derive(Clone, Copy, Debug)]
+pub enum DiffExpandDirection {
+    Up,
+    Down,
+    All,
+    /// Fill the gap between this hunk and the previous one (Short expansion).
+    MergeWithPrevious,
+}
+
 // ---------------------------------------------------------------------------
 // Actions (dispatched by child views via gpui action system)
 // ---------------------------------------------------------------------------
@@ -1017,6 +1027,65 @@ impl GitSparkApp {
             let res = git.get_commit_diff(&path, &oid).map_err(|e| e.to_string());
             let _ = tx.send(AppEvent::CommitDiffLoaded(oid, res));
         });
+    }
+
+    /// Expand diff context in-memory for a specific hunk.
+    pub fn expand_diff_context(
+        &mut self,
+        file_path: String,
+        hunk_index: usize,
+        direction: DiffExpandDirection,
+    ) {
+        let Some(snapshot) = &mut self.repo.snapshot else {
+            return;
+        };
+        let Some(entry) = snapshot.diffs.iter_mut().find(|d| d.path == file_path) else {
+            return;
+        };
+        let Some(file_lines) = &entry.file_contents else {
+            eprintln!("[expand] no file_contents for {file_path}");
+            return;
+        };
+
+        eprintln!("[expand] file={file_path} hunk={hunk_index} dir={direction:?} file_lines={} diff_lines={}",
+            file_lines.len(), entry.diff.lines().count());
+
+        // Save original diff for collapse (only on first expansion)
+        if entry.original_diff.is_none() {
+            entry.original_diff = Some(entry.diff.clone());
+        }
+
+        let new_diff = crate::ui::workspace::expand_diff_in_memory(
+            &entry.diff,
+            file_lines,
+            hunk_index,
+            direction,
+        );
+        let old_count = entry.diff.lines().count();
+        let new_count = new_diff.lines().count();
+        // Log the first 5 new lines to verify content
+        if new_count > old_count {
+            for (i, line) in new_diff.lines().enumerate() {
+                if i >= old_count && i < old_count + 5 {
+                    eprintln!("[expand]   new_line[{i}]: {line}");
+                }
+            }
+        }
+        eprintln!("[expand] old_lines={old_count} new_lines={new_count}");
+        entry.diff = new_diff;
+    }
+
+    /// Collapse expanded diff back to original.
+    pub fn collapse_diff(&mut self, file_path: String) {
+        let Some(snapshot) = &mut self.repo.snapshot else {
+            return;
+        };
+        let Some(entry) = snapshot.diffs.iter_mut().find(|d| d.path == file_path) else {
+            return;
+        };
+        if let Some(original) = entry.original_diff.take() {
+            entry.diff = original;
+        }
     }
 
     /// Re-fetch the diff for a single file in the working directory.
@@ -2743,11 +2812,12 @@ impl GitSparkApp {
                     resizable_panel().child(crate::ui::workspace::render_workspace(
                         selected_file,
                         selected_diff,
+                        Some(&view),
                     )),
                 )
         } else {
             h_resizable("workspace-panels").child(resizable_panel().child(
-                crate::ui::workspace::render_workspace(selected_file, selected_diff),
+                crate::ui::workspace::render_workspace(selected_file, selected_diff, Some(&view)),
             ))
         }
     }

@@ -62,6 +62,7 @@ impl GitClient {
                 path: file,
                 diff: diff_output,
                 is_binary,
+                ..Default::default()
             });
         }
 
@@ -783,16 +784,30 @@ impl GitClient {
                 .path_is_binary(repo_path, &change.path)
                 .unwrap_or(false);
 
+        let diff_text = if combined.trim().is_empty() {
+            "No textual diff available".to_string()
+        } else if is_binary && looks_binary_diff(&combined) {
+            "Binary file changed".to_string()
+        } else {
+            combined
+        };
+
+        // Load file contents for in-memory hunk expansion
+        let file_contents = if !is_binary {
+            let full_path = repo_path.join(&change.path);
+            fs::read_to_string(&full_path)
+                .ok()
+                .map(|c| c.lines().map(String::from).collect())
+        } else {
+            None
+        };
+
         Ok(DiffEntry {
             path: change.path.clone(),
-            diff: if combined.trim().is_empty() {
-                "No textual diff available".to_string()
-            } else if is_binary && looks_binary_diff(&combined) {
-                "Binary file changed".to_string()
-            } else {
-                combined
-            },
+            diff: diff_text,
             is_binary,
+            original_diff: None,
+            file_contents,
         })
     }
 
@@ -806,6 +821,7 @@ impl GitClient {
                 path: relative_path.to_string(),
                 diff: "Binary file added".to_string(),
                 is_binary: true,
+                ..Default::default()
             });
         }
 
@@ -825,6 +841,7 @@ impl GitClient {
             path: relative_path.to_string(),
             diff,
             is_binary: false,
+            ..Default::default()
         })
     }
 
