@@ -1633,9 +1633,15 @@ impl GitSparkApp {
         let last_fetched = snapshot.and_then(|s| s.repo.last_fetched.as_deref());
 
         // --- Left: repo section ---
+        // Icon: lock for repos with remote (private-like), folder for local-only
+        let repo_icon = if snapshot.and_then(|s| s.repo.remote_name.as_ref()).is_some() {
+            toolbar::ToolbarIcon::Svg("icons/lock.svg")
+        } else {
+            toolbar::ToolbarIcon::Name(IconName::FolderClosed)
+        };
         let repo_section = toolbar::render_toolbar_section(
             "section-repo",
-            IconName::FolderOpen,
+            repo_icon,
             "Current Repository",
             repo_name,
             self.nav.show_repo_selector,
@@ -1657,7 +1663,7 @@ impl GitSparkApp {
         // --- Right: branch section + divider + network section ---
         let branch_section = toolbar::render_toolbar_section(
             "section-branch",
-            IconName::GitHub,
+            toolbar::ToolbarIcon::Svg("icons/git-branch.svg"),
             "Current Branch",
             branch_name,
             self.nav.show_branch_selector,

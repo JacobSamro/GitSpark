@@ -153,6 +153,19 @@ pub fn toolbar_badge_bg() -> Hsla {
     gpui::rgb(0x3d444d).into() // neutral-7
 }
 
+// Push suggestion card (blue highlight)
+pub fn push_card_bg() -> Hsla {
+    gpui::rgb(0x032f62).into() // deep navy
+}
+
+pub fn push_card_border() -> Hsla {
+    gpui::rgb(0x1f6feb).into() // accent blue border
+}
+
+pub fn push_card_text() -> Hsla {
+    gpui::rgb(0x8db1d8).into() // muted blue-white
+}
+
 pub fn text_field_focus_shadow() -> Hsla {
     with_alpha(accent(), 0.25) // --text-field-focus-shadow-color
 }

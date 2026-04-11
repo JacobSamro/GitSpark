@@ -84,8 +84,10 @@ pub fn render_sidebar_interactive(
     let content: AnyElement = match sidebar_tab {
         SidebarTab::Changes => {
             if changes.is_empty() {
-                // No changes empty state with CTAs
-                render_no_changes_state(&view, cx).into_any_element()
+                // No changes empty state with suggestion cards
+                let ahead = snapshot.map(|s| s.repo.ahead).unwrap_or(0);
+                let remote = snapshot.and_then(|s| s.repo.remote_name.as_deref());
+                render_no_changes_state(&view, ahead, remote, cx).into_any_element()
             } else {
                 let file_count = changes.len();
                 let included_count = if app.commit.include_all {
@@ -563,144 +565,257 @@ fn render_tristate_checkbox(state: CheckState) -> Div {
 
 fn render_no_changes_state(
     view: &Entity<GitSparkApp>,
+    ahead: usize,
+    remote: Option<&str>,
     cx: &mut Context<GitSparkApp>,
 ) -> Div {
-    let vh = view.clone();
-    let vh2 = view.clone();
-    let vh3 = view.clone();
+    let vh_push = view.clone();
+    let vh_editor = view.clone();
+    let vh_finder = view.clone();
+    let vh_github = view.clone();
 
-    v_flex()
-        .flex_1()
-        .w_full()
-        .items_center()
-        .justify_center()
-        .gap(z(16.0))
-        .p(z(20.0))
-        // Main message
-        .child(
+    let mut cards = v_flex().w_full().gap(z(8.0));
+
+    // --- Card 1: Push commits (highlighted blue, only when commits to push) ---
+    if ahead > 0 && remote.is_some() {
+        let push_title = format!(
+            "Push {} to the origin remote",
+            if ahead == 1 { "1 commit".to_string() } else { format!("{ahead} commits") }
+        );
+        let push_subtitle = format!(
+            "You have {} local {} waiting to be pushed to GitHub.",
+            ahead,
+            if ahead == 1 { "commit" } else { "commits" }
+        );
+
+        cards = cards.child(
             v_flex()
-                .items_center()
-                .gap(z(4.0))
-                .child(
-                    div()
-                        .text_size(z(14.0))
-                        .text_color(theme::text_main())
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child("No local changes"),
-                )
+                .id("card-push")
+                .w_full()
+                .p(z(12.0))
+                .gap(z(6.0))
+                .rounded(z(theme::CORNER_RADIUS))
+                .bg(theme::push_card_bg())
+                .border_1()
+                .border_color(theme::push_card_border())
+                // Title
                 .child(
                     div()
                         .text_size(z(12.0))
-                        .text_color(theme::text_muted())
-                        .child("There are no uncommitted changes"),
+                        .text_color(theme::text_main())
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(push_title),
+                )
+                // Subtitle
+                .child(
+                    div()
+                        .text_size(z(11.0))
+                        .text_color(theme::push_card_text())
+                        .child(push_subtitle),
+                )
+                // Shortcut hint
+                .child(
+                    h_flex()
+                        .gap(z(4.0))
+                        .items_center()
+                        .child(
+                            div()
+                                .text_size(z(11.0))
+                                .text_color(theme::push_card_text())
+                                .child("Always available in the toolbar or"),
+                        )
+                        .child(kbd_badge("\u{2318}"))
+                        .child(kbd_badge("P")),
+                )
+                // Action button
+                .child(
+                    h_flex().justify_end().child(
+                        div()
+                            .id("push-btn")
+                            .px(z(12.0))
+                            .py(z(4.0))
+                            .rounded(z(theme::CORNER_RADIUS))
+                            .bg(theme::commit_button_bg())
+                            .text_size(z(12.0))
+                            .text_color(gpui::white())
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme::commit_button_hover_bg()))
+                            .child("Push origin")
+                            .on_click(move |_evt, _win, cx| {
+                                vh_push.update(cx, |app, cx| {
+                                    app.handle_toolbar_action(
+                                        crate::ui::app::ToolbarAction::RunNetworkAction(
+                                            crate::ui::domain_state::NetworkAction::Push,
+                                        ),
+                                        cx,
+                                    );
+                                });
+                            }),
+                    ),
                 ),
-        )
-        // Action buttons
+        );
+    }
+
+    // --- Card 2: Open in External Editor ---
+    cards = cards.child(suggestion_card(
+        "no-changes-editor",
+        "Open the repository in your external editor",
+        "Repository menu or",
+        &["\u{2318}", "\u{21E7}", "A"],
+        "Open in External Editor",
+        move |_evt, _win, cx| {
+            vh_editor.update(cx, |app, _cx| {
+                if let Some(path) = app.repo_path() {
+                    let _ = open::that_detached(path);
+                }
+            });
+        },
+    ));
+
+    // --- Card 3: Show in Finder ---
+    cards = cards.child(suggestion_card(
+        "no-changes-finder",
+        "View the files of your repository in Finder",
+        "Repository menu or",
+        &["\u{2318}", "\u{21E7}", "F"],
+        "Show in Finder",
+        move |_evt, _win, cx| {
+            vh_finder.update(cx, |app, _cx| {
+                if let Some(path) = app.repo_path() {
+                    let _ = open::that_detached(path);
+                }
+            });
+        },
+    ));
+
+    // --- Card 4: View on GitHub ---
+    cards = cards.child(suggestion_card(
+        "no-changes-github",
+        "Open the repository page on GitHub in your browser",
+        "Repository menu or",
+        &["\u{2318}", "\u{21E7}", "G"],
+        "View on GitHub",
+        move |_evt, _win, cx| {
+            vh_github.update(cx, |app, _cx| {
+                if let Some(snapshot) = &app.repo.snapshot {
+                    let name = &snapshot.repo.name;
+                    let _ = open::that_detached(format!("https://github.com/{name}"));
+                }
+            });
+        },
+    ));
+
+    // Outer wrapper: scroll the whole thing, content at top
+    div().flex_1().child(
+        div()
+        .id("no-changes-scroll")
+        .flex_1()
+        .min_h_0()
+        .overflow_y_scrollbar()
         .child(
             v_flex()
                 .w_full()
-                .gap(z(8.0))
+                .p(z(20.0))
+                .gap(z(16.0))
+                // Header
                 .child(
-                    h_flex()
-                        .id("no-changes-open-editor")
-                        .w_full()
-                        .h(z(28.0))
-                        .px(z(10.0))
-                        .items_center()
-                        .gap(z(8.0))
-                        .rounded(z(theme::CORNER_RADIUS))
-                        .bg(theme::surface_bg())
-                        .border_1()
-                        .border_color(theme::surface_bg_alt())
-                        .cursor_pointer()
-                        .hover(|s| s.bg(theme::hover_bg()))
+                    v_flex()
+                        .gap(z(4.0))
                         .child(
-                            Icon::new(IconName::ExternalLink)
-                                .size(z(14.0))
-                                .text_color(theme::accent()),
+                            div()
+                                .text_size(z(14.0))
+                                .text_color(theme::text_main())
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child("No local changes"),
                         )
                         .child(
                             div()
                                 .text_size(z(12.0))
-                                .text_color(theme::accent())
-                                .child("Open in External Editor"),
-                        )
-                        .on_click(move |_evt, _win, cx| {
-                            vh.update(cx, |app, _cx| {
-                                if let Some(path) = app.repo_path() {
-                                    let _ = open::that_detached(path);
-                                }
-                            });
-                        }),
+                                .text_color(theme::text_muted())
+                                .child("There are no uncommitted changes in this repository. Here are some friendly suggestions for what to do next."),
+                        ),
                 )
-                .child(
-                    h_flex()
-                        .id("no-changes-reveal")
-                        .w_full()
-                        .h(z(28.0))
-                        .px(z(10.0))
-                        .items_center()
-                        .gap(z(8.0))
-                        .rounded(z(theme::CORNER_RADIUS))
-                        .bg(theme::surface_bg())
-                        .border_1()
-                        .border_color(theme::surface_bg_alt())
-                        .cursor_pointer()
-                        .hover(|s| s.bg(theme::hover_bg()))
-                        .child(
-                            Icon::new(IconName::Folder)
-                                .size(z(14.0))
-                                .text_color(theme::accent()),
-                        )
-                        .child(
-                            div()
-                                .text_size(z(12.0))
-                                .text_color(theme::accent())
-                                .child("View files in Finder"),
-                        )
-                        .on_click(move |_evt, _win, cx| {
-                            vh2.update(cx, |app, _cx| {
-                                if let Some(path) = app.repo_path() {
-                                    let _ = open::that_detached(path);
-                                }
-                            });
-                        }),
-                )
-                .child(
-                    h_flex()
-                        .id("no-changes-github")
-                        .w_full()
-                        .h(z(28.0))
-                        .px(z(10.0))
-                        .items_center()
-                        .gap(z(8.0))
-                        .rounded(z(theme::CORNER_RADIUS))
-                        .bg(theme::surface_bg())
-                        .border_1()
-                        .border_color(theme::surface_bg_alt())
-                        .cursor_pointer()
-                        .hover(|s| s.bg(theme::hover_bg()))
-                        .child(
-                            Icon::new(IconName::GitHub)
-                                .size(z(14.0))
-                                .text_color(theme::accent()),
-                        )
-                        .child(
-                            div()
-                                .text_size(z(12.0))
-                                .text_color(theme::accent())
-                                .child("View on GitHub"),
-                        )
-                        .on_click(move |_evt, _win, cx| {
-                            vh3.update(cx, |app, _cx| {
-                                if let Some(snapshot) = &app.repo.snapshot {
-                                    let name = &snapshot.repo.name;
-                                    let _ = open::that_detached(format!("https://github.com/{name}"));
-                                }
-                            });
-                        }),
-                ),
+                // Cards
+                .child(cards),
+        ),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Suggestion card — bordered card with title, subtitle, shortcut, action btn
+// ---------------------------------------------------------------------------
+
+fn suggestion_card(
+    id: &str,
+    title: &str,
+    shortcut_prefix: &str,
+    keys: &[&str],
+    button_label: &str,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Div {
+    let mut shortcut_row = h_flex()
+        .gap(z(4.0))
+        .items_center()
+        .child(
+            div()
+                .text_size(z(11.0))
+                .text_color(theme::text_muted())
+                .child(shortcut_prefix.to_string()),
+        );
+    for key in keys {
+        shortcut_row = shortcut_row.child(kbd_badge(key));
+    }
+
+    v_flex()
+        .w_full()
+        .p(z(12.0))
+        .gap(z(6.0))
+        .rounded(z(theme::CORNER_RADIUS))
+        .border_1()
+        .border_color(theme::border())
+        // Title
+        .child(
+            div()
+                .text_size(z(12.0))
+                .text_color(theme::text_main())
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(title.to_string()),
         )
+        // Shortcut hint
+        .child(shortcut_row)
+        // Action button — right-aligned
+        .child(
+            h_flex().justify_end().child(
+                div()
+                    .id(SharedString::from(id.to_string()))
+                    .px(z(12.0))
+                    .py(z(4.0))
+                    .rounded(z(theme::CORNER_RADIUS))
+                    .bg(theme::surface_bg())
+                    .border_1()
+                    .border_color(theme::border())
+                    .text_size(z(12.0))
+                    .text_color(theme::text_main())
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::hover_bg()))
+                    .child(button_label.to_string())
+                    .on_click(on_click),
+            ),
+        )
+}
+
+fn kbd_badge(key: &str) -> Div {
+    div()
+        .px(z(4.0))
+        .py(z(1.0))
+        .rounded(z(3.0))
+        .bg(theme::surface_bg())
+        .border_1()
+        .border_color(theme::border())
+        .text_size(z(10.0))
+        .text_color(theme::text_muted())
+        .child(key.to_string())
 }
 
 // ---------------------------------------------------------------------------

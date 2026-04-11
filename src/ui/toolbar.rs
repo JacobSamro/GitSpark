@@ -16,12 +16,21 @@ const CARET_ICON_SIZE: f32 = 10.0;
 const BADGE_PILL_RADIUS: f32 = 8.0;
 
 // ---------------------------------------------------------------------------
+// Icon source — either a built-in IconName or a custom SVG path
+// ---------------------------------------------------------------------------
+
+pub enum ToolbarIcon {
+    Name(IconName),
+    Svg(&'static str),
+}
+
+// ---------------------------------------------------------------------------
 // Toolbar section builder (repo & branch)
 // ---------------------------------------------------------------------------
 
 pub fn render_toolbar_section(
     id: &str,
-    icon_name: IconName,
+    icon: ToolbarIcon,
     description: &str,
     title: &str,
     is_open: bool,
@@ -62,7 +71,7 @@ pub fn render_toolbar_section(
         .cursor_pointer()
         .bg(bg)
         .hover(|style| style.bg(theme::toolbar_hover_bg()))
-        .child(section_icon(icon_name))
+        .child(render_toolbar_icon(icon))
         .child(
             v_flex()
                 .flex_1()
@@ -129,7 +138,13 @@ pub fn render_network_parts(
         .gap(z(SECTION_GAP))
         .cursor_pointer()
         .hover(|style| style.bg(theme::toolbar_hover_bg()))
-        .child(section_icon(icon))
+        .child(
+            div().flex_shrink_0().child(
+                Icon::new(icon)
+                    .size(z(SECTION_ICON_SIZE))
+                    .text_color(theme::text_main()),
+            ),
+        )
         .child(
             v_flex()
                 .flex_1()
@@ -174,12 +189,20 @@ pub fn render_network_parts(
 // Reusable micro-elements
 // ---------------------------------------------------------------------------
 
-fn section_icon(name: IconName) -> Div {
-    div().flex_shrink_0().child(
-        Icon::new(name)
-            .size(z(SECTION_ICON_SIZE))
-            .text_color(theme::text_main()),
-    )
+fn render_toolbar_icon(icon: ToolbarIcon) -> Div {
+    match icon {
+        ToolbarIcon::Name(name) => div().flex_shrink_0().child(
+            Icon::new(name)
+                .size(z(SECTION_ICON_SIZE))
+                .text_color(theme::text_main()),
+        ),
+        ToolbarIcon::Svg(path) => div().flex_shrink_0().child(
+            gpui::svg()
+                .path(path)
+                .size(z(SECTION_ICON_SIZE))
+                .text_color(theme::text_main()),
+        ),
+    }
 }
 
 fn caret_icon() -> Div {
