@@ -2571,11 +2571,28 @@ impl GitSparkApp {
 
         // Build the display text with cursor
         let text_child: Div = if is_empty && !focused {
-            // Placeholder
+            // Placeholder (unfocused)
             div()
                 .text_size(theme::z(12.0))
                 .text_color(theme::text_muted())
                 .child(placeholder.to_string())
+        } else if is_empty && focused {
+            // Placeholder with cursor (focused but empty)
+            h_flex()
+                .items_center()
+                .text_size(theme::z(12.0))
+                .child(
+                    div()
+                        .w(px(1.0))
+                        .h(px(14.0))
+                        .bg(theme::text_main())
+                        .flex_shrink_0(),
+                )
+                .child(
+                    div()
+                        .text_color(theme::text_muted())
+                        .child(placeholder.to_string()),
+                )
         } else if focused {
             // Editable: show text with cursor and optional selection highlight
             let cursor_pos = cursor.min(value.len());
