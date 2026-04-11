@@ -2005,10 +2005,6 @@ impl GitSparkApp {
             }
             return;
         }
-        // Any non-modifier key clears selection (unless shift is held for extending)
-        if !ks.modifiers.shift {
-            self.summary_selection = None;
-        }
         match ks.key.as_str() {
             "backspace" => {
                 if self.summary_selection.is_some() {
@@ -2034,6 +2030,8 @@ impl GitSparkApp {
                     if self.summary_selection.is_none() {
                         self.summary_selection = Some(self.summary_cursor);
                     }
+                } else {
+                    self.summary_selection = None;
                 }
                 if self.summary_cursor > 0 {
                     self.summary_cursor =
@@ -2046,6 +2044,8 @@ impl GitSparkApp {
                     if self.summary_selection.is_none() {
                         self.summary_selection = Some(self.summary_cursor);
                     }
+                } else {
+                    self.summary_selection = None;
                 }
                 if self.summary_cursor < self.commit.summary.len() {
                     self.summary_cursor =
@@ -2054,15 +2054,23 @@ impl GitSparkApp {
                 }
             }
             "home" => {
-                if ks.modifiers.shift && self.summary_selection.is_none() {
-                    self.summary_selection = Some(self.summary_cursor);
+                if ks.modifiers.shift {
+                    if self.summary_selection.is_none() {
+                        self.summary_selection = Some(self.summary_cursor);
+                    }
+                } else {
+                    self.summary_selection = None;
                 }
                 self.summary_cursor = 0;
                 cx.notify();
             }
             "end" => {
-                if ks.modifiers.shift && self.summary_selection.is_none() {
-                    self.summary_selection = Some(self.summary_cursor);
+                if ks.modifiers.shift {
+                    if self.summary_selection.is_none() {
+                        self.summary_selection = Some(self.summary_cursor);
+                    }
+                } else {
+                    self.summary_selection = None;
                 }
                 self.summary_cursor = self.commit.summary.len();
                 cx.notify();
@@ -2138,9 +2146,6 @@ impl GitSparkApp {
             }
             return;
         }
-        if !ks.modifiers.shift {
-            self.description_selection = None;
-        }
         match ks.key.as_str() {
             "backspace" => {
                 if self.description_selection.is_some() {
@@ -2162,8 +2167,12 @@ impl GitSparkApp {
                 cx.notify();
             }
             "left" => {
-                if ks.modifiers.shift && self.description_selection.is_none() {
-                    self.description_selection = Some(self.description_cursor);
+                if ks.modifiers.shift {
+                    if self.description_selection.is_none() {
+                        self.description_selection = Some(self.description_cursor);
+                    }
+                } else {
+                    self.description_selection = None;
                 }
                 if self.description_cursor > 0 {
                     self.description_cursor =
@@ -2172,8 +2181,12 @@ impl GitSparkApp {
                 }
             }
             "right" => {
-                if ks.modifiers.shift && self.description_selection.is_none() {
-                    self.description_selection = Some(self.description_cursor);
+                if ks.modifiers.shift {
+                    if self.description_selection.is_none() {
+                        self.description_selection = Some(self.description_cursor);
+                    }
+                } else {
+                    self.description_selection = None;
                 }
                 if self.description_cursor < self.commit.body.len() {
                     self.description_cursor =
@@ -2182,15 +2195,23 @@ impl GitSparkApp {
                 }
             }
             "home" => {
-                if ks.modifiers.shift && self.description_selection.is_none() {
-                    self.description_selection = Some(self.description_cursor);
+                if ks.modifiers.shift {
+                    if self.description_selection.is_none() {
+                        self.description_selection = Some(self.description_cursor);
+                    }
+                } else {
+                    self.description_selection = None;
                 }
                 self.description_cursor = 0;
                 cx.notify();
             }
             "end" => {
-                if ks.modifiers.shift && self.description_selection.is_none() {
-                    self.description_selection = Some(self.description_cursor);
+                if ks.modifiers.shift {
+                    if self.description_selection.is_none() {
+                        self.description_selection = Some(self.description_cursor);
+                    }
+                } else {
+                    self.description_selection = None;
                 }
                 self.description_cursor = self.commit.body.len();
                 cx.notify();
