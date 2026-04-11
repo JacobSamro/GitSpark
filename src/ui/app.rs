@@ -164,7 +164,11 @@ pub struct GitSparkApp {
     summary_focus: FocusHandle,
     description_focus: FocusHandle,
     summary_cursor: usize,
+    /// Selection anchor for summary field. When Some, text between anchor and cursor is selected.
+    summary_selection: Option<usize>,
     description_cursor: usize,
+    /// Selection anchor for description field.
+    description_selection: Option<usize>,
     // Filter input state
     branch_filter_focus: FocusHandle,
     branch_filter_cursor: usize,
@@ -204,7 +208,9 @@ impl GitSparkApp {
             summary_focus: cx.focus_handle(),
             description_focus: cx.focus_handle(),
             summary_cursor: 0,
+            summary_selection: None,
             description_cursor: 0,
+            description_selection: None,
             branch_filter_focus: cx.focus_handle(),
             branch_filter_cursor: 0,
             repo_filter_focus: cx.focus_handle(),
@@ -1960,6 +1966,7 @@ impl GitSparkApp {
                     if let Some(item) = cx.read_from_clipboard() {
                         if let Some(text) = item.text() {
                             let text = text.replace('\n', " ");
+                            self.delete_summary_selection();
                             self.commit.summary.insert_str(self.summary_cursor, &text);
                             self.summary_cursor += text.len();
                             cx.notify();
@@ -1967,30 +1974,67 @@ impl GitSparkApp {
                     }
                 }
                 "a" => {
+                    // Select all
+                    self.summary_selection = Some(0);
                     self.summary_cursor = self.commit.summary.len();
                     cx.notify();
+                }
+                "c" => {
+                    // Copy selection
+                    if let Some(sel) = self.summary_selection {
+                        let (start, end) = ordered_range(sel, self.summary_cursor);
+                        let selected = &self.commit.summary[start..end];
+                        if !selected.is_empty() {
+                            cx.write_to_clipboard(ClipboardItem::new_string(selected.to_string()));
+                        }
+                    }
+                }
+                "x" => {
+                    // Cut selection
+                    if let Some(sel) = self.summary_selection {
+                        let (start, end) = ordered_range(sel, self.summary_cursor);
+                        let selected = &self.commit.summary[start..end];
+                        if !selected.is_empty() {
+                            cx.write_to_clipboard(ClipboardItem::new_string(selected.to_string()));
+                            self.delete_summary_selection();
+                            cx.notify();
+                        }
+                    }
                 }
                 _ => {}
             }
             return;
         }
+        // Any non-modifier key clears selection (unless shift is held for extending)
+        if !ks.modifiers.shift {
+            self.summary_selection = None;
+        }
         match ks.key.as_str() {
             "backspace" => {
-                if self.summary_cursor > 0 {
+                if self.summary_selection.is_some() {
+                    self.delete_summary_selection();
+                } else if self.summary_cursor > 0 {
                     let new_pos = prev_char_boundary(&self.commit.summary, self.summary_cursor);
                     self.commit.summary.drain(new_pos..self.summary_cursor);
                     self.summary_cursor = new_pos;
-                    cx.notify();
                 }
+                cx.notify();
             }
             "delete" => {
-                if self.summary_cursor < self.commit.summary.len() {
+                if self.summary_selection.is_some() {
+                    self.delete_summary_selection();
+                } else if self.summary_cursor < self.commit.summary.len() {
                     let end = next_char_boundary(&self.commit.summary, self.summary_cursor);
                     self.commit.summary.drain(self.summary_cursor..end);
-                    cx.notify();
                 }
+                cx.notify();
             }
             "left" => {
+                if ks.modifiers.shift {
+                    if self.summary_selection.is_none() {
+                        self.summary_selection = Some(self.summary_cursor);
+                    }
+                }
                 if self.summary_cursor > 0 {
                     self.summary_cursor =
                         prev_char_boundary(&self.commit.summary, self.summary_cursor);
@@ -1998,6 +2042,11 @@ impl GitSparkApp {
                 }
             }
             "right" => {
+                if ks.modifiers.shift {
+                    if self.summary_selection.is_none() {
+                        self.summary_selection = Some(self.summary_cursor);
+                    }
+                }
                 if self.summary_cursor < self.commit.summary.len() {
                     self.summary_cursor =
                         next_char_boundary(&self.commit.summary, self.summary_cursor);
@@ -2005,21 +2054,38 @@ impl GitSparkApp {
                 }
             }
             "home" => {
+                if ks.modifiers.shift && self.summary_selection.is_none() {
+                    self.summary_selection = Some(self.summary_cursor);
+                }
                 self.summary_cursor = 0;
                 cx.notify();
             }
             "end" => {
+                if ks.modifiers.shift && self.summary_selection.is_none() {
+                    self.summary_selection = Some(self.summary_cursor);
+                }
                 self.summary_cursor = self.commit.summary.len();
                 cx.notify();
             }
             _ => {
                 if let Some(ref ch) = ks.key_char {
                     if !ks.modifiers.control && !ch.contains('\n') && !ch.contains('\r') {
+                        self.delete_summary_selection();
                         self.commit.summary.insert_str(self.summary_cursor, ch);
                         self.summary_cursor += ch.len();
                         cx.notify();
                     }
                 }
+            }
+        }
+    }
+
+    fn delete_summary_selection(&mut self) {
+        if let Some(sel) = self.summary_selection.take() {
+            let (start, end) = ordered_range(sel, self.summary_cursor);
+            if start < end && end <= self.commit.summary.len() {
+                self.commit.summary.drain(start..end);
+                self.summary_cursor = start;
             }
         }
     }
@@ -2036,6 +2102,7 @@ impl GitSparkApp {
                 "v" => {
                     if let Some(item) = cx.read_from_clipboard() {
                         if let Some(text) = item.text() {
+                            self.delete_description_selection();
                             self.commit.body.insert_str(self.description_cursor, &text);
                             self.description_cursor += text.len();
                             cx.notify();
@@ -2043,30 +2110,61 @@ impl GitSparkApp {
                     }
                 }
                 "a" => {
+                    self.description_selection = Some(0);
                     self.description_cursor = self.commit.body.len();
                     cx.notify();
+                }
+                "c" => {
+                    if let Some(sel) = self.description_selection {
+                        let (start, end) = ordered_range(sel, self.description_cursor);
+                        let selected = &self.commit.body[start..end];
+                        if !selected.is_empty() {
+                            cx.write_to_clipboard(ClipboardItem::new_string(selected.to_string()));
+                        }
+                    }
+                }
+                "x" => {
+                    if let Some(sel) = self.description_selection {
+                        let (start, end) = ordered_range(sel, self.description_cursor);
+                        let selected = &self.commit.body[start..end];
+                        if !selected.is_empty() {
+                            cx.write_to_clipboard(ClipboardItem::new_string(selected.to_string()));
+                            self.delete_description_selection();
+                            cx.notify();
+                        }
+                    }
                 }
                 _ => {}
             }
             return;
         }
+        if !ks.modifiers.shift {
+            self.description_selection = None;
+        }
         match ks.key.as_str() {
             "backspace" => {
-                if self.description_cursor > 0 {
+                if self.description_selection.is_some() {
+                    self.delete_description_selection();
+                } else if self.description_cursor > 0 {
                     let new_pos = prev_char_boundary(&self.commit.body, self.description_cursor);
                     self.commit.body.drain(new_pos..self.description_cursor);
                     self.description_cursor = new_pos;
-                    cx.notify();
                 }
+                cx.notify();
             }
             "delete" => {
-                if self.description_cursor < self.commit.body.len() {
+                if self.description_selection.is_some() {
+                    self.delete_description_selection();
+                } else if self.description_cursor < self.commit.body.len() {
                     let end = next_char_boundary(&self.commit.body, self.description_cursor);
                     self.commit.body.drain(self.description_cursor..end);
-                    cx.notify();
                 }
+                cx.notify();
             }
             "left" => {
+                if ks.modifiers.shift && self.description_selection.is_none() {
+                    self.description_selection = Some(self.description_cursor);
+                }
                 if self.description_cursor > 0 {
                     self.description_cursor =
                         prev_char_boundary(&self.commit.body, self.description_cursor);
@@ -2074,6 +2172,9 @@ impl GitSparkApp {
                 }
             }
             "right" => {
+                if ks.modifiers.shift && self.description_selection.is_none() {
+                    self.description_selection = Some(self.description_cursor);
+                }
                 if self.description_cursor < self.commit.body.len() {
                     self.description_cursor =
                         next_char_boundary(&self.commit.body, self.description_cursor);
@@ -2081,14 +2182,21 @@ impl GitSparkApp {
                 }
             }
             "home" => {
+                if ks.modifiers.shift && self.description_selection.is_none() {
+                    self.description_selection = Some(self.description_cursor);
+                }
                 self.description_cursor = 0;
                 cx.notify();
             }
             "end" => {
+                if ks.modifiers.shift && self.description_selection.is_none() {
+                    self.description_selection = Some(self.description_cursor);
+                }
                 self.description_cursor = self.commit.body.len();
                 cx.notify();
             }
             "enter" => {
+                self.delete_description_selection();
                 self.commit.body.insert_str(self.description_cursor, "\n");
                 self.description_cursor += 1;
                 cx.notify();
@@ -2096,11 +2204,22 @@ impl GitSparkApp {
             _ => {
                 if let Some(ref ch) = ks.key_char {
                     if !ks.modifiers.control {
+                        self.delete_description_selection();
                         self.commit.body.insert_str(self.description_cursor, ch);
                         self.description_cursor += ch.len();
                         cx.notify();
                     }
                 }
+            }
+        }
+    }
+
+    fn delete_description_selection(&mut self) {
+        if let Some(sel) = self.description_selection.take() {
+            let (start, end) = ordered_range(sel, self.description_cursor);
+            if start < end && end <= self.commit.body.len() {
+                self.commit.body.drain(start..end);
+                self.description_cursor = start;
             }
         }
     }
@@ -2416,6 +2535,7 @@ impl GitSparkApp {
         value: &str,
         placeholder: &str,
         cursor: usize,
+        selection: Option<usize>,
         focused: bool,
         multiline: bool,
         focus_handle: &FocusHandle,
@@ -2436,56 +2556,80 @@ impl GitSparkApp {
                 .text_color(theme::text_muted())
                 .child(placeholder.to_string())
         } else if focused {
-            // Editable: show text with cursor indicator
+            // Editable: show text with cursor and optional selection highlight
             let cursor_pos = cursor.min(value.len());
-            let before = &value[..cursor_pos];
-            let after = &value[cursor_pos..];
+            let sel_highlight = gpui::rgb(0x264f78); // VS Code / GitHub selection blue
 
-            if multiline {
-                // For multiline, render with line wrapping
-                let mut row = h_flex().items_start().text_size(theme::z(12.0));
-                row = row.child(
-                    div()
-                        .text_color(theme::text_main())
-                        .child(before.to_string()),
-                );
-                row = row.child(
-                    div()
-                        .w(px(1.0))
-                        .h(px(14.0))
-                        .bg(theme::text_main())
-                        .flex_shrink_0(),
-                );
-                row = row.child(
-                    div()
-                        .text_color(theme::text_main())
-                        .child(after.to_string()),
-                );
+            if let Some(sel_anchor) = selection {
+                // Has selection: render before_sel + selected + after_sel with cursor
+                let (sel_start, sel_end) = ordered_range(sel_anchor.min(value.len()), cursor_pos);
+                let before_sel = &value[..sel_start];
+                let selected = &value[sel_start..sel_end];
+                let after_sel = &value[sel_end..];
+
+                let nowrap = !multiline;
+                let mut row = if multiline {
+                    h_flex().items_start().text_size(theme::z(12.0)).flex_wrap()
+                } else {
+                    h_flex().items_center().overflow_x_hidden().text_size(theme::z(12.0))
+                };
+
+                if !before_sel.is_empty() {
+                    let mut el = div().text_color(theme::text_main()).child(before_sel.to_string());
+                    if nowrap { el = el.whitespace_nowrap(); }
+                    row = row.child(el);
+                }
+
+                // Cursor at start of selection (if cursor < anchor)
+                if cursor_pos == sel_start {
+                    row = row.child(
+                        div().w(px(1.0)).h(px(14.0)).bg(theme::text_main()).flex_shrink_0(),
+                    );
+                }
+
+                // Selected text with highlight
+                if !selected.is_empty() {
+                    let mut el = div()
+                        .text_color(gpui::white())
+                        .bg(sel_highlight)
+                        .child(selected.to_string());
+                    if nowrap { el = el.whitespace_nowrap(); }
+                    row = row.child(el);
+                }
+
+                // Cursor at end of selection (if cursor > anchor)
+                if cursor_pos == sel_end {
+                    row = row.child(
+                        div().w(px(1.0)).h(px(14.0)).bg(theme::text_main()).flex_shrink_0(),
+                    );
+                }
+
+                if !after_sel.is_empty() {
+                    let mut el = div().text_color(theme::text_main()).child(after_sel.to_string());
+                    if nowrap { el = el.whitespace_nowrap(); }
+                    row = row.child(el);
+                }
                 row
             } else {
-                h_flex()
-                    .items_center()
-                    .overflow_x_hidden()
-                    .text_size(theme::z(12.0))
-                    .child(
-                        div()
-                            .text_color(theme::text_main())
-                            .whitespace_nowrap()
-                            .child(before.to_string()),
-                    )
-                    .child(
-                        div()
-                            .w(px(1.0))
-                            .h(px(14.0))
-                            .bg(theme::text_main())
-                            .flex_shrink_0(),
-                    )
-                    .child(
-                        div()
-                            .text_color(theme::text_main())
-                            .whitespace_nowrap()
-                            .child(after.to_string()),
-                    )
+                // No selection: just cursor
+                let before = &value[..cursor_pos];
+                let after = &value[cursor_pos..];
+
+                if multiline {
+                    let mut row = h_flex().items_start().text_size(theme::z(12.0));
+                    row = row.child(div().text_color(theme::text_main()).child(before.to_string()));
+                    row = row.child(div().w(px(1.0)).h(px(14.0)).bg(theme::text_main()).flex_shrink_0());
+                    row = row.child(div().text_color(theme::text_main()).child(after.to_string()));
+                    row
+                } else {
+                    h_flex()
+                        .items_center()
+                        .overflow_x_hidden()
+                        .text_size(theme::z(12.0))
+                        .child(div().text_color(theme::text_main()).whitespace_nowrap().child(before.to_string()))
+                        .child(div().w(px(1.0)).h(px(14.0)).bg(theme::text_main()).flex_shrink_0())
+                        .child(div().text_color(theme::text_main()).whitespace_nowrap().child(after.to_string()))
+                }
             }
         } else {
             // Has text, not focused
@@ -2504,40 +2648,72 @@ impl GitSparkApp {
             }
         };
 
-        let height = if multiline { px(80.0) } else { px(25.0) }; // --text-field-height: 25px
-
         let is_summary = id == "commit-summary-field";
 
-        let mut field = div()
-            .id(SharedString::from(id.to_string()))
-            .track_focus(focus_handle)
-            .key_context("text-field")
-            .w_full()
-            .h(height)
-            .bg(theme::bg()) // --background-color (dark canvas)
-            .border_1()
-            .border_color(border)
-            .px(px(8.0))
-            .cursor_text()
-            .child(text_child);
-
-        if multiline {
-            // Description: top corners rounded, bottom corners flat (action bar attaches)
-            field = field
+        let mut field = if multiline {
+            // Description: scrollable container with inner content that grows
+            div()
+                .id(SharedString::from(id.to_string()))
+                .track_focus(focus_handle)
+                .key_context("text-field")
+                .w_full()
+                .h(px(80.0))
+                .bg(theme::bg())
+                .border_1()
+                .border_color(border)
                 .rounded_t(theme::z(theme::CORNER_RADIUS))
                 .rounded_b_none()
                 .border_b_0()
-                .py(px(6.0))
-                .overflow_hidden();
+                .cursor_text()
+                .overflow_y_scroll()
+                .child(
+                    div()
+                        .w_full()
+                        .px(px(8.0))
+                        .py(px(6.0))
+                        .child(text_child),
+                )
         } else {
-            // Summary: fully rounded
-            field = field.rounded(theme::z(theme::CORNER_RADIUS)).items_center();
-        }
+            // Summary: single line, vertically centered
+            div()
+                .id(SharedString::from(id.to_string()))
+                .track_focus(focus_handle)
+                .key_context("text-field")
+                .w_full()
+                .h(px(25.0))
+                .flex()
+                .items_center()
+                .bg(theme::bg())
+                .border_1()
+                .border_color(border)
+                .px(px(8.0))
+                .rounded(theme::z(theme::CORNER_RADIUS))
+                .cursor_text()
+                .child(text_child)
+        };
 
         if is_summary {
-            field = field.on_key_down(cx.listener(Self::handle_summary_key));
+            field = field
+                .on_key_down(cx.listener(Self::handle_summary_key))
+                .on_click(cx.listener(|app, evt: &ClickEvent, _win, cx| {
+                    if evt.click_count() == 2 && !app.commit.summary.is_empty() {
+                        // Select all on double-click
+                        app.summary_selection = Some(0);
+                        app.summary_cursor = app.commit.summary.len();
+                        cx.notify();
+                    }
+                }));
         } else {
-            field = field.on_key_down(cx.listener(Self::handle_description_key));
+            field = field
+                .on_key_down(cx.listener(Self::handle_description_key))
+                .on_click(cx.listener(|app, evt: &ClickEvent, _win, cx| {
+                    if evt.click_count() == 2 && !app.commit.body.is_empty() {
+                        // Select all on double-click
+                        app.description_selection = Some(0);
+                        app.description_cursor = app.commit.body.len();
+                        cx.notify();
+                    }
+                }));
         }
 
         field
@@ -2659,6 +2835,7 @@ impl GitSparkApp {
             &self.commit.summary,
             &summary_placeholder,
             self.summary_cursor,
+            self.summary_selection,
             summary_focused,
             false,
             &self.summary_focus,
@@ -2671,6 +2848,7 @@ impl GitSparkApp {
             &self.commit.body,
             "Description",
             self.description_cursor,
+            self.description_selection,
             description_focused,
             true,
             &self.description_focus,
@@ -4176,6 +4354,10 @@ fn shell_escape(value: &str) -> String {
 // ---------------------------------------------------------------------------
 // Text input helpers
 // ---------------------------------------------------------------------------
+
+fn ordered_range(a: usize, b: usize) -> (usize, usize) {
+    if a <= b { (a, b) } else { (b, a) }
+}
 
 fn prev_char_boundary(s: &str, pos: usize) -> usize {
     if pos == 0 {
