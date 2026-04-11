@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use gpui::*;
 use gpui_component::divider::Divider;
 use gpui_component::{Icon, IconName, h_flex, v_flex};
@@ -112,24 +114,52 @@ pub fn render_network_parts(
         None
     };
 
-    let icon = if is_in_flight {
-        IconName::LoaderCircle
-    } else {
-        network_icon_for_label(action_label)
-    };
-
-    let title_row = {
-        let mut row = h_flex()
-            .items_center()
-            .gap(z(6.0))
-            .child(title_label(action_label));
-        if let Some(b) = badges {
-            row = row.child(b);
+    // Icon: always rotate-cw for fetch, ArrowUp for push, ArrowDown for pull.
+    // When in-flight, the icon spins via CSS animation.
+    let icon_element = {
+        let is_fetch = {
+            let lower = action_label.to_ascii_lowercase();
+            !lower.starts_with("push") && !lower.starts_with("pull")
+        };
+        if is_fetch {
+            // Custom rotate-cw SVG, with spin animation when fetching
+            let svg_el = gpui::svg()
+                .path("icons/rotate-cw.svg")
+                .size(z(SECTION_ICON_SIZE))
+                .text_color(theme::text_main());
+            if is_in_flight {
+                div().flex_shrink_0().child(
+                    svg_el.with_animation(
+                        "spin",
+                        Animation::new(Duration::from_secs(1)).repeat(),
+                        |svg, delta| {
+                            svg.with_transformation(Transformation::rotate(percentage(delta * 100.0)))
+                        },
+                    ),
+                ).into_any_element()
+            } else {
+                div().flex_shrink_0().child(svg_el).into_any_element()
+            }
+        } else {
+            let icon_name = if action_label.to_ascii_lowercase().starts_with("push") {
+                IconName::ArrowUp
+            } else {
+                IconName::ArrowDown
+            };
+            div().flex_shrink_0().child(
+                Icon::new(icon_name)
+                    .size(z(SECTION_ICON_SIZE))
+                    .text_color(theme::text_main()),
+            ).into_any_element()
         }
-        row
     };
 
-    let main_area = h_flex()
+    let title_row = h_flex()
+        .items_center()
+        .gap(z(6.0))
+        .child(title_label(action_label));
+
+    let mut main_area = h_flex()
         .id("network-main")
         .flex_1()
         .h_full()
@@ -138,13 +168,7 @@ pub fn render_network_parts(
         .gap(z(SECTION_GAP))
         .cursor_pointer()
         .hover(|style| style.bg(theme::toolbar_hover_bg()))
-        .child(
-            div().flex_shrink_0().child(
-                Icon::new(icon)
-                    .size(z(SECTION_ICON_SIZE))
-                    .text_color(theme::text_main()),
-            ),
-        )
+        .child(icon_element)
         .child(
             v_flex()
                 .flex_1()
@@ -154,13 +178,18 @@ pub fn render_network_parts(
                 .child(description_label(&description)),
         );
 
+    // Badges at the top level of main_area for vertical centering
+    if let Some(b) = badges {
+        main_area = main_area.child(b);
+    }
+
     let caret_bg = if show_dropdown {
         theme::bg()
     } else {
         gpui::transparent_black()
     };
 
-    let caret_zone = div()
+    let caret_zone = h_flex()
         .id("network-caret")
         .h_full()
         .flex_shrink_0()
@@ -252,17 +281,3 @@ pub fn vertical_divider() -> Divider {
     Divider::vertical().color(theme::toolbar_button_border())
 }
 
-// ---------------------------------------------------------------------------
-// Icon mapping
-// ---------------------------------------------------------------------------
-
-fn network_icon_for_label(label: &str) -> IconName {
-    let lower = label.to_ascii_lowercase();
-    if lower.starts_with("push") {
-        IconName::ArrowUp
-    } else if lower.starts_with("pull") {
-        IconName::ArrowDown
-    } else {
-        IconName::Loader
-    }
-}

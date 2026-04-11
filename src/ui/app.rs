@@ -3276,75 +3276,61 @@ impl GitSparkApp {
             .and_then(|s| s.repo.remote_name.as_deref())
             .unwrap_or("origin");
 
-        let actions: Vec<(NetworkAction, IconName, String)> = vec![
-            (
-                NetworkAction::Fetch,
-                IconName::Loader,
-                format!("Fetch {remote_name}"),
-            ),
-            (
-                NetworkAction::Pull,
-                IconName::ArrowDown,
-                format!("Pull {remote_name}"),
-            ),
-            (
-                NetworkAction::Push,
-                IconName::ArrowUp,
-                format!("Push {remote_name}"),
-            ),
-        ];
+        let fetch_title = format!("Fetch {remote_name}");
+        let fetch_desc = format!("Fetch the latest changes from {remote_name}");
 
-        let mut dropdown = v_flex()
+        v_flex()
             .absolute()
             .top(theme::z(theme::TOOLBAR_HEIGHT))
             .right_0()
-            .w(px(220.0))
+            .w(px(300.0))
             .bg(theme::panel_bg())
             .border_1()
             .border_color(theme::toolbar_button_border())
             .rounded_b(theme::z(theme::CORNER_RADIUS))
-            .shadow_lg();
-
-        for (action, icon, label) in actions {
-            let is_current = snapshot
-                .map(|s| NetworkAction::from_snapshot(s) == action)
-                .unwrap_or(action == NetworkAction::Fetch);
-
-            dropdown = dropdown.child(
+            .shadow_lg()
+            .child(
                 h_flex()
-                    .id(SharedString::from(format!("net-{label}")))
+                    .id("net-fetch")
                     .w_full()
-                    .h(px(36.0))
-                    .px(px(10.0))
+                    .p(px(12.0))
+                    .gap(px(10.0))
                     .items_center()
-                    .gap(px(8.0))
                     .cursor_pointer()
                     .hover(|s| s.bg(theme::hover_bg()))
-                    .bg(if is_current {
-                        theme::hover_bg()
-                    } else {
-                        gpui::transparent_black()
-                    })
                     .child(
-                        Icon::new(icon)
-                            .size(px(14.0))
-                            .text_color(theme::text_main()),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_size(theme::z(theme::FONT_SIZE))
+                        gpui::svg()
+                            .path("icons/rotate-cw.svg")
+                            .size(px(20.0))
                             .text_color(theme::text_main())
-                            .child(label),
+                            .flex_shrink_0(),
                     )
-                    .on_click(cx.listener(move |app, _evt, _win, cx| {
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .gap(px(2.0))
+                            .child(
+                                div()
+                                    .text_size(theme::z(14.0))
+                                    .text_color(theme::text_main())
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(fetch_title),
+                            )
+                            .child(
+                                div()
+                                    .text_size(theme::z(12.0))
+                                    .text_color(theme::text_muted())
+                                    .child(fetch_desc),
+                            ),
+                    )
+                    .on_click(cx.listener(|app, _evt, _win, cx| {
                         app.nav.show_network_dropdown = false;
-                        app.handle_toolbar_action(ToolbarAction::RunNetworkAction(action), cx);
+                        app.handle_toolbar_action(
+                            ToolbarAction::RunNetworkAction(NetworkAction::Fetch),
+                            cx,
+                        );
                     })),
-            );
-        }
-
-        dropdown
+            )
     }
 
     fn render_repo_selector_panel(&self, cx: &mut Context<Self>) -> Div {
