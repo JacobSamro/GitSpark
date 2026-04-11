@@ -1677,19 +1677,28 @@ impl Render for GitSparkApp {
         // macOS titlebar spacer (traffic lights sit here)
         let titlebar_height = if cfg!(target_os = "macos") { 38.0 } else { 0.0 };
 
+        let titlebar_spacer = {
+            let spacer = div()
+                .id("window-titlebar-spacer")
+                .w_full()
+                .h(px(titlebar_height))
+                .flex_shrink_0();
+            #[cfg(target_os = "macos")]
+            let spacer = spacer.on_click(|event: &ClickEvent, window: &mut Window, _| {
+                if event.click_count() == 2 {
+                    window.titlebar_double_click();
+                }
+            });
+            spacer.bg(theme::panel_bg())
+        };
+
         let mut root = v_flex()
             .size_full()
             .relative()
             .bg(theme::bg())
             .font_family(".SystemUIFont")
             .text_size(theme::z(theme::FONT_SIZE))
-            .child(
-                div()
-                    .w_full()
-                    .h(px(titlebar_height))
-                    .flex_shrink_0()
-                    .bg(theme::panel_bg()), // slightly lighter than bg for titlebar strip
-            )
+            .child(titlebar_spacer) // slightly lighter than bg for titlebar strip
             .child(
                 div()
                     .w_full()
