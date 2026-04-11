@@ -1545,7 +1545,7 @@ impl Render for GitSparkApp {
                 v_flex()
                     .size_full()
                     .child(toolbar_right)
-                    .child(self.render_workspace(cx)),
+                    .child(self.render_workspace(cx.entity().clone(), cx)),
             )
             .children(if self.nav.show_branch_selector {
                 Some(self.render_branch_selector_overlay(branch_filter_focused, cx))
@@ -2640,7 +2640,7 @@ impl GitSparkApp {
     // Workspace
     // ------------------------------------------------------------------
 
-    fn render_workspace(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_workspace(&self, view: Entity<Self>, cx: &mut Context<Self>) -> impl IntoElement {
         let sidebar_tab = self.nav.sidebar_tab;
 
         // Determine the active file list and selected file based on tab.
@@ -2664,6 +2664,18 @@ impl GitSparkApp {
 
         // Find the diff entry for the selected file.
         let selected_diff = selected_file.and_then(|path| diffs.iter().find(|d| d.path == path));
+
+        // No local changes — show suggestion cards in the workspace
+        if sidebar_tab == SidebarTab::Changes && diffs.is_empty() {
+            let snapshot = self.repo.snapshot.as_ref();
+            let ahead = snapshot.map(|s| s.repo.ahead).unwrap_or(0);
+            let remote = snapshot.and_then(|s| s.repo.remote_name.as_deref());
+            return h_resizable("workspace-panels").child(
+                resizable_panel().child(
+                    crate::ui::sidebar::render_no_changes_state(&view, ahead, remote, cx),
+                ),
+            );
+        }
 
         // Show file list panel only on History tab (Changes tab has sidebar file list)
         if sidebar_tab == SidebarTab::History && !diffs.is_empty() {

@@ -84,10 +84,31 @@ pub fn render_sidebar_interactive(
     let content: AnyElement = match sidebar_tab {
         SidebarTab::Changes => {
             if changes.is_empty() {
-                // No changes empty state with suggestion cards
-                let ahead = snapshot.map(|s| s.repo.ahead).unwrap_or(0);
-                let remote = snapshot.and_then(|s| s.repo.remote_name.as_deref());
-                render_no_changes_state(&view, ahead, remote, cx).into_any_element()
+                // Empty file list — just the header showing "0 changed files"
+                v_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .h(z(28.0))
+                            .px(z(10.0))
+                            .items_center()
+                            .gap(z(5.0))
+                            .bg(theme::surface_bg())
+                            .border_b_1()
+                            .border_color(theme::border())
+                            .flex_shrink_0()
+                            .child(render_checkbox(false))
+                            .child(
+                                div()
+                                    .text_size(z(11.0))
+                                    .text_color(theme::text_muted())
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("0 changed files"),
+                            ),
+                    )
+                    .into_any_element()
             } else {
                 let file_count = changes.len();
                 let included_count = if app.commit.include_all {
@@ -563,7 +584,7 @@ fn render_tristate_checkbox(state: CheckState) -> Div {
     }
 }
 
-fn render_no_changes_state(
+pub fn render_no_changes_state(
     view: &Entity<GitSparkApp>,
     ahead: usize,
     remote: Option<&str>,
@@ -706,12 +727,13 @@ fn render_no_changes_state(
         },
     ));
 
-    // Outer wrapper: scroll the whole thing, content at top
-    div().flex_1().child(
+    // Outer wrapper: scroll the whole thing, content at top, max 600px card width
+    div().flex_1().items_center().child(
         div()
         .id("no-changes-scroll")
         .flex_1()
         .min_h_0()
+        .max_w(px(600.0))
         .overflow_y_scrollbar()
         .child(
             v_flex()
