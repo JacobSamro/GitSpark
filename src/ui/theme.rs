@@ -227,6 +227,6 @@ pub const FILTER_BAR_HEIGHT: f32 = 32.0;
 
 pub const FONT_SIZE_XS: f32 = 9.0;
 pub const FONT_SIZE_SM: f32 = 11.0;
-pub const FONT_SIZE: f32 = 12.0;
+pub const FONT_SIZE: f32 = 13.0;
 pub const FONT_SIZE_MD: f32 = 14.0;
 pub const FONT_SIZE_LG: f32 = 28.0;
