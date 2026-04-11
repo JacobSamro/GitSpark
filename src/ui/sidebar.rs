@@ -30,14 +30,29 @@ fn accent_selection_bg() -> Hsla {
 // Status helpers
 // ---------------------------------------------------------------------------
 
-fn status_tag(label: &str) -> Tag {
-    let tag = match label {
-        "A" => Tag::success(),
-        "M" => Tag::warning(),
-        "D" => Tag::danger(),
-        _ => Tag::secondary(),
+/// Render a file status icon matching GitHub Desktop's style.
+/// Modified = square with dot (orange), Added = plus-square (green), Deleted = minus-square (red).
+/// When selected, icon is white.
+fn render_status_icon(status: &str, selected: bool) -> Div {
+    let (icon_path, normal_color): (&str, Hsla) = match status {
+        "M" => ("icons/dot-square.svg", theme::warning()),
+        "A" => ("icons/dot-square.svg", theme::success()), // reuse dot-square for now
+        "D" => ("icons/dot-square.svg", theme::danger()),
+        _ => ("icons/dot-square.svg", theme::text_muted()),
     };
-    tag.outline().xsmall().child(label.to_string())
+
+    let color = if selected {
+        gpui::white().into()
+    } else {
+        normal_color
+    };
+
+    div().flex_shrink_0().child(
+        gpui::svg()
+            .path(icon_path)
+            .size(z(16.0))
+            .text_color(color),
+    )
 }
 
 fn status_label(status: &str) -> &'static str {
@@ -437,7 +452,7 @@ pub fn render_change_row(
         gpui::transparent_black()
     };
 
-    let badge_label = status_label(&change.status);
+    let status_kind = status_label(&change.status);
 
     let text_color = if selected {
         gpui::white().into()
@@ -486,12 +501,6 @@ pub fn render_change_row(
         .px(z(10.0))
         .items_center()
         .bg(bg)
-        .border_l_2()
-        .border_color(if selected {
-            theme::accent()
-        } else {
-            gpui::transparent_black()
-        })
         .gap(z(5.0))
         .child(checkbox)
         .child(
@@ -503,26 +512,26 @@ pub fn render_change_row(
                     .child(change.path.clone()),
             ),
         )
-        .child(status_tag(badge_label))
+        .child(render_status_icon(status_kind, selected))
 }
 
 fn render_checkbox(checked: bool) -> Div {
     let size = 14.0;
     if checked {
-        div()
+        h_flex()
             .w(z(size))
             .h(z(size))
             .rounded(z(3.0))
-            .bg(theme::accent())
+            .bg(gpui::rgb(0x58a6ff)) // light blue background
             .border_1()
-            .border_color(theme::accent())
+            .border_color(gpui::rgb(0x58a6ff))
             .flex_shrink_0()
             .items_center()
             .justify_center()
             .child(
                 Icon::new(IconName::Check)
                     .size(z(10.0))
-                    .text_color(gpui::white()),
+                    .text_color(gpui::rgb(0x0d1117)), // dark tick
             )
     } else {
         div()
