@@ -6,7 +6,7 @@ use gpui_component::radio::Radio;
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::spinner::Spinner;
 use gpui_component::switch::Switch;
-use gpui_component::{Disableable, h_flex, v_flex};
+use gpui_component::{Disableable, Icon, IconName, h_flex, v_flex};
 
 use crate::models::{AiProvider, RemoteModelOption};
 use crate::ui::app::{GitSparkApp, SettingsAction};
@@ -34,6 +34,7 @@ pub(crate) struct SettingsModalState {
     pub ai_api_key_cursor: usize,
     pub ai_system_prompt_cursor: usize,
     pub openrouter_model_filter_cursor: usize,
+    pub show_model_picker: bool,
 }
 
 impl SettingsModalState {
@@ -48,6 +49,7 @@ impl SettingsModalState {
             ai_api_key_cursor: 0,
             ai_system_prompt_cursor: 0,
             openrouter_model_filter_cursor: 0,
+            show_model_picker: false,
         }
     }
 }
@@ -620,70 +622,111 @@ fn render_openrouter_models(
             )
             .into_any_element(),
         OpenRouterModelsState::Ready(models) => {
-            let filtered: Vec<RemoteModelOption> = models
-                .iter()
-                .filter(|model| {
-                    filter.is_empty()
-                        || model.id.to_ascii_lowercase().contains(&filter)
-                        || model.name.to_ascii_lowercase().contains(&filter)
-                })
-                .cloned()
-                .collect();
             let selected_model = app.settings.ai.model.clone();
+            let current_model_name = models
+                .iter()
+                .find(|m| m.id == selected_model)
+                .map(|m| m.name.clone())
+                .unwrap_or_else(|| selected_model.clone());
 
-            v_flex()
-                .w_full()
-                .gap(theme::z(10.0))
-                .child(render_text_input(
-                    app,
-                    window,
-                    cx,
-                    "settings-openrouter-model-filter",
-                    SettingsField::OpenRouterModelFilter,
-                    "Search Models",
-                    "Search models...",
-                    false,
-                    false,
-                    None,
-                ))
-                .child(if filtered.is_empty() {
-                    div()
-                        .w_full()
-                        .p(theme::z(12.0))
-                        .rounded(theme::z(theme::CORNER_RADIUS))
-                        .border_1()
-                        .border_color(theme::border())
-                        .bg(theme::surface_bg_muted())
-                        .child(
-                            div()
-                                .text_size(theme::z(11.0))
-                                .text_color(theme::text_muted())
-                                .child("No models match your search."),
-                        )
-                        .into_any_element()
-                } else {
-                    uniform_list(
-                        "settings-openrouter-model-list",
-                        filtered.len(),
-                        move |range, _window, _cx| {
-                            range
-                                .map(|ix| {
-                                    let model = filtered[ix].clone();
-                                    render_model_option(
-                                        &model,
-                                        selected_model.as_str(),
-                                        view.clone(),
-                                    )
-                                    .into_any_element()
-                                })
-                                .collect()
-                        },
+            if !app.settings_modal.show_model_picker {
+                // Collapsed: show current model as a clickable field
+                let vh = cx.entity().clone();
+                h_flex()
+                    .id("model-picker-collapsed")
+                    .w_full()
+                    .h(theme::z(32.0))
+                    .px(theme::z(10.0))
+                    .items_center()
+                    .justify_between()
+                    .rounded(theme::z(theme::CORNER_RADIUS))
+                    .border_1()
+                    .border_color(theme::border())
+                    .bg(theme::bg())
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::list_hover_bg()))
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_size(theme::z(13.0))
+                            .text_color(theme::text_main())
+                            .truncate()
+                            .child(current_model_name),
                     )
-                    .with_sizing_behavior(ListSizingBehavior::Infer)
-                    .h(theme::z(280.0))
+                    .child(
+                        Icon::new(IconName::ChevronDown)
+                            .size(theme::z(12.0))
+                            .text_color(theme::text_muted()),
+                    )
+                    .on_click(move |_evt, _win, cx| {
+                        vh.update(cx, |app, cx| {
+                            app.settings_modal.show_model_picker = true;
+                            cx.notify();
+                        });
+                    })
                     .into_any_element()
-                })
-                .into_any_element()
+            } else {
+                // Expanded: search + model list
+                let filtered: Vec<RemoteModelOption> = models
+                    .iter()
+                    .filter(|model| {
+                        filter.is_empty()
+                            || model.id.to_ascii_lowercase().contains(&filter)
+                            || model.name.to_ascii_lowercase().contains(&filter)
+                    })
+                    .cloned()
+                    .collect();
+
+                v_flex()
+                    .w_full()
+                    .gap(theme::z(6.0))
+                    .child(render_text_input(
+                        app,
+                        window,
+                        cx,
+                        "settings-openrouter-model-filter",
+                        SettingsField::OpenRouterModelFilter,
+                        "Search Models",
+                        "Search models...",
+                        false,
+                        false,
+                        None,
+                    ))
+                    .child(if filtered.is_empty() {
+                        div()
+                            .w_full()
+                            .p(theme::z(12.0))
+                            .child(
+                                div()
+                                    .text_size(theme::z(11.0))
+                                    .text_color(theme::text_muted())
+                                    .child("No models match your search."),
+                            )
+                            .into_any_element()
+                    } else {
+                        uniform_list(
+                            "settings-openrouter-model-list",
+                            filtered.len(),
+                            move |range, _window, _cx| {
+                                range
+                                    .map(|ix| {
+                                        let model = filtered[ix].clone();
+                                        render_model_option(
+                                            &model,
+                                            selected_model.as_str(),
+                                            view.clone(),
+                                        )
+                                        .into_any_element()
+                                    })
+                                    .collect()
+                            },
+                        )
+                        .with_sizing_behavior(ListSizingBehavior::Infer)
+                        .h(theme::z(280.0))
+                        .into_any_element()
+                    })
+                    .into_any_element()
+            }
         }
     };
 
@@ -731,6 +774,7 @@ fn render_model_option(
             let model_id = model_id.clone();
             view.update(cx, |app, cx| {
                 app.handle_settings_action(SettingsAction::SelectOpenRouterModel(model_id), cx);
+                app.settings_modal.show_model_picker = false;
             });
         })
         // Radio dot
