@@ -178,6 +178,7 @@ pub struct GitSparkApp {
     // Zoom
     rem_size: f32,
     render_count: u32,
+    was_window_active: bool,
 }
 
 impl GitSparkApp {
@@ -218,6 +219,7 @@ impl GitSparkApp {
             settings_modal: SettingsModalState::new(cx),
             rem_size: DEFAULT_REM_SIZE,
             render_count: 0,
+            was_window_active: false,
         };
 
         // Register zoom actions at the window level so they work regardless of focus
@@ -1588,6 +1590,13 @@ impl Render for GitSparkApp {
                 self.persist_settings();
             }
         }
+
+        // Refresh git changes when window gains focus
+        let is_active = window.is_window_active();
+        if is_active && !self.was_window_active && self.repo.snapshot.is_some() {
+            self.request_repo_refresh(RepoRefreshReason::Focus, cx);
+        }
+        self.was_window_active = is_active;
 
         // Clamp cursors to valid positions (e.g. after AI fill or clear)
         self.summary_cursor = self.summary_cursor.min(self.commit.summary.len());
