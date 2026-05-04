@@ -455,6 +455,8 @@ enum AutomationNodeAction {
     ConfirmStashAndSwitch,
     ShowRestoreStash,
     RestoreStash,
+    ShowDiscardStash,
+    ConfirmDiscardStash,
     SaveGitSettings,
     SaveAiSettings,
     ChangeAiProvider(AiProvider),
@@ -978,11 +980,54 @@ impl GitSparkApp {
                     Some(AutomationNodeAction::CancelDialog),
                 ),
                 automation_node(
+                    "restore-stash-discard",
+                    AutomationRole::Button,
+                    Some("restore-stash-discard"),
+                    Some("Discard Stash"),
+                    Some(AutomationNodeAction::ShowDiscardStash),
+                ),
+                automation_node(
                     "restore-stash-confirm",
                     AutomationRole::Button,
                     Some("restore-stash-confirm"),
                     Some("Restore Stash"),
                     Some(AutomationNodeAction::RestoreStash),
+                ),
+            ]);
+        }
+
+        if matches!(self.nav.active_dialog, ActiveDialog::DiscardStash) {
+            children.push(automation_node(
+                "discard-stash-file-list",
+                AutomationRole::List,
+                Some("discard-stash-file-list"),
+                Some("Stash files"),
+                None,
+            ));
+            children.extend(self.repo.stash_files.iter().map(|file| {
+                let id = format!("discard-stash-file-{}", stable_test_slug(&file.path));
+                automation_node(
+                    id.clone(),
+                    AutomationRole::ListItem,
+                    Some(id),
+                    Some(file.path.as_str()),
+                    None,
+                )
+            }));
+            children.extend([
+                automation_node(
+                    "discard-stash-cancel",
+                    AutomationRole::Button,
+                    Some("discard-stash-cancel"),
+                    Some("Cancel"),
+                    Some(AutomationNodeAction::CancelDialog),
+                ),
+                automation_node(
+                    "discard-stash-confirm",
+                    AutomationRole::Button,
+                    Some("discard-stash-confirm"),
+                    Some("Discard Stash"),
+                    Some(AutomationNodeAction::ConfirmDiscardStash),
                 ),
             ]);
         }
@@ -1436,6 +1481,15 @@ impl GitSparkApp {
             AutomationNodeAction::RestoreStash => {
                 self.nav.active_dialog = ActiveDialog::None;
                 self.restore_stash(cx);
+            }
+            AutomationNodeAction::ShowDiscardStash => {
+                self.show_discard_stash_dialog(cx);
+            }
+            AutomationNodeAction::ConfirmDiscardStash => {
+                if !matches!(self.nav.active_dialog, ActiveDialog::DiscardStash) {
+                    return AutomationResponse::failure("discard stash dialog is not active");
+                }
+                self.discard_stash(cx);
             }
             AutomationNodeAction::SaveGitSettings => {
                 self.handle_settings_action(SettingsAction::SaveGitConfig, cx);
@@ -2254,6 +2308,7 @@ fn active_dialog_name(dialog: &ActiveDialog) -> &'static str {
         ActiveDialog::CreateTag { .. } => "create_tag",
         ActiveDialog::ResetToCommit { .. } => "reset_to_commit",
         ActiveDialog::RestoreStash => "restore_stash",
+        ActiveDialog::DiscardStash => "discard_stash",
         ActiveDialog::PublishRepository => "publish_repository",
     }
 }

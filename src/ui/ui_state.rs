@@ -52,6 +52,7 @@ pub enum ActiveDialog {
         target_oid: String,
     },
     RestoreStash,
+    DiscardStash,
     PublishRepository,
 }
 

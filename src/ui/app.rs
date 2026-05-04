@@ -1039,6 +1039,47 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub(crate) fn show_discard_stash_dialog(&mut self, cx: &mut Context<Self>) {
+        if self.repo.stash_files.is_empty() {
+            if let Some(path) = self.repo_path().map(PathBuf::from) {
+                match self.git.latest_stash_files(&path) {
+                    Ok(files) => {
+                        self.repo.stash_files = files;
+                        self.messages.error_message.clear();
+                    }
+                    Err(err) => {
+                        self.repo.stash_files.clear();
+                        self.messages.error_message = format!("Could not read stash files: {err}");
+                    }
+                }
+            }
+        }
+        self.nav.active_dialog = ActiveDialog::DiscardStash;
+        cx.notify();
+    }
+
+    pub(crate) fn discard_stash(&mut self, cx: &mut Context<Self>) {
+        self.nav.active_dialog = ActiveDialog::None;
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        self.messages.status_message = "Discarding stash...".to_string();
+        self.messages.error_message.clear();
+        let tx = self.event_tx.clone();
+        let git = GitClient::new();
+        thread::spawn(move || {
+            let res = git.stash_drop(&path).map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::NetworkActionCompleted(
+                res,
+                "Discarded stash".to_string(),
+            ));
+        });
+        cx.notify();
+    }
+
     pub(crate) fn show_restore_stash_dialog(&mut self, cx: &mut Context<Self>) {
         if let Some(path) = self.repo_path().map(PathBuf::from) {
             match self.git.latest_stash_files(&path) {
@@ -4706,6 +4747,7 @@ impl GitSparkApp {
             ActiveDialog::DiscardChanges { .. } => (420.0, 230.0),
             ActiveDialog::StashAndSwitch { .. } => (576.0, 360.0),
             ActiveDialog::RestoreStash => (500.0, 360.0),
+            ActiveDialog::DiscardStash => (500.0, 400.0),
             ActiveDialog::PublishRepository => (
                 crate::ui::publish_dialog::PUBLISH_DIALOG_WIDTH,
                 crate::ui::publish_dialog::PUBLISH_DIALOG_HEIGHT,
@@ -5051,6 +5093,12 @@ impl GitSparkApp {
             }
             ActiveDialog::DeleteBranch { branch_name } => {
                 crate::ui::delete_branch_dialog::render_delete_branch_dialog(branch_name, cx)
+            }
+            ActiveDialog::DiscardStash => {
+                crate::ui::discard_stash_dialog::render_discard_stash_dialog(
+                    Arc::new(self.repo.stash_files.clone()),
+                    cx,
+                )
             }
             ActiveDialog::CreateTag { target_oid } => {
                 let tag_name = &self.repo.new_branch_name;
@@ -5578,6 +5626,27 @@ impl GitSparkApp {
                                     .on_click(cx.listener(|app, _evt, _win, cx| {
                                         app.nav.active_dialog = ActiveDialog::None;
                                         cx.notify();
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .id("restore-stash-discard")
+                                    .px(theme::z(12.0))
+                                    .py(theme::z(6.0))
+                                    .rounded(theme::z(theme::CORNER_RADIUS))
+                                    .bg(theme::surface_bg())
+                                    .border_1()
+                                    .border_color(theme::surface_bg_alt())
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::toolbar_hover_bg()))
+                                    .child(
+                                        div()
+                                            .text_size(theme::z(12.0))
+                                            .text_color(theme::text_main())
+                                            .child("Discard Stash"),
+                                    )
+                                    .on_click(cx.listener(|app, _evt, _win, cx| {
+                                        app.show_discard_stash_dialog(cx);
                                     })),
                             )
                             .child(

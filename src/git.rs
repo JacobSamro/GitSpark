@@ -238,6 +238,13 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn stash_drop(&self, repo_path: &Path) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        self.run_git(&repo_path, &["stash", "drop", "stash@{0}"])
+            .context("failed to drop stash")?;
+        self.snapshot(&repo_path)
+    }
+
     pub fn latest_stash_files(&self, repo_path: &Path) -> Result<Vec<ChangeEntry>> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let output = self.run_git(
