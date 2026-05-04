@@ -1537,7 +1537,13 @@ impl GitSparkApp {
                 self.nav.active_dialog = ActiveDialog::CreateTag { target_oid: oid };
                 self.messages.error_message.clear();
             }
-            HistoryContextMenuAction::ResetToCommit | HistoryContextMenuAction::ReorderCommit => {}
+            HistoryContextMenuAction::ResetToCommit => {
+                if self.can_reset_to_commit(&oid) {
+                    self.nav.active_dialog = ActiveDialog::ResetToCommit { target_oid: oid };
+                    self.messages.error_message.clear();
+                }
+            }
+            HistoryContextMenuAction::ReorderCommit => {}
         }
 
         cx.notify();
@@ -1804,6 +1810,18 @@ impl GitSparkApp {
             format!("Copied {} tags.", tags.len())
         };
         self.messages.error_message.clear();
+    }
+
+    pub(crate) fn reset_to_commit(&mut self, oid: String, cx: &mut Context<Self>) {
+        self.nav.active_dialog = ActiveDialog::None;
+        self.nav.sidebar_tab = SidebarTab::Changes;
+        self.run_commit_repo_action(
+            oid.clone(),
+            "Reset to commit".to_string(),
+            format!("Reset to commit {}.", short_commit_label(&oid)),
+            GitClient::reset_to_commit,
+            cx,
+        );
     }
 
     fn view_commit_on_github(&mut self, oid: &str) {
@@ -2127,6 +2145,19 @@ impl GitSparkApp {
                     .map(|commit| commit.tags.clone())
             })
             .unwrap_or_default()
+    }
+
+    pub(crate) fn can_reset_to_commit(&self, oid: &str) -> bool {
+        let Some(snapshot) = self.repo.snapshot.as_ref() else {
+            return false;
+        };
+        let Some(index) = snapshot.history.iter().position(|commit| commit.oid == oid) else {
+            return false;
+        };
+        if index == 0 {
+            return false;
+        }
+        snapshot.repo.remote_name.is_none() || index <= snapshot.repo.ahead
     }
 
     fn reconcile_commit_inclusions(&mut self, changed_paths: &[String]) {
@@ -4571,6 +4602,7 @@ impl GitSparkApp {
             ActiveDialog::CreateBranch => (400.0, 230.0),
             ActiveDialog::RenameBranch { .. } => (400.0, 230.0),
             ActiveDialog::CreateTag { .. } => (400.0, 230.0),
+            ActiveDialog::ResetToCommit { .. } => (500.0, 240.0),
             ActiveDialog::DiscardChanges { .. } => (420.0, 230.0),
             ActiveDialog::StashAndSwitch { .. } => (576.0, 360.0),
             ActiveDialog::RestoreStash => (500.0, 360.0),
@@ -5074,6 +5106,9 @@ impl GitSparkApp {
                                     })),
                             ),
                     )
+            }
+            ActiveDialog::ResetToCommit { target_oid } => {
+                crate::ui::reset_dialog::render_reset_to_commit_dialog(target_oid, cx)
             }
             ActiveDialog::DiscardChanges { paths } => {
                 let file_list = if paths.len() <= 10 {

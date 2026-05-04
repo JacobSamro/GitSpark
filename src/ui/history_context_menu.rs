@@ -28,6 +28,7 @@ pub(crate) fn build_history_context_menu(
 ) -> PopupMenu {
     let has_github_remote = view.read(cx).repo_has_github_remote();
     let commit_tags = view.read(cx).commit_tags_for_oid(&oid);
+    let can_reset_to_commit = view.read(cx).can_reset_to_commit(&oid);
     let copy_tag_label = if commit_tags.len() > 1 {
         "Copy Tags"
     } else {
@@ -38,7 +39,7 @@ pub(crate) fn build_history_context_menu(
         .max_w(px(260.0))
         .item(menu_item(
             labels::reset_to_commit_menu(),
-            false,
+            can_reset_to_commit,
             view.clone(),
             oid.clone(),
             HistoryContextMenuAction::ResetToCommit,

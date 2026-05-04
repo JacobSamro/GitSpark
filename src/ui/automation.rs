@@ -275,6 +275,7 @@ pub(crate) enum AutomationChangeAction {
 #[derive(Clone, Copy, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum AutomationHistoryAction {
+    ResetToCommit,
     CheckoutCommit,
     RevertChangesInCommit,
     CreateBranchFromCommit,
@@ -447,6 +448,7 @@ enum AutomationNodeAction {
     ConfirmCreateBranch,
     ConfirmRenameBranch,
     ConfirmCreateTag,
+    ConfirmResetToCommit,
     ConfirmStashAndSwitch,
     ShowRestoreStash,
     RestoreStash,
@@ -1006,6 +1008,25 @@ impl GitSparkApp {
             ]);
         }
 
+        if matches!(self.nav.active_dialog, ActiveDialog::ResetToCommit { .. }) {
+            children.extend([
+                automation_node(
+                    "reset-to-commit-cancel",
+                    AutomationRole::Button,
+                    Some("reset-to-commit-cancel"),
+                    Some("Cancel"),
+                    Some(AutomationNodeAction::CancelDialog),
+                ),
+                automation_node(
+                    "reset-to-commit-confirm",
+                    AutomationRole::Button,
+                    Some("reset-to-commit-confirm"),
+                    Some("Continue"),
+                    Some(AutomationNodeAction::ConfirmResetToCommit),
+                ),
+            ]);
+        }
+
         if let Some(snapshot) = &self.repo.snapshot {
             let has_github_remote = self.repo_has_github_remote();
             children.push(
@@ -1075,6 +1096,7 @@ impl GitSparkApp {
                     commit.short_oid.as_str(),
                     commit.oid.as_str(),
                     &commit.tags,
+                    self.can_reset_to_commit(&commit.oid),
                     has_github_remote,
                 ));
             }
@@ -1327,6 +1349,15 @@ impl GitSparkApp {
                 };
                 self.create_tag(target_oid, cx);
             }
+            AutomationNodeAction::ConfirmResetToCommit => {
+                let target_oid = match &self.nav.active_dialog {
+                    ActiveDialog::ResetToCommit { target_oid } => target_oid.clone(),
+                    _ => {
+                        return AutomationResponse::failure("reset to commit dialog is not active");
+                    }
+                };
+                self.reset_to_commit(target_oid, cx);
+            }
             AutomationNodeAction::ConfirmStashAndSwitch => {
                 let target_branch = match &self.nav.active_dialog {
                     ActiveDialog::StashAndSwitch { target_branch } => target_branch.clone(),
@@ -1511,6 +1542,7 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         let action = match action {
+            AutomationHistoryAction::ResetToCommit => HistoryContextMenuAction::ResetToCommit,
             AutomationHistoryAction::CheckoutCommit => HistoryContextMenuAction::CheckoutCommit,
             AutomationHistoryAction::RevertChangesInCommit => {
                 HistoryContextMenuAction::RevertChangesInCommit
@@ -1861,10 +1893,16 @@ fn history_action_nodes(
     short_oid: &str,
     oid: &str,
     tags: &[String],
+    can_reset_to_commit: bool,
     has_github_remote: bool,
 ) -> Vec<AutomationNode> {
     let slug = stable_test_slug(short_oid);
     let mut actions = vec![
+        (
+            "reset",
+            crate::ui::labels::reset_to_commit_menu(),
+            AutomationHistoryAction::ResetToCommit,
+        ),
         (
             "checkout",
             crate::ui::labels::checkout_commit_menu(),
@@ -1912,6 +1950,11 @@ fn history_action_nodes(
     actions
         .into_iter()
         .map(|(suffix, label, action)| {
+            let enabled = match action {
+                AutomationHistoryAction::CopyTag => !tags.is_empty(),
+                AutomationHistoryAction::ResetToCommit => can_reset_to_commit,
+                _ => true,
+            };
             automation_node(
                 format!("commit-{slug}-{suffix}"),
                 AutomationRole::Button,
@@ -1919,7 +1962,7 @@ fn history_action_nodes(
                 Some(label),
                 Some(AutomationNodeAction::History(oid.to_string(), action)),
             )
-            .enabled(action != AutomationHistoryAction::CopyTag || !tags.is_empty())
+            .enabled(enabled)
         })
         .collect()
 }
@@ -2145,6 +2188,7 @@ fn active_dialog_name(dialog: &ActiveDialog) -> &'static str {
         ActiveDialog::StashAndSwitch { .. } => "stash_and_switch",
         ActiveDialog::RenameBranch { .. } => "rename_branch",
         ActiveDialog::CreateTag { .. } => "create_tag",
+        ActiveDialog::ResetToCommit { .. } => "reset_to_commit",
         ActiveDialog::RestoreStash => "restore_stash",
         ActiveDialog::PublishRepository => "publish_repository",
     }

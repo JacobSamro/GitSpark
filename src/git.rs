@@ -390,6 +390,16 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn reset_to_commit(&self, repo_path: &Path, oid: &str) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let oid = self.verify_commit_oid(&repo_path, oid)?;
+
+        self.run_git(&repo_path, &["reset", &oid])
+            .with_context(|| format!("failed to reset to commit '{oid}'"))?;
+
+        self.snapshot(&repo_path)
+    }
+
     #[allow(dead_code)]
     pub fn cherry_pick_commit(&self, repo_path: &Path, oid: &str) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;

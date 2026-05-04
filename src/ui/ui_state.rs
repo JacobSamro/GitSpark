@@ -45,6 +45,9 @@ pub enum ActiveDialog {
     CreateTag {
         target_oid: String,
     },
+    ResetToCommit {
+        target_oid: String,
+    },
     RestoreStash,
     PublishRepository,
 }
