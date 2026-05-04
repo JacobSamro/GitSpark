@@ -401,6 +401,34 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn commit_paths(
+        &self,
+        repo_path: &Path,
+        paths: &[String],
+        message: &str,
+    ) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let message = message.trim();
+        if message.is_empty() {
+            bail!("commit message cannot be empty");
+        }
+        if paths.is_empty() {
+            bail!("no files selected for commit");
+        }
+
+        self.run_git(&repo_path, &["reset", "--mixed", "--quiet", "HEAD"])
+            .context("failed to reset staged changes before committing selected files")?;
+
+        let mut add_args = vec!["add", "--all", "--"];
+        add_args.extend(paths.iter().map(String::as_str));
+        self.run_git(&repo_path, &add_args)
+            .context("failed to stage selected files")?;
+        self.run_git(&repo_path, &["commit", "-m", message])
+            .context("failed to create commit")?;
+
+        self.snapshot(&repo_path)
+    }
+
     pub fn discard_change(&self, repo_path: &Path, relative_path: &str) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let relative_path = relative_path.trim();
@@ -1249,7 +1277,11 @@ fn parse_git_bool(value: &str) -> Result<bool> {
 
 #[cfg(test)]
 mod tests {
-    use super::{encode_github_path, normalize_github_remote_url};
+    use std::process::Command;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::{fs, path::Path};
+
+    use super::{GitClient, encode_github_path, normalize_github_remote_url};
 
     #[test]
     fn normalizes_github_remotes_with_owner_and_repo() {
@@ -1282,6 +1314,59 @@ mod tests {
             encode_github_path("dashboards/platform/page one.rs"),
             "dashboards/platform/page%20one.rs"
         );
+    }
+
+    #[test]
+    fn commits_only_selected_paths() {
+        let repo = temp_repo("commit-selected-paths");
+        fs::write(repo.join("included.txt"), "one\n").unwrap();
+        fs::write(repo.join("excluded.txt"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+
+        fs::write(repo.join("included.txt"), "two\n").unwrap();
+        fs::write(repo.join("excluded.txt"), "two\n").unwrap();
+
+        GitClient::new()
+            .commit_paths(&repo, &[String::from("included.txt")], "update included")
+            .unwrap();
+
+        let committed_files = run_git(&repo, &["show", "--format=", "--name-only", "HEAD"]);
+        assert_eq!(committed_files.trim(), "included.txt");
+
+        let status = run_git(&repo, &["status", "--short"]);
+        assert!(status.contains(" M excluded.txt"), "{status}");
+        assert!(!status.contains("included.txt"), "{status}");
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    fn temp_repo(name: &str) -> std::path::PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("gitspark-{name}-{unique}"));
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    fn run_git(repo: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap()
     }
 }
 

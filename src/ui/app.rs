@@ -15,7 +15,7 @@ use rfd::FileDialog;
 use crate::ai::AiClient;
 use crate::git::GitClient;
 use crate::models::{
-    AiProvider, AppSettings, BranchInfo, CommitSuggestion, DiffEntry, GitIdentity,
+    AiProvider, AppSettings, BranchInfo, ChangeEntry, CommitSuggestion, DiffEntry, GitIdentity,
     RemoteModelOption, RepoSnapshot,
 };
 use crate::storage::{push_recent_repo, save_settings};
@@ -49,7 +49,7 @@ pub(crate) enum AppEvent {
     RepoRefreshed(PathBuf, Result<RepoSnapshot, String>, RepoRefreshReason),
     BranchSwitched(Result<RepoSnapshot, String>, String),
     BranchMerged(Result<RepoSnapshot, String>, String),
-    CommitCreated(Result<RepoSnapshot, String>),
+    CommitCreated(Result<RepoSnapshot, String>, String),
     CommitUndone(Result<RepoSnapshot, String>),
     NetworkActionCompleted(Result<RepoSnapshot, String>, String),
     AiCommitGenerated(Result<CommitSuggestion, String>),
@@ -422,8 +422,7 @@ impl GitSparkApp {
                 AppEvent::BranchMerged(Err(err), _) => {
                     self.messages.error_message = format!("Merge failed: {err}");
                 }
-                AppEvent::CommitCreated(Ok(snapshot)) => {
-                    let summary = self.commit.summary.clone();
+                AppEvent::CommitCreated(Ok(snapshot), summary) => {
                     self.adopt_snapshot(snapshot);
                     self.commit.summary.clear();
                     self.commit.body.clear();
@@ -435,7 +434,7 @@ impl GitSparkApp {
                     // Undo commit banner
                     self.nav.undo_commit = Some((summary, std::time::Instant::now()));
                 }
-                AppEvent::CommitCreated(Err(err)) => {
+                AppEvent::CommitCreated(Err(err), _) => {
                     self.messages.error_message = format!("Commit failed: {err}");
                 }
                 AppEvent::CommitUndone(Ok(snapshot)) => {
@@ -994,28 +993,31 @@ impl GitSparkApp {
             return;
         };
 
-        if self.commit.summary.trim().is_empty() {
+        let Some(summary) = self.effective_commit_summary() else {
             self.messages.error_message = "Commit summary cannot be empty.".to_string();
             return;
-        }
+        };
 
         let message = if self.commit.body.trim().is_empty() {
-            self.commit.summary.trim().to_string()
+            summary.clone()
         } else {
-            format!(
-                "{}\n\n{}",
-                self.commit.summary.trim(),
-                self.commit.body.trim()
-            )
+            format!("{}\n\n{}", summary, self.commit.body.trim())
         };
+        let summary_for_event = summary;
+        let included_paths = self.included_commit_paths();
 
         self.messages.status_message = "Creating commit...".to_string();
         self.messages.error_message.clear();
         let tx = self.event_tx.clone();
         let git = GitClient::new();
         thread::spawn(move || {
-            let res = git.commit_all(&path, &message).map_err(|e| e.to_string());
-            let _ = tx.send(AppEvent::CommitCreated(res));
+            let res = if let Some(paths) = included_paths {
+                git.commit_paths(&path, &paths, &message)
+            } else {
+                git.commit_all(&path, &message)
+            }
+            .map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::CommitCreated(res, summary_for_event));
         });
         cx.notify();
     }
@@ -1856,8 +1858,59 @@ impl GitSparkApp {
             .unwrap_or(0)
     }
 
+    fn included_commit_changes(&self) -> Vec<&ChangeEntry> {
+        let Some(snapshot) = &self.repo.snapshot else {
+            return Vec::new();
+        };
+
+        if self.commit.include_all {
+            snapshot.changes.iter().collect()
+        } else {
+            snapshot
+                .changes
+                .iter()
+                .filter(|change| self.commit.included_files.contains(&change.path))
+                .collect()
+        }
+    }
+
+    fn included_commit_paths(&self) -> Option<Vec<String>> {
+        if self.commit.include_all {
+            None
+        } else {
+            Some(
+                self.included_commit_changes()
+                    .into_iter()
+                    .map(|change| change.path.clone())
+                    .collect(),
+            )
+        }
+    }
+
+    fn default_commit_summary(&self) -> Option<String> {
+        if !self.commit.summary.trim().is_empty() {
+            return None;
+        }
+
+        let changes = self.included_commit_changes();
+        if changes.len() != 1 {
+            return None;
+        }
+
+        Some(default_commit_summary_for_change(changes[0]))
+    }
+
+    fn effective_commit_summary(&self) -> Option<String> {
+        let summary = self.commit.summary.trim();
+        if !summary.is_empty() {
+            Some(summary.to_string())
+        } else {
+            self.default_commit_summary()
+        }
+    }
+
     pub(crate) fn can_commit(&self) -> bool {
-        !self.commit.summary.trim().is_empty()
+        self.effective_commit_summary().is_some()
             && self.commit_file_count() > 0
             && !self.commit.ai_in_flight
     }
@@ -3354,27 +3407,10 @@ impl GitSparkApp {
             )
             .child(settings_button);
 
-        // Auto-placeholder: "Update filename" for single file, else generic
+        // Auto-placeholder: "Update filename" for a single included file, else generic
         let summary_placeholder = if self.commit.summary.is_empty() {
-            if let Some(snapshot) = &self.repo.snapshot {
-                if snapshot.changes.len() == 1 {
-                    let path = &snapshot.changes[0].path;
-                    let filename = path.rsplit('/').next().unwrap_or(path);
-                    let status = &snapshot.changes[0].status;
-                    let verb = if status.contains('?') || status.contains('A') {
-                        "Create"
-                    } else if status.contains('D') {
-                        "Delete"
-                    } else {
-                        "Update"
-                    };
-                    format!("{verb} {filename}")
-                } else {
-                    "Summary (required)".to_string()
-                }
-            } else {
-                "Summary (required)".to_string()
-            }
+            self.default_commit_summary()
+                .unwrap_or_else(|| "Summary (required)".to_string())
         } else {
             "Summary (required)".to_string()
         };
@@ -4972,6 +5008,18 @@ impl GitSparkApp {
 
 fn short_commit_label(oid: &str) -> &str {
     &oid[..oid.len().min(7)]
+}
+
+fn default_commit_summary_for_change(change: &ChangeEntry) -> String {
+    let filename = change.path.rsplit('/').next().unwrap_or(&change.path);
+    let verb = if change.status.contains('?') || change.status.contains('A') {
+        "Create"
+    } else if change.status.contains('D') {
+        "Delete"
+    } else {
+        "Update"
+    };
+    format!("{verb} {filename}")
 }
 
 fn commit_diff_clipboard_text(diffs: &[DiffEntry]) -> String {
