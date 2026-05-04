@@ -1103,7 +1103,8 @@ impl GitSparkApp {
                     Some("restore-stash-confirm"),
                     Some("Restore Stash"),
                     Some(AutomationNodeAction::RestoreStash),
-                ),
+                )
+                .enabled(!self.repo.stash_files.is_empty()),
             ]);
         }
 
@@ -1139,7 +1140,8 @@ impl GitSparkApp {
                     Some("discard-stash-confirm"),
                     Some("Discard Stash"),
                     Some(AutomationNodeAction::ConfirmDiscardStash),
-                ),
+                )
+                .enabled(!self.repo.stash_files.is_empty()),
             ]);
         }
 

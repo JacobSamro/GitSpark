@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use gpui::{
     Context, Div, FontWeight, InteractiveElement, ParentElement, StatefulInteractiveElement,
-    Styled, div, px,
+    Styled, div, prelude::FluentBuilder, px,
 };
 use gpui_component::{Icon, IconName, h_flex, v_flex};
 
@@ -17,6 +17,7 @@ pub(crate) fn render_restore_stash_dialog(
     cx: &mut Context<GitSparkApp>,
 ) -> Div {
     let file_count = files.len();
+    let can_restore = file_count > 0;
 
     v_flex()
         .w(px(500.0))
@@ -155,16 +156,39 @@ pub(crate) fn render_restore_stash_dialog(
                         .px(theme::z(12.0))
                         .py(theme::z(6.0))
                         .rounded(theme::z(theme::CORNER_RADIUS))
-                        .bg(theme::commit_button_bg())
-                        .cursor_pointer()
-                        .hover(|s| s.bg(theme::commit_button_hover_bg()))
+                        .bg(if can_restore {
+                            theme::commit_button_bg()
+                        } else {
+                            theme::surface_bg()
+                        })
+                        .border_1()
+                        .border_color(if can_restore {
+                            theme::commit_button_bg()
+                        } else {
+                            theme::surface_bg_alt()
+                        })
+                        .when(can_restore, |el| {
+                            el.cursor_pointer()
+                                .hover(|s| s.bg(theme::commit_button_hover_bg()))
+                        })
                         .child(
                             div()
                                 .text_size(theme::z(12.0))
-                                .text_color(theme::commit_button_text())
+                                .text_color(if can_restore {
+                                    theme::commit_button_text()
+                                } else {
+                                    theme::text_muted()
+                                })
                                 .child("Restore Stash"),
                         )
                         .on_click(cx.listener(|app, _evt, _win, cx| {
+                            if app.repo.stash_files.is_empty() {
+                                app.messages.error_message =
+                                    "Load the stashed file list before restoring the stash."
+                                        .to_string();
+                                cx.notify();
+                                return;
+                            }
                             app.nav.active_dialog = ActiveDialog::None;
                             app.restore_stash(cx);
                         })),

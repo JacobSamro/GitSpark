@@ -405,6 +405,16 @@ export async function testStashFlows(app, fixture) {
   await expect(app.getByTestId("stash-changes-file-readme-md")).toBeVisible({
     timeoutMs: 10_000,
   });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "stash-changes-file-readme-md",
+      ) &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "stash-changes-confirm" && node.enabled !== false,
+      ),
+    { timeoutMs: 10_000 },
+  );
   await app.getByTestId("stash-changes-confirm").click();
   await app.waitForSnapshot(
     (snapshot) =>
@@ -427,6 +437,16 @@ export async function testStashFlows(app, fixture) {
   await expect(app.getByTestId("restore-stash-file-readme-md")).toBeVisible({
     timeoutMs: 10_000,
   });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "restore-stash-file-readme-md",
+      ) &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "restore-stash-confirm" && node.enabled === true,
+      ),
+    { timeoutMs: 10_000 },
+  );
   await app.getByTestId("restore-stash-confirm").click();
   await app.waitForSnapshot(
     (snapshot) =>

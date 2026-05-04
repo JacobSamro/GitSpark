@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use gpui::{
     Context, Div, FontWeight, InteractiveElement, ParentElement, StatefulInteractiveElement,
-    Styled, div, px,
+    Styled, div, prelude::FluentBuilder, px,
 };
 use gpui_component::{Icon, IconName, h_flex, v_flex};
 
@@ -16,6 +16,8 @@ pub(crate) fn render_discard_stash_dialog(
     files: Arc<Vec<ChangeEntry>>,
     cx: &mut Context<GitSparkApp>,
 ) -> Div {
+    let can_discard = !files.is_empty();
+
     v_flex()
         .w(px(500.0))
         .bg(theme::panel_bg())
@@ -129,16 +131,39 @@ pub(crate) fn render_discard_stash_dialog(
                         .px(theme::z(12.0))
                         .py(theme::z(6.0))
                         .rounded(theme::z(theme::CORNER_RADIUS))
-                        .bg(theme::danger())
-                        .cursor_pointer()
-                        .hover(|s| s.bg(gpui::Hsla::from(gpui::rgb(0xff6961))))
+                        .bg(if can_discard {
+                            theme::danger()
+                        } else {
+                            theme::surface_bg()
+                        })
+                        .border_1()
+                        .border_color(if can_discard {
+                            theme::danger()
+                        } else {
+                            theme::surface_bg_alt()
+                        })
+                        .when(can_discard, |el| {
+                            el.cursor_pointer()
+                                .hover(|s| s.bg(gpui::Hsla::from(gpui::rgb(0xff6961))))
+                        })
                         .child(
                             div()
                                 .text_size(theme::z(12.0))
-                                .text_color(gpui::white())
+                                .text_color(if can_discard {
+                                    gpui::white()
+                                } else {
+                                    theme::text_muted()
+                                })
                                 .child("Discard Stash"),
                         )
                         .on_click(cx.listener(|app, _evt, _win, cx| {
+                            if app.repo.stash_files.is_empty() {
+                                app.messages.error_message =
+                                    "Load the stashed file list before discarding the stash."
+                                        .to_string();
+                                cx.notify();
+                                return;
+                            }
                             app.discard_stash(cx);
                         })),
                 ),

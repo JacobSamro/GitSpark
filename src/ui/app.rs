@@ -1080,6 +1080,17 @@ impl GitSparkApp {
             cx.notify();
             return;
         };
+        if self
+            .repo
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.changes.is_empty())
+            .unwrap_or(true)
+        {
+            self.messages.error_message = "There are no local changes to stash.".to_string();
+            cx.notify();
+            return;
+        }
 
         self.nav.active_dialog = ActiveDialog::None;
         self.messages.status_message = "Stashing changes...".to_string();
@@ -1102,6 +1113,12 @@ impl GitSparkApp {
             cx.notify();
             return;
         };
+        if self.repo.stash_files.is_empty() {
+            self.messages.error_message =
+                "Load the stashed file list before restoring the stash.".to_string();
+            cx.notify();
+            return;
+        }
 
         self.messages.status_message = "Restoring stash...".to_string();
         self.messages.error_message.clear();
@@ -1137,13 +1154,19 @@ impl GitSparkApp {
     }
 
     pub(crate) fn discard_stash(&mut self, cx: &mut Context<Self>) {
-        self.nav.active_dialog = ActiveDialog::None;
         let Some(path) = self.repo_path().map(PathBuf::from) else {
             self.messages.error_message = "No repository selected.".to_string();
             cx.notify();
             return;
         };
+        if self.repo.stash_files.is_empty() {
+            self.messages.error_message =
+                "Load the stashed file list before discarding the stash.".to_string();
+            cx.notify();
+            return;
+        }
 
+        self.nav.active_dialog = ActiveDialog::None;
         self.messages.status_message = "Discarding stash...".to_string();
         self.messages.error_message.clear();
         let tx = self.event_tx.clone();
