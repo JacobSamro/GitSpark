@@ -23,6 +23,7 @@ actions!(
         MenuShowRepositoryList,
         MenuShowBranchesList,
         MenuGoToSummary,
+        MenuShowStashedChanges,
         MenuFetch,
         MenuPull,
         MenuPush,
@@ -105,6 +106,12 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         let view = view.clone();
         cx.on_action(move |_: &MenuGoToSummary, cx| {
             let _ = view.update(cx, |app, cx| app.menu_go_to_summary(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuShowStashedChanges, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_show_stashed_changes(cx));
         });
     }
     {
@@ -208,6 +215,7 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         KeyBinding::new("cmd-t", MenuShowRepositoryList, None),
         KeyBinding::new("cmd-b", MenuShowBranchesList, None),
         KeyBinding::new("cmd-g", MenuGoToSummary, None),
+        KeyBinding::new("ctrl-h", MenuShowStashedChanges, None),
         KeyBinding::new("cmd-p", MenuPush, None),
         KeyBinding::new("cmd-shift-p", MenuPull, None),
         KeyBinding::new("cmd-shift-t", MenuFetch, None),
@@ -264,6 +272,7 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
                 MenuItem::action("Show Branches List", MenuShowBranchesList),
                 MenuItem::separator(),
                 MenuItem::action("Go to Summary", MenuGoToSummary),
+                MenuItem::action("Show Stashed Changes", MenuShowStashedChanges),
                 MenuItem::separator(),
                 MenuItem::action("Reset Zoom", MenuZoomReset),
                 MenuItem::action("Zoom In", MenuZoomIn),

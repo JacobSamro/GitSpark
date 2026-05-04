@@ -2656,6 +2656,28 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub fn menu_show_stashed_changes(&mut self, cx: &mut Context<Self>) {
+        if matches!(self.nav.active_dialog, ActiveDialog::RestoreStash) {
+            self.nav.active_dialog = ActiveDialog::None;
+            cx.notify();
+            return;
+        }
+
+        let Some(snapshot) = self.repo.snapshot.as_ref() else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        if snapshot.stash_count == 0 {
+            self.messages.error_message = "There are no stashed changes.".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.show_restore_stash_dialog(cx);
+    }
+
     pub fn menu_fetch(&mut self, cx: &mut Context<Self>) {
         self.fetch_origin(cx);
     }
