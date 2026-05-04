@@ -272,7 +272,7 @@ pub(crate) enum AutomationChangeAction {
     ViewOnGithub,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Copy, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum AutomationHistoryAction {
     CheckoutCommit,
@@ -282,6 +282,7 @@ pub(crate) enum AutomationHistoryAction {
     CherryPickCommit,
     CopySha,
     CopyDiff,
+    CopyTag,
     ViewOnGithub,
 }
 
@@ -391,6 +392,7 @@ struct AutomationCommit {
     author_name: String,
     date: String,
     is_head: bool,
+    tags: Vec<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -674,6 +676,7 @@ impl GitSparkApp {
                             author_name: commit.author_name.clone(),
                             date: commit.date.clone(),
                             is_head: commit.is_head,
+                            tags: commit.tags.clone(),
                         })
                         .collect(),
                 }),
@@ -1071,6 +1074,7 @@ impl GitSparkApp {
                 children.extend(history_action_nodes(
                     commit.short_oid.as_str(),
                     commit.oid.as_str(),
+                    &commit.tags,
                     has_github_remote,
                 ));
             }
@@ -1518,6 +1522,7 @@ impl GitSparkApp {
             AutomationHistoryAction::CherryPickCommit => HistoryContextMenuAction::CherryPickCommit,
             AutomationHistoryAction::CopySha => HistoryContextMenuAction::CopySha,
             AutomationHistoryAction::CopyDiff => HistoryContextMenuAction::CopyDiff,
+            AutomationHistoryAction::CopyTag => HistoryContextMenuAction::CopyTag,
             AutomationHistoryAction::ViewOnGithub => HistoryContextMenuAction::ViewOnGitHub,
         };
         self.handle_history_context_menu_action_for_oid(oid, action, cx);
@@ -1855,6 +1860,7 @@ fn change_action_nodes(path: &str, has_github_remote: bool) -> Vec<AutomationNod
 fn history_action_nodes(
     short_oid: &str,
     oid: &str,
+    tags: &[String],
     has_github_remote: bool,
 ) -> Vec<AutomationNode> {
     let slug = stable_test_slug(short_oid);
@@ -1888,6 +1894,13 @@ fn history_action_nodes(
         ("copy-diff", "Copy diff", AutomationHistoryAction::CopyDiff),
     ];
 
+    let copy_tag_label = if tags.len() > 1 {
+        "Copy Tags"
+    } else {
+        "Copy Tag"
+    };
+    actions.push(("copy-tag", copy_tag_label, AutomationHistoryAction::CopyTag));
+
     if has_github_remote {
         actions.push((
             "view-on-github",
@@ -1906,6 +1919,7 @@ fn history_action_nodes(
                 Some(label),
                 Some(AutomationNodeAction::History(oid.to_string(), action)),
             )
+            .enabled(action != AutomationHistoryAction::CopyTag || !tags.is_empty())
         })
         .collect()
 }

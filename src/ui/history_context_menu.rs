@@ -27,6 +27,12 @@ pub(crate) fn build_history_context_menu(
     cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
     let has_github_remote = view.read(cx).repo_has_github_remote();
+    let commit_tags = view.read(cx).commit_tags_for_oid(&oid);
+    let copy_tag_label = if commit_tags.len() > 1 {
+        "Copy Tags"
+    } else {
+        "Copy Tag"
+    };
 
     menu.min_w(px(220.0))
         .max_w(px(260.0))
@@ -96,8 +102,8 @@ pub(crate) fn build_history_context_menu(
             HistoryContextMenuAction::CopyDiff,
         ))
         .item(menu_item(
-            "Copy Tag",
-            false,
+            copy_tag_label,
+            !commit_tags.is_empty(),
             view.clone(),
             oid.clone(),
             HistoryContextMenuAction::CopyTag,
@@ -112,13 +118,13 @@ pub(crate) fn build_history_context_menu(
 }
 
 fn menu_item(
-    label: &'static str,
+    label: &str,
     enabled: bool,
     view: Entity<GitSparkApp>,
     oid: String,
     action: HistoryContextMenuAction,
 ) -> PopupMenuItem {
-    PopupMenuItem::new(label)
+    PopupMenuItem::new(label.to_string())
         .disabled(!enabled)
         .on_click(move |_event, _window, cx| {
             let oid = oid.clone();

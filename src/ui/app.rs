@@ -1519,6 +1519,7 @@ impl GitSparkApp {
                 self.messages.error_message.clear();
             }
             HistoryContextMenuAction::CopyDiff => self.copy_commit_diff(&oid, cx),
+            HistoryContextMenuAction::CopyTag => self.copy_commit_tags(&oid, cx),
             HistoryContextMenuAction::ViewOnGitHub => self.view_commit_on_github(&oid),
             HistoryContextMenuAction::CreateBranchFromCommit => {
                 let short = short_commit_label(&oid);
@@ -1536,9 +1537,7 @@ impl GitSparkApp {
                 self.nav.active_dialog = ActiveDialog::CreateTag { target_oid: oid };
                 self.messages.error_message.clear();
             }
-            HistoryContextMenuAction::ResetToCommit
-            | HistoryContextMenuAction::ReorderCommit
-            | HistoryContextMenuAction::CopyTag => {}
+            HistoryContextMenuAction::ResetToCommit | HistoryContextMenuAction::ReorderCommit => {}
         }
 
         cx.notify();
@@ -1787,6 +1786,24 @@ impl GitSparkApp {
         });
 
         cx.notify();
+    }
+
+    fn copy_commit_tags(&mut self, oid: &str, cx: &mut Context<Self>) {
+        let tags = self.commit_tags_for_oid(oid);
+        if tags.is_empty() {
+            self.messages.error_message =
+                format!("Commit {} has no tags.", short_commit_label(oid));
+            return;
+        }
+
+        let copied = tags.join(" ");
+        cx.write_to_clipboard(ClipboardItem::new_string(copied));
+        self.messages.status_message = if tags.len() == 1 {
+            format!("Copied tag {}.", tags[0])
+        } else {
+            format!("Copied {} tags.", tags.len())
+        };
+        self.messages.error_message.clear();
     }
 
     fn view_commit_on_github(&mut self, oid: &str) {
@@ -2096,6 +2113,20 @@ impl GitSparkApp {
             .ok()
             .flatten()
             .is_some()
+    }
+
+    pub(crate) fn commit_tags_for_oid(&self, oid: &str) -> Vec<String> {
+        self.repo
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| {
+                snapshot
+                    .history
+                    .iter()
+                    .find(|commit| commit.oid == oid)
+                    .map(|commit| commit.tags.clone())
+            })
+            .unwrap_or_default()
     }
 
     fn reconcile_commit_inclusions(&mut self, changed_paths: &[String]) {
