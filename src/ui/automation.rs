@@ -871,6 +871,13 @@ impl GitSparkApp {
                     Some("Show Repository List"),
                     Some(AutomationNodeAction::ShowRepoSelector(true)),
                 ),
+                automation_node(
+                    "no-repository-add-local",
+                    AutomationRole::Button,
+                    Some("no-repository-add-local"),
+                    Some("Add Local Repository…"),
+                    None::<AutomationNodeAction>,
+                ),
             ]);
         }
 
