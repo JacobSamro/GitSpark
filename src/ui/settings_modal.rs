@@ -90,7 +90,7 @@ pub(crate) fn render_settings_modal(
     let bounds = window.bounds();
     let window_width = bounds.size.width / px(1.0);
     let window_height = bounds.size.height / px(1.0);
-    let panel_width = (window_width - 32.0).clamp(560.0, 920.0);
+    let panel_width = (window_width - 32.0).clamp(560.0, 780.0);
     let panel_height = (window_height - 64.0).clamp(460.0, 640.0);
     let panel_left = ((window_width - panel_width) / 2.0).max(16.0);
     let panel_top = ((window_height - panel_height) / 2.0).max(16.0);
@@ -132,55 +132,19 @@ pub(crate) fn render_settings_modal(
             render_git_section(app, window, repo_scope.as_deref(), cx).into_any_element()
         }
         SettingsSection::Ai => render_ai_section(app, window, cx).into_any_element(),
-        SettingsSection::Appearance => v_flex()
-            .flex_1()
-            .p(px(20.0))
-            .gap(px(16.0))
-            .child(
-                div()
-                    .text_size(px(16.0))
-                    .text_color(theme::text_main())
-                    .font_weight(FontWeight::BOLD)
-                    .child("Appearance"),
-            )
-            .child(
-                div()
-                    .text_size(px(12.0))
-                    .text_color(theme::text_muted())
-                    .child("Theme: Dark (GitHub)"),
-            )
-            .child(
-                div()
-                    .text_size(px(12.0))
-                    .text_color(theme::text_muted())
-                    .child("Additional themes coming soon."),
-            )
-            .into_any_element(),
-        SettingsSection::Integrations => v_flex()
-            .flex_1()
-            .p(px(20.0))
-            .gap(px(16.0))
-            .child(
-                div()
-                    .text_size(px(16.0))
-                    .text_color(theme::text_main())
-                    .font_weight(FontWeight::BOLD)
-                    .child("Integrations"),
-            )
-            .child(
-                div()
-                    .text_size(px(12.0))
-                    .text_color(theme::text_muted())
-                    .child("External editor and shell preferences coming soon."),
-            )
-            .into_any_element(),
+        SettingsSection::Appearance => render_appearance_section().into_any_element(),
+        SettingsSection::Integrations => render_integrations_section().into_any_element(),
     };
 
     let lock_content_scroll = app.nav.settings_section == SettingsSection::Ai
         && app.settings.ai.provider == AiProvider::OpenRouter
         && app.settings_modal.show_model_picker;
 
-    let content_body = v_flex().w_full().p(theme::z(24.0)).child(content);
+    let content_body = v_flex()
+        .w_full()
+        .items_center()
+        .p(theme::z(24.0))
+        .child(div().w_full().max_w(theme::z(560.0)).child(content));
 
     let content_scroll: AnyElement = {
         let base = div()
@@ -322,38 +286,50 @@ fn render_header(cx: &mut Context<GitSparkApp>) -> impl IntoElement {
 
 fn render_nav(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElement {
     let sections = [
-        (SettingsSection::Git, "settings-tab-git", "Git"),
-        (SettingsSection::Ai, "settings-tab-ai", "AI Commit"),
+        (
+            SettingsSection::Git,
+            "settings-tab-git",
+            "Git",
+            IconName::Settings2,
+        ),
+        (
+            SettingsSection::Ai,
+            "settings-tab-ai",
+            "AI Commit",
+            IconName::Bot,
+        ),
         (
             SettingsSection::Appearance,
             "settings-tab-appearance",
             "Appearance",
+            IconName::Palette,
         ),
         (
             SettingsSection::Integrations,
             "settings-tab-integrations",
             "Integrations",
+            IconName::SquareTerminal,
         ),
     ];
 
     let mut rail = v_flex()
         .id("settings-nav")
-        .w(theme::z(220.0))
+        .w(theme::z(200.0))
         .h_full()
         .flex_shrink_0()
         .p(theme::z(14.0))
         .gap(theme::z(6.0))
         .bg(theme::surface_bg_muted());
 
-    for (section, test_id, label) in sections {
+    for (section, test_id, label, icon) in sections {
         let is_active = app.nav.settings_section == section;
         rail = rail.child(
             h_flex()
                 .id(test_id)
                 .w_full()
-                .h(theme::z(34.0))
+                .h(theme::z(38.0))
                 .px(theme::z(12.0))
-                .gap(theme::z(8.0))
+                .gap(theme::z(10.0))
                 .items_center()
                 .rounded(theme::z(theme::CORNER_RADIUS))
                 .cursor_pointer()
@@ -369,6 +345,15 @@ fn render_nav(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElem
                         theme::hover_bg()
                     })
                 })
+                .child(
+                    Icon::new(icon)
+                        .size(theme::z(14.0))
+                        .text_color(if is_active {
+                            theme::commit_button_text()
+                        } else {
+                            theme::text_muted()
+                        }),
+                )
                 .child(
                     div()
                         .text_size(theme::z(12.0))
@@ -493,6 +478,259 @@ fn render_git_section(
                         .child(
                             "When enabled, `git pull` rebases instead of creating merge commits.",
                         ),
+                ),
+        )
+}
+
+fn render_appearance_section() -> impl IntoElement {
+    v_flex()
+        .w_full()
+        .gap(theme::z(22.0))
+        .child(render_section_header(
+            "Appearance",
+            "Theme",
+            "GitSpark uses the GitHub Desktop dark palette for the native macOS interface.",
+        ))
+        .child(
+            v_flex()
+                .w_full()
+                .gap(theme::z(10.0))
+                .child(render_field_label("Theme", None))
+                .child(
+                    h_flex()
+                        .w_full()
+                        .gap(theme::z(12.0))
+                        .items_start()
+                        .child(render_theme_option(
+                            "settings-theme-light",
+                            "Light",
+                            false,
+                            false,
+                        ))
+                        .child(render_theme_option(
+                            "settings-theme-dark",
+                            "Dark",
+                            true,
+                            true,
+                        )),
+                )
+                .child(render_theme_option(
+                    "settings-theme-system",
+                    "System",
+                    false,
+                    false,
+                )),
+        )
+        .child(
+            v_flex()
+                .w_full()
+                .gap(theme::z(8.0))
+                .child(render_field_label("Diff", None))
+                .child(render_static_dropdown(
+                    "settings-tab-size",
+                    "Tab Size",
+                    "4 (default)",
+                    Some("Used by the diff viewer."),
+                )),
+        )
+}
+
+fn render_theme_option(
+    id: &'static str,
+    label: &'static str,
+    dark_preview: bool,
+    selected: bool,
+) -> impl IntoElement {
+    let border = if selected {
+        theme::accent()
+    } else {
+        theme::border()
+    };
+    let shell_bg = if dark_preview {
+        theme::surface_bg()
+    } else {
+        gpui::rgb(0xf6f8fa).into()
+    };
+    let sidebar_bg = if dark_preview {
+        theme::bg()
+    } else {
+        gpui::rgb(0xffffff).into()
+    };
+    v_flex()
+        .id(id)
+        .flex_1()
+        .max_w(theme::z(274.0))
+        .min_h(theme::z(126.0))
+        .rounded(theme::z(theme::CORNER_RADIUS))
+        .border_1()
+        .border_color(border)
+        .bg(theme::surface_bg_muted())
+        .overflow_hidden()
+        .child(
+            v_flex()
+                .h(theme::z(84.0))
+                .bg(shell_bg)
+                .border_b_1()
+                .border_color(theme::border())
+                .child(
+                    h_flex()
+                        .h(theme::z(20.0))
+                        .px(theme::z(8.0))
+                        .gap(theme::z(5.0))
+                        .items_center()
+                        .child(theme_preview_dot(theme::text_muted()))
+                        .child(theme_preview_bar(theme::z(28.0), theme::text_muted()))
+                        .child(theme_preview_dot(theme::text_muted()))
+                        .child(theme_preview_bar(theme::z(34.0), theme::text_muted())),
+                )
+                .child(
+                    h_flex()
+                        .flex_1()
+                        .child(
+                            v_flex()
+                                .w(theme::z(58.0))
+                                .h_full()
+                                .p(theme::z(6.0))
+                                .gap(theme::z(5.0))
+                                .bg(sidebar_bg)
+                                .child(theme_preview_bar(theme::z(38.0), theme::text_muted()))
+                                .child(theme_preview_bar(theme::z(32.0), theme::text_muted()))
+                                .child(theme_preview_bar(
+                                    theme::z(42.0),
+                                    theme::commit_button_bg(),
+                                )),
+                        )
+                        .child(
+                            v_flex()
+                                .flex_1()
+                                .h_full()
+                                .p(theme::z(8.0))
+                                .gap(theme::z(5.0))
+                                .child(theme_preview_bar(theme::z(72.0), theme::success()))
+                                .child(theme_preview_bar(theme::z(48.0), theme::danger()))
+                                .child(theme_preview_bar(theme::z(60.0), theme::danger())),
+                        ),
+                ),
+        )
+        .child(
+            h_flex()
+                .h(theme::z(40.0))
+                .px(theme::z(12.0))
+                .gap(theme::z(8.0))
+                .items_center()
+                .child(
+                    div()
+                        .w(theme::z(14.0))
+                        .h(theme::z(14.0))
+                        .rounded_full()
+                        .border_1()
+                        .border_color(if selected {
+                            theme::accent()
+                        } else {
+                            theme::text_muted()
+                        })
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .when(selected, |el| {
+                            el.child(
+                                div()
+                                    .w(theme::z(7.0))
+                                    .h(theme::z(7.0))
+                                    .rounded_full()
+                                    .bg(theme::accent()),
+                            )
+                        }),
+                )
+                .child(
+                    div()
+                        .text_size(theme::z(13.0))
+                        .text_color(theme::text_main())
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(label),
+                ),
+        )
+}
+
+fn theme_preview_dot(color: Hsla) -> impl IntoElement {
+    div()
+        .w(theme::z(4.0))
+        .h(theme::z(4.0))
+        .rounded_full()
+        .bg(theme::with_alpha(color, 0.7))
+}
+
+fn theme_preview_bar(width: Pixels, color: Hsla) -> impl IntoElement {
+    div()
+        .w(width)
+        .h(theme::z(4.0))
+        .rounded(theme::z(2.0))
+        .bg(theme::with_alpha(color, 0.78))
+}
+
+fn render_integrations_section() -> impl IntoElement {
+    v_flex()
+        .w_full()
+        .gap(theme::z(22.0))
+        .child(render_section_header(
+            "Integrations",
+            "External tools",
+            "GitSpark opens files with your Git editor or the macOS default application.",
+        ))
+        .child(
+            v_flex()
+                .w_full()
+                .gap(theme::z(16.0))
+                .child(render_static_dropdown(
+                    "settings-external-editor",
+                    "External Editor",
+                    "Git core.editor, VISUAL, EDITOR, then default app",
+                    Some("Used by Open in External Editor."),
+                ))
+                .child(render_static_dropdown(
+                    "settings-shell",
+                    "Shell",
+                    "macOS Terminal",
+                    Some("Used for shell-based editor commands."),
+                )),
+        )
+}
+
+fn render_static_dropdown(
+    id: &'static str,
+    label: &'static str,
+    value: &'static str,
+    note: Option<&str>,
+) -> impl IntoElement {
+    v_flex()
+        .w_full()
+        .gap(theme::z(8.0))
+        .child(render_field_label(label, note))
+        .child(
+            h_flex()
+                .id(id)
+                .w_full()
+                .h(theme::z(34.0))
+                .px(theme::z(10.0))
+                .gap(theme::z(8.0))
+                .items_center()
+                .justify_between()
+                .rounded(theme::z(theme::CORNER_RADIUS))
+                .border_1()
+                .border_color(theme::border())
+                .bg(theme::bg())
+                .child(
+                    div()
+                        .flex_1()
+                        .truncate()
+                        .text_size(theme::z(13.0))
+                        .text_color(theme::text_main())
+                        .child(value),
+                )
+                .child(
+                    Icon::new(IconName::ChevronDown)
+                        .size(theme::z(12.0))
+                        .text_color(theme::text_muted()),
                 ),
         )
 }
