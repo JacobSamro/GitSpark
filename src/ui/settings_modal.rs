@@ -100,7 +100,6 @@ pub(crate) fn render_settings_modal(
         .snapshot
         .as_ref()
         .map(|snapshot| snapshot.repo.path.display().to_string());
-    let has_repo = app.repo.snapshot.is_some();
     let status_text = if !app.messages.error_message.is_empty() {
         Some((app.messages.error_message.as_str(), theme::danger()))
     } else if !app.messages.status_message.is_empty() {
@@ -111,7 +110,7 @@ pub(crate) fn render_settings_modal(
 
     let section_action = match app.nav.settings_section {
         SettingsSection::Git => Some(
-            render_primary_button("settings-save-git", "Save Git Config", has_repo, cx)
+            render_primary_button("settings-save-git", "Save Git Config", true, cx)
                 .on_click(cx.listener(|app, _evt, _window, cx| {
                     app.handle_settings_action(SettingsAction::SaveGitConfig, cx);
                 }))
@@ -388,6 +387,7 @@ fn render_git_section(
     repo_scope: Option<&str>,
     cx: &mut Context<GitSparkApp>,
 ) -> impl IntoElement {
+    let has_repo = repo_scope.is_some();
     let description = repo_scope
         .map(|path| {
             format!("Author and default branch are global. Pull behavior applies to {path}.")
@@ -461,6 +461,7 @@ fn render_git_section(
                         .child(
                             Switch::new("settings-pull-rebase")
                                 .checked(app.repo.identity.pull_rebase.unwrap_or(false))
+                                .disabled(!has_repo)
                                 .on_click(cx.listener(|app, checked: &bool, _window, cx| {
                                     app.repo.identity.pull_rebase = Some(*checked);
                                     cx.notify();
@@ -469,7 +470,11 @@ fn render_git_section(
                         .child(
                             div()
                                 .text_size(theme::z(12.0))
-                                .text_color(theme::text_main())
+                                .text_color(if has_repo {
+                                    theme::text_main()
+                                } else {
+                                    theme::text_muted()
+                                })
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .child("Use pull.rebase"),
                         ),
@@ -479,9 +484,11 @@ fn render_git_section(
                         .mt(theme::z(8.0))
                         .text_size(theme::z(11.0))
                         .text_color(theme::text_muted())
-                        .child(
-                            "When enabled, `git pull` rebases instead of creating merge commits.",
-                        ),
+                        .child(if has_repo {
+                            "When enabled, `git pull` rebases instead of creating merge commits."
+                        } else {
+                            "Open a repository to configure pull behavior for that repository."
+                        }),
                 ),
         )
 }

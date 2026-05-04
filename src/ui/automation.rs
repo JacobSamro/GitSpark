@@ -1819,13 +1819,21 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
                         .unwrap_or(""),
                 ),
                 automation_node(
+                    "settings-pull-rebase",
+                    AutomationRole::Button,
+                    Some("settings-pull-rebase"),
+                    Some("Use pull.rebase"),
+                    None::<AutomationNodeAction>,
+                )
+                .enabled(app.repo.snapshot.is_some())
+                .selected(app.repo.identity.pull_rebase.unwrap_or(false)),
+                automation_node(
                     "settings-save-git",
                     AutomationRole::Button,
                     Some("settings-save-git"),
                     Some("Save Git Config"),
                     Some(AutomationNodeAction::SaveGitSettings),
-                )
-                .enabled(app.repo.snapshot.is_some()),
+                ),
             ]);
         }
         SettingsSection::Ai => {
