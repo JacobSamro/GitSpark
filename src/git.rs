@@ -307,6 +307,19 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn create_tag(&self, repo_path: &Path, oid: &str, tag_name: &str) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let oid = self.verify_commit_oid(&repo_path, oid)?;
+        let tag_name = tag_name.trim();
+        if tag_name.is_empty() {
+            bail!("tag name cannot be empty");
+        }
+
+        self.run_git(&repo_path, &["tag", tag_name, &oid])
+            .with_context(|| format!("failed to create tag '{tag_name}'"))?;
+        self.snapshot(&repo_path)
+    }
+
     pub fn create_branch(&self, repo_path: &Path, branch_name: &str) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let branch_name = branch_name.trim();

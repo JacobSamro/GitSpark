@@ -68,7 +68,7 @@ pub(crate) fn build_history_context_menu(
         ))
         .item(menu_item(
             labels::create_tag_menu(),
-            false,
+            true,
             view.clone(),
             oid.clone(),
             HistoryContextMenuAction::CreateTag,

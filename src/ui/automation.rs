@@ -278,6 +278,7 @@ pub(crate) enum AutomationHistoryAction {
     CheckoutCommit,
     RevertChangesInCommit,
     CreateBranchFromCommit,
+    CreateTag,
     CherryPickCommit,
     CopySha,
     CopyDiff,
@@ -443,6 +444,7 @@ enum AutomationNodeAction {
     SetBranchSwitchMode(bool),
     ConfirmCreateBranch,
     ConfirmRenameBranch,
+    ConfirmCreateTag,
     ConfirmStashAndSwitch,
     ShowRestoreStash,
     RestoreStash,
@@ -975,6 +977,32 @@ impl GitSparkApp {
             ]);
         }
 
+        if matches!(self.nav.active_dialog, ActiveDialog::CreateTag { .. }) {
+            children.extend([
+                automation_node(
+                    "create-tag-name-input",
+                    AutomationRole::Textbox,
+                    Some("create-tag-name-input"),
+                    Some(self.repo.new_branch_name.as_str()),
+                    Some(AutomationNodeAction::SetNewBranchName),
+                ),
+                automation_node(
+                    "create-tag-cancel",
+                    AutomationRole::Button,
+                    Some("create-tag-cancel"),
+                    Some("Cancel"),
+                    Some(AutomationNodeAction::CancelDialog),
+                ),
+                automation_node(
+                    "create-tag-confirm",
+                    AutomationRole::Button,
+                    Some("create-tag-confirm"),
+                    Some("Create Tag"),
+                    Some(AutomationNodeAction::ConfirmCreateTag),
+                ),
+            ]);
+        }
+
         if let Some(snapshot) = &self.repo.snapshot {
             let has_github_remote = self.repo_has_github_remote();
             children.push(
@@ -1288,6 +1316,13 @@ impl GitSparkApp {
                 };
                 self.rename_branch(old_name, cx);
             }
+            AutomationNodeAction::ConfirmCreateTag => {
+                let target_oid = match &self.nav.active_dialog {
+                    ActiveDialog::CreateTag { target_oid } => target_oid.clone(),
+                    _ => return AutomationResponse::failure("create tag dialog is not active"),
+                };
+                self.create_tag(target_oid, cx);
+            }
             AutomationNodeAction::ConfirmStashAndSwitch => {
                 let target_branch = match &self.nav.active_dialog {
                     ActiveDialog::StashAndSwitch { target_branch } => target_branch.clone(),
@@ -1479,6 +1514,7 @@ impl GitSparkApp {
             AutomationHistoryAction::CreateBranchFromCommit => {
                 HistoryContextMenuAction::CreateBranchFromCommit
             }
+            AutomationHistoryAction::CreateTag => HistoryContextMenuAction::CreateTag,
             AutomationHistoryAction::CherryPickCommit => HistoryContextMenuAction::CherryPickCommit,
             AutomationHistoryAction::CopySha => HistoryContextMenuAction::CopySha,
             AutomationHistoryAction::CopyDiff => HistoryContextMenuAction::CopyDiff,
@@ -1843,6 +1879,11 @@ fn history_action_nodes(
             crate::ui::labels::create_branch_from_commit_menu(),
             AutomationHistoryAction::CreateBranchFromCommit,
         ),
+        (
+            "create-tag",
+            crate::ui::labels::create_tag_menu(),
+            AutomationHistoryAction::CreateTag,
+        ),
         ("copy-sha", "Copy SHA", AutomationHistoryAction::CopySha),
         ("copy-diff", "Copy diff", AutomationHistoryAction::CopyDiff),
     ];
@@ -2089,6 +2130,7 @@ fn active_dialog_name(dialog: &ActiveDialog) -> &'static str {
         ActiveDialog::DiscardChanges { .. } => "discard_changes",
         ActiveDialog::StashAndSwitch { .. } => "stash_and_switch",
         ActiveDialog::RenameBranch { .. } => "rename_branch",
+        ActiveDialog::CreateTag { .. } => "create_tag",
         ActiveDialog::RestoreStash => "restore_stash",
         ActiveDialog::PublishRepository => "publish_repository",
     }

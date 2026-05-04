@@ -42,6 +42,9 @@ pub enum ActiveDialog {
     RenameBranch {
         old_name: String,
     },
+    CreateTag {
+        target_oid: String,
+    },
     RestoreStash,
     PublishRepository,
 }

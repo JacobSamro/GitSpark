@@ -1140,6 +1140,43 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub(crate) fn create_tag(&mut self, target_oid: String, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            return;
+        };
+
+        let tag_name = self.repo.new_branch_name.trim().to_string();
+        if tag_name.is_empty() {
+            self.messages.error_message = "Type a tag name.".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.messages.status_message = format!(
+            "Creating tag '{tag_name}' on {}...",
+            short_commit_label(&target_oid)
+        );
+        self.messages.error_message.clear();
+        let tx = self.event_tx.clone();
+        let git = GitClient::new();
+        let tag_name_for_event = tag_name.clone();
+        thread::spawn(move || {
+            let res = git
+                .create_tag(&path, &target_oid, &tag_name)
+                .map_err(|e| e.to_string());
+            tx.send(AppEvent::NetworkActionCompleted(
+                res,
+                format!("Created tag '{tag_name_for_event}'"),
+            ));
+        });
+        self.repo.new_branch_name.clear();
+        self.new_branch_cursor = 0;
+        self.new_branch_selection = None;
+        self.nav.active_dialog = ActiveDialog::None;
+        cx.notify();
+    }
+
     pub fn merge_branch(&mut self, cx: &mut Context<Self>) {
         let Some(path) = self.repo_path().map(PathBuf::from) else {
             self.messages.error_message = "No repository selected.".to_string();
@@ -1492,9 +1529,15 @@ impl GitSparkApp {
                 self.nav.active_dialog = ActiveDialog::CreateBranch;
                 self.messages.error_message.clear();
             }
+            HistoryContextMenuAction::CreateTag => {
+                self.repo.new_branch_name.clear();
+                self.new_branch_cursor = 0;
+                self.new_branch_selection = None;
+                self.nav.active_dialog = ActiveDialog::CreateTag { target_oid: oid };
+                self.messages.error_message.clear();
+            }
             HistoryContextMenuAction::ResetToCommit
             | HistoryContextMenuAction::ReorderCommit
-            | HistoryContextMenuAction::CreateTag
             | HistoryContextMenuAction::CopyTag => {}
         }
 
@@ -4496,6 +4539,7 @@ impl GitSparkApp {
         let (dialog_width, dialog_height) = match &self.nav.active_dialog {
             ActiveDialog::CreateBranch => (400.0, 230.0),
             ActiveDialog::RenameBranch { .. } => (400.0, 230.0),
+            ActiveDialog::CreateTag { .. } => (400.0, 230.0),
             ActiveDialog::DiscardChanges { .. } => (420.0, 230.0),
             ActiveDialog::StashAndSwitch { .. } => (576.0, 360.0),
             ActiveDialog::RestoreStash => (500.0, 360.0),
@@ -4838,6 +4882,164 @@ impl GitSparkApp {
                                     )
                                     .on_click(cx.listener(move |app, _evt, _win, cx| {
                                         app.rename_branch(old_name_for_click.clone(), cx);
+                                    })),
+                            ),
+                    )
+            }
+            ActiveDialog::CreateTag { target_oid } => {
+                let tag_name = &self.repo.new_branch_name;
+                let target_oid_for_click = target_oid.clone();
+                let short_oid = short_commit_label(target_oid);
+
+                v_flex()
+                    .w(px(400.0))
+                    .bg(theme::panel_bg())
+                    .rounded(theme::z(theme::CORNER_RADIUS))
+                    .border_1()
+                    .border_color(theme::border())
+                    .shadow_lg()
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .px(theme::z(16.0))
+                            .py(theme::z(12.0))
+                            .items_center()
+                            .justify_between()
+                            .border_b_1()
+                            .border_color(theme::border())
+                            .child(
+                                div()
+                                    .text_size(theme::z(14.0))
+                                    .text_color(theme::text_main())
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("Create a Tag"),
+                            )
+                            .child(
+                                div()
+                                    .id("create-tag-close")
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::hover_bg()))
+                                    .rounded(px(4.0))
+                                    .p(px(4.0))
+                                    .child(
+                                        Icon::new(IconName::Close)
+                                            .size(px(14.0))
+                                            .text_color(theme::text_muted()),
+                                    )
+                                    .on_click(cx.listener(|app, _evt, _win, cx| {
+                                        app.nav.active_dialog = ActiveDialog::None;
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .p(theme::z(16.0))
+                            .gap(theme::z(12.0))
+                            .child(
+                                v_flex()
+                                    .gap(theme::z(4.0))
+                                    .child(
+                                        div()
+                                            .text_size(theme::z(12.0))
+                                            .text_color(theme::text_muted())
+                                            .child("Name"),
+                                    )
+                                    .child(
+                                        div()
+                                            .id("create-tag-name-input")
+                                            .track_focus(&self.new_branch_focus)
+                                            .key_context("text-field")
+                                            .on_key_down(cx.listener(Self::handle_new_branch_key))
+                                            .w_full()
+                                            .h(theme::z(28.0))
+                                            .px(theme::z(8.0))
+                                            .flex()
+                                            .items_center()
+                                            .rounded(theme::z(theme::CORNER_RADIUS))
+                                            .bg(theme::bg())
+                                            .border_1()
+                                            .border_color(theme::accent())
+                                            .cursor_text()
+                                            .child(
+                                                div()
+                                                    .text_size(theme::z(12.0))
+                                                    .text_color(if tag_name.is_empty() {
+                                                        theme::text_muted()
+                                                    } else {
+                                                        theme::text_main()
+                                                    })
+                                                    .child(if tag_name.is_empty() {
+                                                        "v1.0.0".to_string()
+                                                    } else {
+                                                        tag_name.clone()
+                                                    }),
+                                            )
+                                            .on_click(cx.listener(|app, _evt, window, cx| {
+                                                window.focus(&app.new_branch_focus);
+                                                app.new_branch_cursor =
+                                                    app.repo.new_branch_name.len();
+                                                app.new_branch_selection = None;
+                                                cx.notify();
+                                            })),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .text_size(theme::z(11.0))
+                                    .text_color(theme::text_muted())
+                                    .child(format!("Target commit: {short_oid}")),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .px(theme::z(16.0))
+                            .py(theme::z(12.0))
+                            .justify_end()
+                            .gap(theme::z(8.0))
+                            .border_t_1()
+                            .border_color(theme::border())
+                            .child(
+                                div()
+                                    .id("create-tag-cancel")
+                                    .px(theme::z(12.0))
+                                    .py(theme::z(6.0))
+                                    .rounded(theme::z(theme::CORNER_RADIUS))
+                                    .bg(theme::surface_bg())
+                                    .border_1()
+                                    .border_color(theme::surface_bg_alt())
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::toolbar_hover_bg()))
+                                    .child(
+                                        div()
+                                            .text_size(theme::z(12.0))
+                                            .text_color(theme::text_main())
+                                            .child("Cancel"),
+                                    )
+                                    .on_click(cx.listener(|app, _evt, _win, cx| {
+                                        app.nav.active_dialog = ActiveDialog::None;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .id("create-tag-confirm")
+                                    .px(theme::z(12.0))
+                                    .py(theme::z(6.0))
+                                    .rounded(theme::z(theme::CORNER_RADIUS))
+                                    .bg(theme::commit_button_bg())
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::commit_button_hover_bg()))
+                                    .child(
+                                        div()
+                                            .text_size(theme::z(12.0))
+                                            .text_color(theme::commit_button_text())
+                                            .child("Create Tag"),
+                                    )
+                                    .on_click(cx.listener(move |app, _evt, _win, cx| {
+                                        app.create_tag(target_oid_for_click.clone(), cx);
                                     })),
                             ),
                     )
