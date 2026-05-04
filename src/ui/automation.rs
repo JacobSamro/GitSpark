@@ -1170,6 +1170,8 @@ impl GitSparkApp {
         }
 
         if matches!(self.nav.active_dialog, ActiveDialog::CreateTag { .. }) {
+            let tag_validation = self.create_tag_validation_message();
+            let show_tag_validation = !self.repo.new_branch_name.trim().is_empty();
             children.extend([
                 automation_node(
                     "create-tag-name-input",
@@ -1191,8 +1193,20 @@ impl GitSparkApp {
                     Some("create-tag-confirm"),
                     Some("Create Tag"),
                     Some(AutomationNodeAction::ConfirmCreateTag),
-                ),
+                )
+                .enabled(tag_validation.is_none()),
             ]);
+            if show_tag_validation {
+                if let Some(message) = tag_validation {
+                    children.push(automation_node(
+                        "create-tag-validation-message",
+                        AutomationRole::Status,
+                        Some("create-tag-validation-message"),
+                        Some(message.as_str()),
+                        None::<AutomationNodeAction>,
+                    ));
+                }
+            }
         }
 
         if matches!(self.nav.active_dialog, ActiveDialog::ResetToCommit { .. }) {

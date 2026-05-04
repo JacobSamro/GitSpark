@@ -140,6 +140,41 @@ export async function testHistoryAndBranchFlows(app, fixture) {
   );
 
   await app
+    .getByTestId(`commit-${selectedCommit.short_oid}-create-tag`)
+    .click();
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.active_dialog === "create_tag",
+    { timeoutMs: 10_000 },
+  );
+  await app.getByTestId("create-tag-name-input").fill("e2e-tag");
+  await app.getByTestId("create-tag-confirm").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Created tag 'e2e-tag' complete." &&
+      snapshot.repo?.history.some((commit) =>
+        commit.tags.includes("e2e-tag"),
+      ),
+    { timeoutMs: 15_000 },
+  );
+
+  await app
+    .getByTestId(`commit-${selectedCommit.short_oid}-create-tag`)
+    .click();
+  await app.getByTestId("create-tag-name-input").fill("e2e-tag");
+  await expect(
+    app.getByText("A tag named e2e-tag already exists."),
+  ).toBeVisible({ timeoutMs: 10_000 });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.active_dialog === "create_tag" &&
+      snapshot.test_tree.children.some(
+        (node) => node.id === "create-tag-confirm" && node.enabled === false,
+      ),
+    { timeoutMs: 10_000 },
+  );
+  await app.getByTestId("create-tag-cancel").click();
+
+  await app
     .getByTestId(`commit-${selectedCommit.short_oid}-create-branch`)
     .click();
   await app.waitForSnapshot(

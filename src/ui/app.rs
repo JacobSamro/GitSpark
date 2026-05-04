@@ -1264,8 +1264,8 @@ impl GitSparkApp {
         };
 
         let tag_name = self.repo.new_branch_name.trim().to_string();
-        if tag_name.is_empty() {
-            self.messages.error_message = "Type a tag name.".to_string();
+        if let Some(message) = self.create_tag_validation_message() {
+            self.messages.error_message = message;
             cx.notify();
             return;
         }
@@ -2348,6 +2348,34 @@ impl GitSparkApp {
                     .map(|commit| commit.tags.clone())
             })
             .unwrap_or_default()
+    }
+
+    pub(crate) fn tag_name_exists(&self, tag_name: &str) -> bool {
+        let tag_name = tag_name.trim();
+        !tag_name.is_empty()
+            && self
+                .repo
+                .snapshot
+                .as_ref()
+                .map(|snapshot| {
+                    snapshot
+                        .history
+                        .iter()
+                        .flat_map(|commit| commit.tags.iter())
+                        .any(|tag| tag == tag_name)
+                })
+                .unwrap_or(false)
+    }
+
+    pub(crate) fn create_tag_validation_message(&self) -> Option<String> {
+        let tag_name = self.repo.new_branch_name.trim();
+        if tag_name.is_empty() {
+            return Some("Type a tag name.".to_string());
+        }
+        if self.tag_name_exists(tag_name) {
+            return Some(format!("A tag named {tag_name} already exists."));
+        }
+        None
     }
 
     pub(crate) fn can_reset_to_commit(&self, oid: &str) -> bool {
@@ -5623,6 +5651,9 @@ impl GitSparkApp {
                 let tag_name = &self.repo.new_branch_name;
                 let target_oid_for_click = target_oid.clone();
                 let short_oid = short_commit_label(target_oid);
+                let validation_message = self.create_tag_validation_message();
+                let show_validation_message = !tag_name.trim().is_empty();
+                let can_create = validation_message.is_none();
 
                 v_flex()
                     .w(px(400.0))
@@ -5723,6 +5754,18 @@ impl GitSparkApp {
                                     .text_size(theme::z(11.0))
                                     .text_color(theme::text_muted())
                                     .child(format!("Target commit: {short_oid}")),
+                            )
+                            .children(
+                                validation_message
+                                    .as_ref()
+                                    .filter(|_| show_validation_message)
+                                    .map(|message| {
+                                        div()
+                                            .id("create-tag-validation-message")
+                                            .text_size(theme::z(11.0))
+                                            .text_color(theme::danger())
+                                            .child(message.clone())
+                                    }),
                             ),
                     )
                     .child(
@@ -5762,16 +5805,36 @@ impl GitSparkApp {
                                     .px(theme::z(12.0))
                                     .py(theme::z(6.0))
                                     .rounded(theme::z(theme::CORNER_RADIUS))
-                                    .bg(theme::commit_button_bg())
-                                    .cursor_pointer()
-                                    .hover(|s| s.bg(theme::commit_button_hover_bg()))
+                                    .bg(if can_create {
+                                        theme::commit_button_bg()
+                                    } else {
+                                        theme::surface_bg()
+                                    })
+                                    .border_1()
+                                    .border_color(if can_create {
+                                        theme::commit_button_bg()
+                                    } else {
+                                        theme::surface_bg_alt()
+                                    })
+                                    .when(can_create, |el| {
+                                        el.cursor_pointer()
+                                            .hover(|s| s.bg(theme::commit_button_hover_bg()))
+                                    })
                                     .child(
                                         div()
                                             .text_size(theme::z(12.0))
-                                            .text_color(theme::commit_button_text())
+                                            .text_color(if can_create {
+                                                theme::commit_button_text()
+                                            } else {
+                                                theme::text_muted()
+                                            })
                                             .child("Create Tag"),
                                     )
                                     .on_click(cx.listener(move |app, _evt, _win, cx| {
+                                        if app.create_tag_validation_message().is_some() {
+                                            cx.notify();
+                                            return;
+                                        }
                                         app.create_tag(target_oid_for_click.clone(), cx);
                                     })),
                             ),
