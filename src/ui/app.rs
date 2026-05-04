@@ -2525,6 +2525,7 @@ impl Render for GitSparkApp {
             .on_action(cx.listener(Self::handle_menu_pull))
             .on_action(cx.listener(Self::handle_menu_push))
             .on_action(cx.listener(Self::handle_menu_publish_repository))
+            .on_action(cx.listener(Self::handle_menu_open_in_terminal))
             .on_action(cx.listener(Self::handle_menu_repository_settings))
             .on_action(cx.listener(Self::handle_menu_new_branch))
             .on_action(cx.listener(Self::handle_menu_merge_branch))
@@ -2618,6 +2619,37 @@ impl GitSparkApp {
             Err(err) => {
                 self.messages.error_message =
                     format!("Failed to open repository in external editor: {err}");
+            }
+        }
+        cx.notify();
+    }
+
+    pub fn menu_open_in_terminal(&mut self, cx: &mut Context<Self>) {
+        let Some(repo_path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        #[cfg(target_os = "macos")]
+        let result = Command::new("open")
+            .arg("-a")
+            .arg("Terminal")
+            .arg(&repo_path)
+            .spawn()
+            .map(|_| ());
+
+        #[cfg(not(target_os = "macos"))]
+        let result = open::that_detached(&repo_path);
+
+        match result {
+            Ok(_) => {
+                self.messages.status_message = "Opened repository in Terminal.".to_string();
+                self.messages.error_message.clear();
+            }
+            Err(err) => {
+                self.messages.error_message =
+                    format!("Failed to open repository in Terminal: {err}");
             }
         }
         cx.notify();
@@ -2788,6 +2820,15 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         self.run_network_action(NetworkAction::PublishRepository, cx);
+    }
+
+    fn handle_menu_open_in_terminal(
+        &mut self,
+        _: &crate::MenuOpenInTerminal,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_open_in_terminal(cx);
     }
 
     fn handle_menu_repository_settings(

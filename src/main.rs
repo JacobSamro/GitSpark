@@ -25,6 +25,7 @@ actions!(
         MenuPush,
         MenuPublishRepository,
         MenuOpenExternalEditor,
+        MenuOpenInTerminal,
         MenuShowInFinder,
         MenuViewOnGitHub,
         MenuRepositorySettings,
@@ -115,6 +116,12 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
     }
     {
         let view = view.clone();
+        cx.on_action(move |_: &MenuOpenInTerminal, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_open_in_terminal(cx));
+        });
+    }
+    {
+        let view = view.clone();
         cx.on_action(move |_: &MenuShowInFinder, cx| {
             let _ = view.update(cx, |app, cx| app.menu_show_in_finder(cx));
         });
@@ -166,6 +173,7 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         KeyBinding::new("cmd-r", MenuFetch, None),
         KeyBinding::new("cmd-shift-p", MenuPush, None),
         KeyBinding::new("cmd-shift-a", MenuOpenExternalEditor, None),
+        KeyBinding::new("ctrl-`", MenuOpenInTerminal, None),
         KeyBinding::new("cmd-shift-f", MenuShowInFinder, None),
         KeyBinding::new("cmd-shift-g", MenuViewOnGitHub, None),
         KeyBinding::new("cmd-shift-n", MenuNewBranch, None),
@@ -221,6 +229,7 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
                 MenuItem::action("Push", MenuPush),
                 MenuItem::action("Publish Repository", MenuPublishRepository),
                 MenuItem::separator(),
+                MenuItem::action("Open in Terminal", MenuOpenInTerminal),
                 MenuItem::action("Open in External Editor", MenuOpenExternalEditor),
                 MenuItem::action("Show in Finder", MenuShowInFinder),
                 MenuItem::action("View on GitHub", MenuViewOnGitHub),
