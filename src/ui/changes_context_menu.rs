@@ -1,7 +1,8 @@
-use gpui::{Context, Entity, InteractiveElement, MouseButton, Window, px};
+use gpui::{Context, Entity, Window, px};
 use gpui_component::menu::{ContextMenu, ContextMenuExt, PopupMenu, PopupMenuItem};
 
 use crate::ui::app::GitSparkApp;
+use crate::ui::labels;
 
 #[derive(Clone, Debug)]
 pub(crate) enum ChangesContextAction {
@@ -31,7 +32,7 @@ pub(crate) fn build_changes_context_menu(
         .min_w(px(220.0))
         .max_w(px(280.0))
         .item(changes_menu_item(
-            "Discard Changes...",
+            labels::discard_changes_menu(),
             true,
             view.clone(),
             path.clone(),
@@ -39,7 +40,7 @@ pub(crate) fn build_changes_context_menu(
         ))
         .separator()
         .item(changes_menu_item(
-            "Ignore File (Add to .gitignore)",
+            labels::ignore_file_menu(),
             true,
             view.clone(),
             path.clone(),
@@ -48,7 +49,7 @@ pub(crate) fn build_changes_context_menu(
 
     if let Some(ext) = ext {
         m = m.item(changes_menu_item(
-            &format!("Ignore All .{ext} Files"),
+            &labels::ignore_all_extension_menu(&ext),
             true,
             view.clone(),
             path.clone(),
@@ -58,14 +59,14 @@ pub(crate) fn build_changes_context_menu(
 
     m.separator()
         .item(changes_menu_item(
-            "Copy file path",
+            labels::copy_file_path_menu(),
             true,
             view.clone(),
             path.clone(),
             ChangesContextAction::CopyFilePath,
         ))
         .item(changes_menu_item(
-            "Copy relative file path",
+            labels::copy_relative_file_path_menu(),
             true,
             view.clone(),
             path.clone(),
@@ -73,21 +74,21 @@ pub(crate) fn build_changes_context_menu(
         ))
         .separator()
         .item(changes_menu_item(
-            reveal_label(),
+            labels::reveal_in_file_manager_menu(),
             true,
             view.clone(),
             path.clone(),
             ChangesContextAction::RevealInFinder,
         ))
         .item(changes_menu_item(
-            "Open in external editor",
+            labels::open_in_external_editor_menu(),
             true,
             view.clone(),
             path.clone(),
             ChangesContextAction::OpenInExternalEditor,
         ))
         .item(changes_menu_item(
-            "Open with default program",
+            labels::open_with_default_program_menu(),
             true,
             view.clone(),
             path.clone(),
@@ -121,40 +122,19 @@ fn changes_menu_item(
         })
 }
 
-fn reveal_label() -> &'static str {
-    #[cfg(target_os = "windows")]
-    {
-        "Show in Explorer"
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        "Show in Finder"
-    }
-
-    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-    {
-        "Show in file manager"
-    }
-}
-
 pub(crate) fn bind_changes_context_click(
     row: gpui::Stateful<gpui::Div>,
     view: Entity<GitSparkApp>,
     path: String,
 ) -> ContextMenu<gpui::Stateful<gpui::Div>> {
-    row.on_mouse_down(MouseButton::Right, {
-        let view = view.clone();
-        let path = path.clone();
-        move |_event, _window, cx| {
+    row.context_menu(move |menu, window, cx| {
+        {
             let path = path.clone();
             view.update(cx, |app, cx| {
                 app.selection.selected_change = Some(path);
                 cx.notify();
             });
         }
-    })
-    .context_menu(move |menu, window, cx| {
         build_changes_context_menu(menu, view.clone(), path.clone(), window, cx)
     })
 }

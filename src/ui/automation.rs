@@ -1633,51 +1633,63 @@ fn settings_field_node(
 
 fn change_action_nodes(path: &str) -> Vec<AutomationNode> {
     let slug = stable_test_slug(path);
-    [
-        ("discard", "Discard change", AutomationChangeAction::Discard),
+    let extension = std::path::Path::new(path)
+        .extension()
+        .map(|ext| ext.to_string_lossy().to_string())
+        .unwrap_or_default();
+    vec![
+        (
+            "discard",
+            crate::ui::labels::discard_changes_menu().to_string(),
+            AutomationChangeAction::Discard,
+        ),
         (
             "prompt-discard",
-            "Prompt discard change",
+            "Prompt discard change".to_string(),
             AutomationChangeAction::PromptDiscard,
         ),
         (
             "ignore-path",
-            "Ignore file",
+            crate::ui::labels::ignore_file_menu().to_string(),
             AutomationChangeAction::IgnorePath,
         ),
         (
             "ignore-extension",
-            "Ignore extension",
+            if extension.is_empty() {
+                "Ignore extension".to_string()
+            } else {
+                crate::ui::labels::ignore_all_extension_menu(&extension)
+            },
             AutomationChangeAction::IgnoreExtension,
         ),
         (
             "copy-full-path",
-            "Copy full path",
+            crate::ui::labels::copy_file_path_menu().to_string(),
             AutomationChangeAction::CopyFullPath,
         ),
         (
             "copy-relative-path",
-            "Copy relative path",
+            crate::ui::labels::copy_relative_file_path_menu().to_string(),
             AutomationChangeAction::CopyRelativePath,
         ),
         (
             "reveal-in-finder",
-            "Reveal in Finder",
+            crate::ui::labels::reveal_in_file_manager_menu().to_string(),
             AutomationChangeAction::RevealInFinder,
         ),
         (
             "open-in-editor",
-            "Open in external editor",
+            crate::ui::labels::open_in_external_editor_menu().to_string(),
             AutomationChangeAction::OpenInEditor,
         ),
         (
             "open-with-default",
-            "Open with default program",
+            crate::ui::labels::open_with_default_program_menu().to_string(),
             AutomationChangeAction::OpenWithDefault,
         ),
         (
             "view-on-github",
-            "View on GitHub",
+            "View on GitHub".to_string(),
             AutomationChangeAction::ViewOnGithub,
         ),
     ]
@@ -1687,7 +1699,7 @@ fn change_action_nodes(path: &str) -> Vec<AutomationNode> {
             format!("change-{slug}-{suffix}"),
             AutomationRole::Button,
             Some(format!("change-{slug}-{suffix}")),
-            Some(label),
+            Some(label.as_str()),
             Some(AutomationNodeAction::ChangeFile(path.to_string(), action)),
         )
     })

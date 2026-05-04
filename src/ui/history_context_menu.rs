@@ -1,4 +1,4 @@
-use gpui::{Context, Entity, InteractiveElement, MouseButton, Window, px};
+use gpui::{Context, Entity, Window, px};
 use gpui_component::menu::{ContextMenu, ContextMenuExt, PopupMenu, PopupMenuItem};
 
 use crate::ui::app::GitSparkApp;
@@ -138,17 +138,13 @@ pub(crate) fn bind_history_context_click(
     view: Entity<GitSparkApp>,
     oid: String,
 ) -> ContextMenu<gpui::Stateful<gpui::Div>> {
-    row.on_mouse_down(MouseButton::Right, {
-        let view = view.clone();
-        let oid = oid.clone();
-        move |_event, _window, cx| {
+    row.context_menu(move |menu, window, cx| {
+        {
             let oid = oid.clone();
             view.update(cx, |app, cx| {
                 app.select_commit(oid, cx);
             });
         }
-    })
-    .context_menu(move |menu, window, cx| {
         build_history_context_menu(menu, view.clone(), oid.clone(), window, cx)
     })
 }
