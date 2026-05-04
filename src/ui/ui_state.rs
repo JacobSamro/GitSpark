@@ -19,6 +19,12 @@ pub enum MainTab {
     Workspace,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum BranchSelectorMode {
+    Switch,
+    Merge,
+}
+
 #[derive(Clone)]
 pub enum OpenRouterModelsState {
     Idle,
@@ -72,6 +78,7 @@ pub struct NavState {
     pub show_branch_selector: bool,
     pub show_network_dropdown: bool,
     pub settings_section: SettingsSection,
+    pub branch_selector_mode: BranchSelectorMode,
     pub active_dialog: ActiveDialog,
     /// Undo commit: Some((summary, timestamp)) after a successful commit
     pub undo_commit: Option<(String, std::time::Instant)>,
@@ -87,6 +94,7 @@ impl Default for NavState {
             show_branch_selector: false,
             show_network_dropdown: false,
             settings_section: SettingsSection::Git,
+            branch_selector_mode: BranchSelectorMode::Switch,
             active_dialog: ActiveDialog::None,
             undo_commit: None,
         }

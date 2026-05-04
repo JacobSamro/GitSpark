@@ -20,6 +20,8 @@ actions!(
         MenuShowSettings,
         MenuShowChanges,
         MenuShowHistory,
+        MenuShowRepositoryList,
+        MenuShowBranchesList,
         MenuFetch,
         MenuPull,
         MenuPush,
@@ -83,6 +85,18 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         let view = view.clone();
         cx.on_action(move |_: &MenuShowHistory, cx| {
             let _ = view.update(cx, |app, cx| app.menu_show_history(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuShowRepositoryList, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_show_repository_list(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuShowBranchesList, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_show_branches_list(cx));
         });
     }
     {
@@ -177,6 +191,8 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         KeyBinding::new("cmd-,", MenuShowSettings, None),
         KeyBinding::new("cmd-1", MenuShowChanges, None),
         KeyBinding::new("cmd-2", MenuShowHistory, None),
+        KeyBinding::new("cmd-t", MenuShowRepositoryList, None),
+        KeyBinding::new("cmd-b", MenuShowBranchesList, None),
         KeyBinding::new("cmd-r", MenuFetch, None),
         KeyBinding::new("cmd-shift-p", MenuPush, None),
         KeyBinding::new("cmd-shift-a", MenuOpenExternalEditor, None),
@@ -223,6 +239,8 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
             items: vec![
                 MenuItem::action("Changes", MenuShowChanges),
                 MenuItem::action("History", MenuShowHistory),
+                MenuItem::action("Show Repository List", MenuShowRepositoryList),
+                MenuItem::action("Show Branches List", MenuShowBranchesList),
                 MenuItem::separator(),
                 MenuItem::action("Zoom In", MenuZoomIn),
                 MenuItem::action("Zoom Out", MenuZoomOut),

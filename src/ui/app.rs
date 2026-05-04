@@ -33,7 +33,8 @@ use crate::ui::settings_modal::{self, SettingsField, SettingsModalState};
 use crate::ui::stash_file_list::render_stash_file_list;
 use crate::ui::theme;
 use crate::ui::ui_state::{
-    ActiveDialog, FilterState, MessageState, NavState, OpenRouterModelsState, SidebarTab,
+    ActiveDialog, BranchSelectorMode, FilterState, MessageState, NavState, OpenRouterModelsState,
+    SidebarTab,
 };
 
 // ---------------------------------------------------------------------------
@@ -568,6 +569,7 @@ impl GitSparkApp {
             ToolbarAction::ToggleRepoSelector => {
                 self.nav.show_repo_selector = !self.nav.show_repo_selector;
                 self.nav.show_branch_selector = false;
+                self.nav.branch_selector_mode = BranchSelectorMode::Switch;
                 self.repo.pending_cherry_pick_oid = None;
                 self.nav.show_network_dropdown = false;
             }
@@ -1178,6 +1180,7 @@ impl GitSparkApp {
         self.filters.branch_filter_text.clear();
         self.branch_filter_cursor = 0;
         self.nav.show_branch_selector = false;
+        self.nav.branch_selector_mode = BranchSelectorMode::Switch;
         self.nav.active_dialog = ActiveDialog::None;
         cx.notify();
     }
@@ -1598,6 +1601,7 @@ impl GitSparkApp {
                 let short = short_commit_label(&oid).to_string();
                 self.repo.pending_cherry_pick_oid = Some(oid);
                 self.nav.show_branch_selector = true;
+                self.nav.branch_selector_mode = BranchSelectorMode::Switch;
                 self.nav.show_repo_selector = false;
                 self.nav.show_network_dropdown = false;
                 self.filters.branch_filter_text.clear();
@@ -1645,7 +1649,16 @@ impl GitSparkApp {
     pub(crate) fn select_branch_from_selector(&mut self, name: String, cx: &mut Context<Self>) {
         if let Some(oid) = self.repo.pending_cherry_pick_oid.take() {
             self.nav.show_branch_selector = false;
+            self.nav.branch_selector_mode = BranchSelectorMode::Switch;
             self.cherry_pick_commit_onto_branch(oid, name, cx);
+            return;
+        }
+
+        if self.nav.branch_selector_mode == BranchSelectorMode::Merge {
+            self.nav.show_branch_selector = false;
+            self.nav.branch_selector_mode = BranchSelectorMode::Switch;
+            self.repo.merge_target = name;
+            self.merge_branch(cx);
             return;
         }
 
@@ -1661,6 +1674,7 @@ impl GitSparkApp {
         }
 
         self.nav.show_branch_selector = false;
+        self.nav.branch_selector_mode = BranchSelectorMode::Switch;
         cx.notify();
     }
 
@@ -2561,6 +2575,8 @@ impl Render for GitSparkApp {
             .on_action(cx.listener(Self::handle_menu_show_settings))
             .on_action(cx.listener(Self::handle_menu_show_changes))
             .on_action(cx.listener(Self::handle_menu_show_history))
+            .on_action(cx.listener(Self::handle_menu_show_repository_list))
+            .on_action(cx.listener(Self::handle_menu_show_branches_list))
             .on_action(cx.listener(Self::handle_menu_fetch))
             .on_action(cx.listener(Self::handle_menu_pull))
             .on_action(cx.listener(Self::handle_menu_push))
@@ -2594,6 +2610,25 @@ impl GitSparkApp {
 
     pub fn menu_show_history(&mut self, cx: &mut Context<Self>) {
         self.nav.sidebar_tab = SidebarTab::History;
+        cx.notify();
+    }
+
+    pub fn menu_show_repository_list(&mut self, cx: &mut Context<Self>) {
+        self.nav.show_repo_selector = true;
+        self.nav.show_branch_selector = false;
+        self.nav.branch_selector_mode = BranchSelectorMode::Switch;
+        self.nav.show_network_dropdown = false;
+        self.close_history_context_menu();
+        cx.notify();
+    }
+
+    pub fn menu_show_branches_list(&mut self, cx: &mut Context<Self>) {
+        self.nav.show_branch_selector = true;
+        self.nav.branch_selector_mode = BranchSelectorMode::Switch;
+        self.nav.show_repo_selector = false;
+        self.nav.show_network_dropdown = false;
+        self.repo.pending_cherry_pick_oid = None;
+        self.close_history_context_menu();
         cx.notify();
     }
 
@@ -2761,6 +2796,7 @@ impl GitSparkApp {
 
     pub fn menu_merge_branch(&mut self, cx: &mut Context<Self>) {
         self.nav.show_branch_selector = true;
+        self.nav.branch_selector_mode = BranchSelectorMode::Merge;
         self.repo.pending_cherry_pick_oid = None;
         self.messages.status_message =
             "Choose a branch to merge into the current branch.".to_string();
@@ -2828,6 +2864,24 @@ impl GitSparkApp {
     ) {
         self.nav.sidebar_tab = SidebarTab::History;
         cx.notify();
+    }
+
+    fn handle_menu_show_repository_list(
+        &mut self,
+        _: &crate::MenuShowRepositoryList,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_show_repository_list(cx);
+    }
+
+    fn handle_menu_show_branches_list(
+        &mut self,
+        _: &crate::MenuShowBranchesList,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_show_branches_list(cx);
     }
 
     fn handle_menu_fetch(
@@ -2907,6 +2961,7 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         self.nav.show_branch_selector = true;
+        self.nav.branch_selector_mode = BranchSelectorMode::Merge;
         self.repo.pending_cherry_pick_oid = None;
         self.messages.status_message =
             "Choose a branch to merge into the current branch.".to_string();
@@ -3027,6 +3082,7 @@ impl GitSparkApp {
             if !app.nav.show_branch_selector {
                 app.repo.pending_cherry_pick_oid = None;
             }
+            app.nav.branch_selector_mode = BranchSelectorMode::Switch;
             app.nav.show_repo_selector = false;
             app.nav.show_network_dropdown = false;
             cx.notify();
@@ -3064,6 +3120,7 @@ impl GitSparkApp {
             app.nav.show_network_dropdown = !app.nav.show_network_dropdown;
             app.nav.show_repo_selector = false;
             app.nav.show_branch_selector = false;
+            app.nav.branch_selector_mode = BranchSelectorMode::Switch;
             cx.notify();
         }));
 
@@ -3513,6 +3570,7 @@ impl GitSparkApp {
             }
             "escape" => {
                 self.nav.show_branch_selector = false;
+                self.nav.branch_selector_mode = BranchSelectorMode::Switch;
                 self.repo.pending_cherry_pick_oid = None;
                 self.filters.branch_filter_text.clear();
                 self.branch_filter_cursor = 0;
@@ -6234,6 +6292,7 @@ impl GitSparkApp {
             .bottom_0()
             .on_click(cx.listener(|app, _evt, _win, cx| {
                 app.nav.show_branch_selector = false;
+                app.nav.branch_selector_mode = BranchSelectorMode::Switch;
                 app.repo.pending_cherry_pick_oid = None;
                 cx.notify();
             }));
@@ -6301,6 +6360,7 @@ impl GitSparkApp {
             .cursor_pointer()
             .on_click(cx.listener(|app, _evt, _win, cx| {
                 app.nav.show_branch_selector = false;
+                app.nav.branch_selector_mode = BranchSelectorMode::Switch;
                 app.repo.pending_cherry_pick_oid = None;
                 cx.notify();
             }))
@@ -6614,7 +6674,17 @@ impl GitSparkApp {
                     .into_any_element()
             };
 
-        // --- Merge prompt ---
+        let branch_selector_footer = if self.repo.pending_cherry_pick_oid.is_some() {
+            "Choose a branch to cherry-pick into"
+        } else if self.nav.branch_selector_mode == BranchSelectorMode::Merge {
+            "Choose a branch to merge into"
+        } else {
+            "Choose a branch to switch to"
+        };
+        let show_branch_selector_target = self.repo.pending_cherry_pick_oid.is_some()
+            || self.nav.branch_selector_mode == BranchSelectorMode::Merge;
+
+        // --- Branch selector prompt ---
         let bottom_bar = h_flex()
             .id("branch-selector-merge-bar")
             .w_full()
@@ -6648,19 +6718,17 @@ impl GitSparkApp {
                         div()
                             .text_size(theme::z(theme::FONT_SIZE))
                             .text_color(theme::text_muted())
-                            .child(if self.repo.pending_cherry_pick_oid.is_some() {
-                                "Choose a branch to cherry-pick into"
-                            } else {
-                                "Choose a branch to merge into"
-                            }),
+                            .child(branch_selector_footer),
                     )
-                    .child(
-                        div()
-                            .text_size(theme::z(theme::FONT_SIZE))
-                            .text_color(theme::text_main())
-                            .font_weight(FontWeight::BOLD)
-                            .child(default_branch),
-                    ),
+                    .when(show_branch_selector_target, |el| {
+                        el.child(
+                            div()
+                                .text_size(theme::z(theme::FONT_SIZE))
+                                .text_color(theme::text_main())
+                                .font_weight(FontWeight::BOLD)
+                                .child(default_branch),
+                        )
+                    }),
             );
 
         v_flex()

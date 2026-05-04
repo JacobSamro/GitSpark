@@ -23,7 +23,7 @@ use crate::ui::domain_state::NetworkAction;
 use crate::ui::history_context_menu::HistoryContextMenuAction;
 use crate::ui::settings_modal::SettingsField;
 use crate::ui::ui_state::SettingsSection;
-use crate::ui::ui_state::{ActiveDialog, SidebarTab};
+use crate::ui::ui_state::{ActiveDialog, BranchSelectorMode, SidebarTab};
 
 const DEFAULT_ADDR: &str = "127.0.0.1:7878";
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -564,6 +564,7 @@ impl GitSparkApp {
                 self.nav.show_repo_selector = show;
                 if show {
                     self.nav.show_branch_selector = false;
+                    self.nav.branch_selector_mode = BranchSelectorMode::Switch;
                     self.repo.pending_cherry_pick_oid = None;
                     self.nav.show_network_dropdown = false;
                 }
@@ -1423,6 +1424,7 @@ impl GitSparkApp {
             }
             AutomationNodeAction::ShowBranchSelector(show) => {
                 self.nav.show_branch_selector = show;
+                self.nav.branch_selector_mode = BranchSelectorMode::Switch;
                 if !show {
                     self.repo.pending_cherry_pick_oid = None;
                 }
@@ -1436,6 +1438,7 @@ impl GitSparkApp {
                 self.nav.show_repo_selector = show;
                 if show {
                     self.nav.show_branch_selector = false;
+                    self.nav.branch_selector_mode = BranchSelectorMode::Switch;
                     self.repo.pending_cherry_pick_oid = None;
                     self.nav.show_network_dropdown = false;
                 }
