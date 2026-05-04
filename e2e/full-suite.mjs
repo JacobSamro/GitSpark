@@ -33,6 +33,7 @@ try {
   await testHistoryAndBranchFlows(app, fixture);
   await testNetworkFlows(app, fixture);
   await testStashFlows(app, fixture);
+  await testStashAndSwitchDialog(app, fixture);
   await testGithubOpenActions(app, fixture);
   await testDiscardConfirmationDialog(app, fixture);
   await testChangeFileActions(app, fixture);
@@ -496,6 +497,81 @@ async function testStashFlows(app, fixture) {
   );
 }
 
+async function testStashAndSwitchDialog(app, fixture) {
+  await app.getByTestId("tab-changes").click();
+  const readmePath = path.join(fixture.workRepo, "README.md");
+  const originalReadme = await fs.readFile(readmePath, "utf8");
+  await fs.writeFile(readmePath, `${originalReadme}\nconflicting branch switch edit\n`);
+  await app.command({ command: "refresh_repo" });
+  await expect(app.getByTestId("change-readme-md")).toBeVisible({
+    timeoutMs: 10_000,
+  });
+
+  await app.getByTestId("branch-switch-conflict").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.active_dialog === "stash_and_switch" &&
+      snapshot.error_message === "Branch switch needs a clean working tree." &&
+      snapshot.repo?.current_branch === "main",
+    { timeoutMs: 15_000 },
+  );
+  await expect(app.getByTestId("stash-cancel")).toBeVisible({
+    timeoutMs: 10_000,
+  });
+  await app.getByTestId("stash-cancel").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.active_dialog === "none" &&
+      snapshot.repo?.current_branch === "main" &&
+      snapshot.repo?.changes.some((change) => change.path === "README.md"),
+    { timeoutMs: 10_000 },
+  );
+  assert(
+    (await fs.readFile(readmePath, "utf8")).includes("conflicting branch switch edit"),
+    "stash-and-switch cancel keeps dirty tracked changes",
+  );
+
+  await app.getByTestId("branch-switch-conflict").click();
+  await expect(app.getByTestId("stash-switch")).toBeVisible({
+    timeoutMs: 15_000,
+  });
+  await app.getByTestId("stash-switch").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.active_dialog === "none" &&
+      snapshot.status_message === "Switched to branch 'switch/conflict'." &&
+      snapshot.repo?.current_branch === "switch/conflict" &&
+      snapshot.repo?.stash_count === 1 &&
+      !snapshot.repo?.changes.some((change) => change.path === "README.md"),
+    { timeoutMs: 15_000 },
+  );
+
+  await app.getByTestId("branch-main").click();
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.repo?.current_branch === "main",
+    { timeoutMs: 15_000 },
+  );
+  await app.command({ command: "stash_pop" });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Restored stash complete." &&
+      snapshot.repo?.stash_count === 0 &&
+      snapshot.repo?.changes.some((change) => change.path === "README.md"),
+    { timeoutMs: 15_000 },
+  );
+  await app.getByTestId("change-readme-md-discard").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Discarded changes for 'README.md'." &&
+      !snapshot.repo?.changes.some((change) => change.path === "README.md"),
+    { timeoutMs: 10_000 },
+  );
+  assert(
+    (await fs.readFile(readmePath, "utf8")) === originalReadme,
+    "stash-and-switch cleanup restores README",
+  );
+}
+
 async function readOpenUrlLog(logPath) {
   try {
     const text = await fs.readFile(logPath, "utf8");
@@ -737,6 +813,16 @@ async function makeFreshSampleRepo() {
   await exec("git", ["commit", "-m", "initial sample"], { cwd: workRepo });
   await exec("git", ["branch", "feature/update"], { cwd: workRepo });
   await exec("git", ["branch", "delete/me"], { cwd: workRepo });
+  await exec("git", ["switch", "-c", "switch/conflict"], { cwd: workRepo });
+  await fs.writeFile(
+    path.join(workRepo, "README.md"),
+    "# GitSpark E2E Sample\n\nconflict branch version\n",
+  );
+  await exec("git", ["add", "README.md"], { cwd: workRepo });
+  await exec("git", ["commit", "-m", "branch: add conflicting readme"], {
+    cwd: workRepo,
+  });
+  await exec("git", ["switch", "main"], { cwd: workRepo });
   await exec("git", ["switch", "-c", "cherry/source"], { cwd: workRepo });
   await fs.writeFile(path.join(workRepo, "cherry.txt"), "cherry-pick fixture\n");
   await exec("git", ["add", "cherry.txt"], { cwd: workRepo });

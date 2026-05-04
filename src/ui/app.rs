@@ -396,8 +396,16 @@ impl GitSparkApp {
                     self.messages.status_message = format!("Switched to branch '{branch}'.");
                     self.messages.error_message.clear();
                 }
-                AppEvent::BranchSwitched(Err(err), _) => {
-                    self.messages.error_message = format!("Branch switch failed: {err}");
+                AppEvent::BranchSwitched(Err(err), branch) => {
+                    if branch_switch_needs_stash(&err) {
+                        self.nav.active_dialog = ActiveDialog::StashAndSwitch {
+                            target_branch: branch.clone(),
+                        };
+                        self.messages.error_message =
+                            "Branch switch needs a clean working tree.".to_string();
+                    } else {
+                        self.messages.error_message = format!("Branch switch failed: {err}");
+                    }
                 }
                 AppEvent::BranchMerged(Ok(snapshot), branch) => {
                     self.adopt_snapshot(snapshot);
@@ -830,12 +838,53 @@ impl GitSparkApp {
             return;
         }
 
+        if self.repo.snapshot.as_ref().is_some_and(|snapshot| {
+            snapshot.repo.current_branch != target && !snapshot.changes.is_empty()
+        }) {
+            self.nav.active_dialog = ActiveDialog::StashAndSwitch {
+                target_branch: target,
+            };
+            self.messages.error_message = "Branch switch needs a clean working tree.".to_string();
+            cx.notify();
+            return;
+        }
+
         self.messages.status_message = format!("Switching to '{}'...", target);
         self.messages.error_message.clear();
         let tx = self.event_tx.clone();
         let git = GitClient::new();
         thread::spawn(move || {
             let res = git.switch_branch(&path, &target).map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::BranchSwitched(res, target));
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn stash_and_switch_branch(&mut self, target: String, cx: &mut Context<Self>) {
+        self.nav.active_dialog = ActiveDialog::None;
+
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        let target = target.trim().to_string();
+        if target.is_empty() {
+            self.messages.error_message = "Choose a branch first.".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.messages.status_message = format!("Stashing changes and switching to '{target}'...");
+        self.messages.error_message.clear();
+        let tx = self.event_tx.clone();
+        let git = GitClient::new();
+        thread::spawn(move || {
+            let res = git
+                .stash_all(&path)
+                .and_then(|_| git.switch_branch(&path, &target))
+                .map_err(|e| e.to_string());
             let _ = tx.send(AppEvent::BranchSwitched(res, target));
         });
         cx.notify();
@@ -3761,21 +3810,7 @@ impl GitSparkApp {
                                             .child("Stash & Switch"),
                                     )
                                     .on_click(cx.listener(move |app, _evt, _win, cx| {
-                                        app.nav.active_dialog = ActiveDialog::None;
-                                        // Stash then switch
-                                        if let Some(path) = app.repo_path().map(PathBuf::from) {
-                                            let tx = app.event_tx.clone();
-                                            let git = GitClient::new();
-                                            let branch = target.clone();
-                                            thread::spawn(move || {
-                                                let _ = git.stash_all(&path);
-                                                let res = git
-                                                    .switch_branch(&path, &branch)
-                                                    .map_err(|e| e.to_string());
-                                                tx.send(AppEvent::BranchSwitched(res, branch));
-                                            });
-                                        }
-                                        cx.notify();
+                                        app.stash_and_switch_branch(target.clone(), cx);
                                     }))
                             }),
                     )
@@ -4652,6 +4687,13 @@ fn spawn_shell_arg_command(command: &str, arg: &str) -> std::io::Result<()> {
         .arg(format!("{} {}", command, shell_escape(arg)))
         .spawn()
         .map(|_| ())
+}
+
+fn branch_switch_needs_stash(error: &str) -> bool {
+    let normalized = error.to_lowercase();
+    normalized.contains("would be overwritten by checkout")
+        || normalized.contains("would be overwritten by merge")
+        || normalized.contains("please commit your changes or stash them")
 }
 
 fn reveal_path(path: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

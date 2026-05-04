@@ -88,7 +88,7 @@ Current full-suite coverage:
 
 ```text
 Covered: automation startup, test tree, getByTestId, getByText, click, fill, repo selector visibility/filter state, settings visibility, fresh repo open, refresh, change selection, sidebar tab switching, commit validation error, commit success with body, history selection, branch switching, push, fetch, pull.
-Covered: isolated app settings persistence, repository Git config persistence, AI missing-key validation, AI success through a local OpenAI-compatible mock server, copy relative path, copy full path, copy commit SHA, copy commit diff, checkout commit, revert commit, cherry-pick commit, commit/branch GitHub URL actions using a safe URL opener, create-branch dialog cancel/confirm, branch creation, branch merge, branch deletion, stash/restore, ignore extension, ignore path, discard confirmation cancel/confirm, direct discard tracked-file changes, external-editor dispatch using a safe test editor, reveal-in-Finder/default-app dispatch using safe command overrides, undo last commit.
+Covered: isolated app settings persistence, repository Git config persistence, AI missing-key validation, AI success through a local OpenAI-compatible mock server, copy relative path, copy full path, copy commit SHA, copy commit diff, checkout commit, revert commit, cherry-pick commit, commit/branch GitHub URL actions using a safe URL opener, create-branch dialog cancel/confirm, branch creation, branch merge, branch deletion, stash/restore, stash-and-switch dialog cancel/confirm for conflicting branch switches, ignore extension, ignore path, discard confirmation cancel/confirm, direct discard tracked-file changes, external-editor dispatch using a safe test editor, reveal-in-Finder/default-app dispatch using safe command overrides, undo last commit.
 Not covered yet: real external AI provider availability, actual Finder/default app GUI behavior after OS handoff, visual regression, and cross-platform OS automation permissions.
 ```
 
@@ -192,6 +192,8 @@ dialog-cancel
 dialog-create-branch
 discard-cancel
 discard-confirm
+stash-cancel
+stash-switch
 settings-tab-git
 settings-tab-ai
 settings-git-user-name

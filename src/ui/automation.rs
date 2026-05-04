@@ -435,6 +435,7 @@ enum AutomationNodeAction {
     SwitchBranch(String),
     StartCreateBranch,
     ConfirmCreateBranch,
+    ConfirmStashAndSwitch,
     SaveGitSettings,
     SaveAiSettings,
     ChangeAiProvider(AiProvider),
@@ -859,6 +860,25 @@ impl GitSparkApp {
             ]);
         }
 
+        if matches!(self.nav.active_dialog, ActiveDialog::StashAndSwitch { .. }) {
+            children.extend([
+                automation_node(
+                    "stash-cancel",
+                    AutomationRole::Button,
+                    Some("stash-cancel"),
+                    Some("Cancel"),
+                    Some(AutomationNodeAction::CancelDialog),
+                ),
+                automation_node(
+                    "stash-switch",
+                    AutomationRole::Button,
+                    Some("stash-switch"),
+                    Some("Stash & Switch"),
+                    Some(AutomationNodeAction::ConfirmStashAndSwitch),
+                ),
+            ]);
+        }
+
         if let Some(snapshot) = &self.repo.snapshot {
             children.push(
                 automation_node(
@@ -1150,6 +1170,17 @@ impl GitSparkApp {
             AutomationNodeAction::ConfirmCreateBranch => {
                 self.nav.active_dialog = ActiveDialog::None;
                 self.create_branch(cx);
+            }
+            AutomationNodeAction::ConfirmStashAndSwitch => {
+                let target_branch = match &self.nav.active_dialog {
+                    ActiveDialog::StashAndSwitch { target_branch } => target_branch.clone(),
+                    _ => {
+                        return AutomationResponse::failure(
+                            "stash-and-switch dialog is not active",
+                        );
+                    }
+                };
+                self.stash_and_switch_branch(target_branch, cx);
             }
             AutomationNodeAction::SaveGitSettings => {
                 self.handle_settings_action(SettingsAction::SaveGitConfig, cx);
