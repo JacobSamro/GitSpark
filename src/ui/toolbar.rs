@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::divider::Divider;
 use gpui_component::{Icon, IconName, h_flex, v_flex};
@@ -96,6 +97,7 @@ pub fn render_network_parts(
     last_fetched: Option<&str>,
     is_in_flight: bool,
     show_dropdown: bool,
+    disabled: bool,
 ) -> (Stateful<Div>, Stateful<Div>) {
     let description = last_fetched
         .map(|v| format!("Last fetched {v}"))
@@ -170,8 +172,6 @@ pub fn render_network_parts(
         .items_center()
         .pl(z(SECTION_INNER_PADDING))
         .gap(z(SECTION_GAP))
-        .cursor_pointer()
-        .hover(|style| style.bg(theme::toolbar_hover_bg()))
         .child(icon_element)
         .child(
             v_flex()
@@ -180,7 +180,13 @@ pub fn render_network_parts(
                 .overflow_hidden()
                 .child(title_row)
                 .child(description_label(&description)),
-        );
+        )
+        .when(disabled, |style| style.opacity(0.55))
+        .when(!disabled, |style| {
+            style
+                .cursor_pointer()
+                .hover(|style| style.bg(theme::toolbar_hover_bg()))
+        });
 
     // Badges at the top level of main_area for vertical centering
     if let Some(b) = badges {
@@ -201,9 +207,7 @@ pub fn render_network_parts(
         .px(z(8.0))
         .items_center()
         .justify_center()
-        .cursor_pointer()
         .bg(caret_bg)
-        .hover(|style| style.bg(theme::toolbar_hover_bg()))
         .border_l_1()
         .border_color(theme::toolbar_button_border())
         .child(
@@ -214,7 +218,13 @@ pub fn render_network_parts(
             })
             .size(z(CARET_ICON_SIZE))
             .text_color(theme::text_muted()),
-        );
+        )
+        .when(disabled, |style| style.opacity(0.55))
+        .when(!disabled, |style| {
+            style
+                .cursor_pointer()
+                .hover(|style| style.bg(theme::toolbar_hover_bg()))
+        });
 
     (main_area, caret_zone)
 }

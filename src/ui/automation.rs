@@ -1307,21 +1307,24 @@ impl GitSparkApp {
                 Some("button-network-fetch"),
                 Some("Fetch"),
                 Some(AutomationNodeAction::Network(NetworkAction::Fetch)),
-            ),
+            )
+            .enabled(self.repo.snapshot.is_some()),
             automation_node(
                 "network-pull",
                 AutomationRole::Button,
                 Some("button-network-pull"),
                 Some("Pull"),
                 Some(AutomationNodeAction::Network(NetworkAction::Pull)),
-            ),
+            )
+            .enabled(self.repo.snapshot.is_some()),
             automation_node(
                 "network-push",
                 AutomationRole::Button,
                 Some("button-network-push"),
                 Some("Push"),
                 Some(AutomationNodeAction::Network(NetworkAction::Push)),
-            ),
+            )
+            .enabled(self.repo.snapshot.is_some()),
         ]);
 
         automation_node(

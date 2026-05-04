@@ -3034,6 +3034,7 @@ impl GitSparkApp {
             network_action.title(remote_name)
         };
         let last_fetched = snapshot.and_then(|s| s.repo.last_fetched.as_deref());
+        let network_enabled = snapshot.is_some();
 
         // --- Left: repo section ---
         // Icon: lock for repos with remote (private-like), folder for local-only
@@ -3097,6 +3098,7 @@ impl GitSparkApp {
             last_fetched,
             is_in_flight,
             show_network_dropdown,
+            !network_enabled,
         );
 
         let net_action = network_action;
@@ -3104,7 +3106,7 @@ impl GitSparkApp {
             network_main
                 .pr(theme::z(10.0))
                 .on_click(cx.listener(move |app, _evt, _win, cx| {
-                    if app.network.active_action.is_none() {
+                    if app.repo.snapshot.is_some() && app.network.active_action.is_none() {
                         app.nav.show_network_dropdown = false;
                         if net_action == NetworkAction::PublishRepository {
                             app.open_publish_dialog(_win, cx);
@@ -3117,6 +3119,9 @@ impl GitSparkApp {
                     }
                 }));
         let network_caret = network_caret.on_click(cx.listener(|app, _evt, _win, cx| {
+            if app.repo.snapshot.is_none() {
+                return;
+            }
             app.nav.show_network_dropdown = !app.nav.show_network_dropdown;
             app.nav.show_repo_selector = false;
             app.nav.show_branch_selector = false;
