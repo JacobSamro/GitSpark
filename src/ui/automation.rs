@@ -21,8 +21,8 @@ use crate::ui::changes_context_menu::ChangesContextAction;
 use crate::ui::domain_state::NetworkAction;
 use crate::ui::history_context_menu::HistoryContextMenuAction;
 use crate::ui::settings_modal::SettingsField;
-use crate::ui::ui_state::SettingsSection;
 use crate::ui::ui_state::{ActiveDialog, BranchSelectorMode, SidebarTab};
+use crate::ui::ui_state::{OpenRouterModelsState, SettingsSection};
 
 const DEFAULT_ADDR: &str = "127.0.0.1:7878";
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -460,6 +460,7 @@ enum AutomationNodeAction {
     SaveGitSettings,
     SaveAiSettings,
     ChangeAiProvider(AiProvider),
+    SelectOpenRouterModel(String),
     GenerateAiCommit,
     UndoLastCommit,
     CancelDialog,
@@ -1587,6 +1588,9 @@ impl GitSparkApp {
             AutomationNodeAction::ChangeAiProvider(provider) => {
                 self.handle_settings_action(SettingsAction::ChangeProvider(provider), cx);
             }
+            AutomationNodeAction::SelectOpenRouterModel(model_id) => {
+                self.handle_settings_action(SettingsAction::SelectOpenRouterModel(model_id), cx);
+            }
             AutomationNodeAction::GenerateAiCommit => {
                 self.handle_sidebar_action(SidebarAction::GenerateAiCommit, cx);
             }
@@ -1889,7 +1893,7 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
             ]);
         }
         SettingsSection::Ai => {
-            nodes.extend([
+            nodes.push(
                 automation_node(
                     "settings-provider-openrouter",
                     AutomationRole::Button,
@@ -1900,6 +1904,8 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
                     )),
                 )
                 .selected(app.settings.ai.provider == AiProvider::OpenRouter),
+            );
+            nodes.push(
                 automation_node(
                     "settings-provider-openai-compatible",
                     AutomationRole::Button,
@@ -1910,28 +1916,37 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
                     )),
                 )
                 .selected(app.settings.ai.provider == AiProvider::OpenAICompatible),
-                settings_field_node(
+            );
+
+            if app.settings.ai.provider == AiProvider::OpenRouter {
+                nodes.push(openrouter_model_picker_node(app));
+            } else {
+                nodes.push(settings_field_node(
                     "settings-ai-model",
                     "Model",
                     SettingsField::AiModel,
                     app.settings.ai.model.as_str(),
-                ),
-                if app.settings.ai.provider == AiProvider::OpenRouter {
-                    automation_node(
-                        "settings-ai-endpoint",
-                        AutomationRole::Status,
-                        Some("settings-ai-endpoint"),
-                        Some(app.settings.ai.endpoint.as_str()),
-                        None,
-                    )
-                } else {
-                    settings_field_node(
-                        "settings-ai-endpoint",
-                        "Endpoint",
-                        SettingsField::AiEndpoint,
-                        app.settings.ai.endpoint.as_str(),
-                    )
-                },
+                ));
+            }
+
+            if app.settings.ai.provider == AiProvider::OpenRouter {
+                nodes.push(automation_node(
+                    "settings-ai-endpoint",
+                    AutomationRole::Status,
+                    Some("settings-ai-endpoint"),
+                    Some(app.settings.ai.endpoint.as_str()),
+                    None,
+                ));
+            } else {
+                nodes.push(settings_field_node(
+                    "settings-ai-endpoint",
+                    "Endpoint",
+                    SettingsField::AiEndpoint,
+                    app.settings.ai.endpoint.as_str(),
+                ));
+            }
+
+            nodes.extend([
                 settings_field_node(
                     "settings-ai-api-key",
                     "API Key",
@@ -1957,6 +1972,101 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
     }
 
     nodes
+}
+
+fn openrouter_model_picker_node(app: &GitSparkApp) -> AutomationNode {
+    let selected_model = app.settings.ai.model.as_str();
+    let selected_model_name = match &app.filters.openrouter_models {
+        OpenRouterModelsState::Ready(models) => models
+            .iter()
+            .find(|model| model.id == selected_model)
+            .map(|model| model.name.as_str())
+            .unwrap_or(selected_model),
+        _ => selected_model,
+    };
+
+    let mut node = automation_node(
+        "settings-ai-model",
+        AutomationRole::Button,
+        Some("settings-ai-model"),
+        Some(selected_model_name),
+        None::<AutomationNodeAction>,
+    );
+
+    if app.settings_modal.show_model_picker {
+        let filter = app
+            .filters
+            .openrouter_model_filter
+            .trim()
+            .to_ascii_lowercase();
+        let mut children = vec![settings_field_node(
+            "settings-openrouter-model-filter",
+            "Search Models",
+            SettingsField::OpenRouterModelFilter,
+            app.filters.openrouter_model_filter.as_str(),
+        )];
+
+        match &app.filters.openrouter_models {
+            OpenRouterModelsState::Idle | OpenRouterModelsState::Loading => {
+                children.push(automation_node(
+                    "settings-openrouter-model-loading",
+                    AutomationRole::Status,
+                    Some("settings-openrouter-model-loading"),
+                    Some("Loading OpenRouter models..."),
+                    None::<AutomationNodeAction>,
+                ));
+            }
+            OpenRouterModelsState::Error(message) => {
+                children.push(automation_node(
+                    "settings-openrouter-model-error",
+                    AutomationRole::Status,
+                    Some("settings-openrouter-model-error"),
+                    Some(message.as_str()),
+                    None::<AutomationNodeAction>,
+                ));
+            }
+            OpenRouterModelsState::Ready(models) => {
+                let mut list_children = Vec::new();
+                let filtered = models
+                    .iter()
+                    .filter(|model| {
+                        filter.is_empty()
+                            || model.id.to_ascii_lowercase().contains(&filter)
+                            || model.name.to_ascii_lowercase().contains(&filter)
+                    })
+                    .collect::<Vec<_>>();
+                for model in filtered.iter().take(24) {
+                    let model = *model;
+                    list_children.push(
+                        automation_node(
+                            format!("settings-model-{}", stable_test_slug(&model.id)),
+                            AutomationRole::ListItem,
+                            Some(format!("settings-model-{}", stable_test_slug(&model.id))),
+                            Some(model.name.as_str()),
+                            Some(AutomationNodeAction::SelectOpenRouterModel(
+                                model.id.clone(),
+                            )),
+                        )
+                        .selected(model.id == selected_model),
+                    );
+                }
+                children.push(
+                    automation_node(
+                        "settings-openrouter-model-list",
+                        AutomationRole::List,
+                        Some("settings-openrouter-model-list"),
+                        Some(format!("OpenRouter models ({})", filtered.len()).as_str()),
+                        None::<AutomationNodeAction>,
+                    )
+                    .children(list_children),
+                );
+            }
+        }
+
+        node = node.children(children);
+    }
+
+    node
 }
 
 fn settings_field_node(
