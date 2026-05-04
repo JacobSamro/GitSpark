@@ -4127,8 +4127,10 @@ impl GitSparkApp {
         focused: bool,
         multiline: bool,
         focus_handle: &FocusHandle,
+        enabled: bool,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
+        let focused = focused && enabled;
         let is_empty = value.trim().is_empty();
         let border = if focused {
             theme::accent() // --focus-color: $blue
@@ -4292,12 +4294,20 @@ impl GitSparkApp {
             if multiline {
                 div()
                     .text_size(theme::z(12.0))
-                    .text_color(theme::text_main())
+                    .text_color(if enabled {
+                        theme::text_main()
+                    } else {
+                        theme::text_muted()
+                    })
                     .child(value.to_string())
             } else {
                 div()
                     .text_size(theme::z(12.0))
-                    .text_color(theme::text_main())
+                    .text_color(if enabled {
+                        theme::text_main()
+                    } else {
+                        theme::text_muted()
+                    })
                     .overflow_x_hidden()
                     .whitespace_nowrap()
                     .child(value.to_string())
@@ -4310,8 +4320,6 @@ impl GitSparkApp {
             // Description: scrollable container with inner content that grows
             div()
                 .id(SharedString::from(id.to_string()))
-                .track_focus(focus_handle)
-                .key_context("text-field")
                 .w_full()
                 .h(px(80.0))
                 .bg(theme::bg())
@@ -4320,15 +4328,18 @@ impl GitSparkApp {
                 .rounded_t(theme::z(theme::CORNER_RADIUS))
                 .rounded_b_none()
                 .border_b_0()
-                .cursor_text()
                 .overflow_y_scroll()
+                .when(!enabled, |s| s.opacity(0.65))
+                .when(enabled, |s| {
+                    s.track_focus(focus_handle)
+                        .key_context("text-field")
+                        .cursor_text()
+                })
                 .child(div().w_full().px(px(8.0)).py(px(6.0)).child(text_child))
         } else {
             // Summary: single line, vertically centered
             div()
                 .id(SharedString::from(id.to_string()))
-                .track_focus(focus_handle)
-                .key_context("text-field")
                 .w_full()
                 .h(px(25.0))
                 .flex()
@@ -4338,9 +4349,18 @@ impl GitSparkApp {
                 .border_color(border)
                 .px(px(8.0))
                 .rounded(theme::z(theme::CORNER_RADIUS))
-                .cursor_text()
+                .when(!enabled, |s| s.opacity(0.65))
+                .when(enabled, |s| {
+                    s.track_focus(focus_handle)
+                        .key_context("text-field")
+                        .cursor_text()
+                })
                 .child(text_child)
         };
+
+        if !enabled {
+            return field;
+        }
 
         if is_summary {
             field = field
@@ -4381,6 +4401,7 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let file_count = self.commit_file_count();
+        let commit_inputs_enabled = self.repo.snapshot.is_some();
         let can_generate_ai =
             self.repo.snapshot.is_some() && file_count > 0 && !self.commit.ai_in_flight;
 
@@ -4484,6 +4505,7 @@ impl GitSparkApp {
             summary_focused,
             false,
             &self.summary_focus,
+            commit_inputs_enabled,
             cx,
         );
 
@@ -4497,6 +4519,7 @@ impl GitSparkApp {
             description_focused,
             true,
             &self.description_focus,
+            commit_inputs_enabled,
             cx,
         );
 

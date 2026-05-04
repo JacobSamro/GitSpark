@@ -743,14 +743,16 @@ impl GitSparkApp {
                 Some("input-commit-summary"),
                 Some(self.commit.summary.as_str()),
                 Some(AutomationNodeAction::SetCommitSummary),
-            ),
+            )
+            .enabled(self.repo.snapshot.is_some()),
             automation_node(
                 "commit-body",
                 AutomationRole::Textbox,
                 Some("input-commit-body"),
                 Some(self.commit.body.as_str()),
                 Some(AutomationNodeAction::SetCommitBody),
-            ),
+            )
+            .enabled(self.repo.snapshot.is_some()),
             automation_node(
                 "commit-all",
                 AutomationRole::Button,
