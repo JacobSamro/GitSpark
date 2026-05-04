@@ -807,7 +807,7 @@ impl GitClient {
             repo_path,
             &[
                 "for-each-ref",
-                "--format=%(refname:short)\t%(HEAD)\t%(refname)",
+                "--format=%(refname:short)\t%(HEAD)\t%(refname)\t%(committerdate:relative)",
                 "refs/heads",
                 "refs/remotes",
             ],
@@ -820,6 +820,10 @@ impl GitClient {
                 let name = parts.next()?.trim();
                 let head = parts.next()?.trim();
                 let full_ref = parts.next()?.trim();
+                let updated = parts
+                    .next()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty());
 
                 if name.is_empty() || name.ends_with("/HEAD") {
                     return None;
@@ -829,6 +833,7 @@ impl GitClient {
                     name: name.to_string(),
                     is_current: head == "*",
                     is_remote: full_ref.starts_with("refs/remotes/"),
+                    updated: updated.map(str::to_string),
                 })
             })
             .collect::<Vec<_>>();

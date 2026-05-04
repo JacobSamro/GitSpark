@@ -4869,7 +4869,7 @@ impl GitSparkApp {
         } else {
             let count = items.len();
             let view = cx.entity().clone();
-            div().flex_1().min_h_0().child(
+            v_flex().flex_1().min_h_0().child(
                 uniform_list("branch-list", count, {
                     move |range, _win, _cx| {
                         range
@@ -4891,6 +4891,7 @@ impl GitSparkApp {
                                     let is_current = branch.is_current;
                                     let name = branch.name.clone();
                                     let ctx_name = branch.name.clone();
+                                    let updated = branch.updated.clone();
                                     let vh = view.clone();
 
                                     let row = h_flex()
@@ -4931,6 +4932,13 @@ impl GitSparkApp {
                                                     .child(branch.name.clone()),
                                             ),
                                         )
+                                        .children(updated.map(|updated| {
+                                            div()
+                                                .flex_shrink_0()
+                                                .text_size(theme::z(12.0))
+                                                .text_color(theme::text_muted())
+                                                .child(updated)
+                                        }))
                                         .on_click(move |_evt, _win, cx| {
                                             let name = name.clone();
                                             vh.update(cx, |app, cx| {
@@ -4954,25 +4962,30 @@ impl GitSparkApp {
             )
         };
 
-        // --- Bottom bar: merge prompt ---
+        // --- Merge prompt ---
         let bottom_bar = h_flex()
+            .id("branch-selector-merge-bar")
             .w_full()
-            .h(px(40.0))
+            .h(px(52.0))
             .flex_shrink_0()
             .border_t_1()
             .border_color(theme::toolbar_button_border())
             .px(px(10.0))
+            .bg(theme::surface_bg())
             .items_center()
             .justify_center()
-            .gap(px(6.0))
-            .child(
-                Icon::new(IconName::GitHub)
-                    .size(px(16.0))
-                    .text_color(theme::text_muted()),
-            )
             .child(
                 h_flex()
-                    .gap(px(4.0))
+                    .id("branch-selector-merge-button")
+                    .w_full()
+                    .h(px(32.0))
+                    .items_center()
+                    .justify_center()
+                    .gap(px(6.0))
+                    .rounded(theme::z(theme::CORNER_RADIUS))
+                    .border_1()
+                    .border_color(theme::surface_bg_alt())
+                    .bg(theme::panel_bg())
                     .child(
                         div()
                             .text_size(theme::z(theme::FONT_SIZE))
@@ -4997,8 +5010,8 @@ impl GitSparkApp {
             .bg(theme::panel_bg())
             .child(tab_bar)
             .child(filter_bar)
-            .child(branch_list)
             .child(bottom_bar)
+            .child(branch_list)
     }
 }
 

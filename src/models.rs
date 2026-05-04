@@ -38,6 +38,7 @@ pub struct BranchInfo {
     pub name: String,
     pub is_current: bool,
     pub is_remote: bool,
+    pub updated: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
