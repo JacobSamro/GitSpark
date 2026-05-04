@@ -437,6 +437,7 @@ enum AutomationNodeAction {
     SetCommitBody,
     SetCommitSummary,
     SetRepoFilter,
+    OpenRecentRepo(PathBuf),
     SetSettingsField(SettingsField),
     SetSettingsSection(SettingsSection),
     ShowBranchSelector(bool),
@@ -879,6 +880,10 @@ impl GitSparkApp {
                     None::<AutomationNodeAction>,
                 ),
             ]);
+        }
+
+        if self.nav.show_repo_selector {
+            children.extend(repo_selector_nodes(self));
         }
 
         if self.nav.show_branch_selector {
@@ -1460,6 +1465,9 @@ impl GitSparkApp {
                 self.filters.repo_filter_text = text;
                 cx.notify();
             }
+            AutomationNodeAction::OpenRecentRepo(path) => {
+                self.handle_sidebar_action(SidebarAction::OpenRepo(path), cx);
+            }
             AutomationNodeAction::SetSettingsField(field) => {
                 let Some(text) = fill_text else {
                     return AutomationResponse::failure("fill text is required");
@@ -1825,6 +1833,88 @@ fn automation_node(
         action,
         children: Vec::new(),
     }
+}
+
+fn repo_selector_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
+    let filter = app.filters.repo_filter_text.to_ascii_lowercase();
+    let current_repo = app
+        .repo
+        .snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.repo.path.clone());
+    let repos = app
+        .settings
+        .recent_repos
+        .iter()
+        .filter(|path| {
+            filter.is_empty()
+                || path
+                    .file_name()
+                    .map(|name| {
+                        name.to_string_lossy()
+                            .to_ascii_lowercase()
+                            .contains(&filter)
+                    })
+                    .unwrap_or(false)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let mut nodes = vec![automation_node(
+        "repo-selector-add",
+        AutomationRole::Button,
+        Some("repo-add-btn"),
+        Some("Add"),
+        None::<AutomationNodeAction>,
+    )];
+
+    if repos.is_empty() {
+        let empty_message = if filter.is_empty() {
+            "No recent repositories"
+        } else {
+            "Sorry, I can't find that repository"
+        };
+        nodes.push(automation_node(
+            "repo-selector-empty",
+            AutomationRole::Status,
+            Some("repo-selector-empty"),
+            Some(empty_message),
+            None::<AutomationNodeAction>,
+        ));
+        return nodes;
+    }
+
+    let mut repo_children = Vec::new();
+    for repo_path in repos {
+        let label = repo_path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| repo_path.to_string_lossy().to_string());
+        let id = stable_test_slug(&repo_path.to_string_lossy());
+        repo_children.push(
+            automation_node(
+                format!("repo-{id}"),
+                AutomationRole::ListItem,
+                Some(format!("repo-{id}")),
+                Some(label.as_str()),
+                Some(AutomationNodeAction::OpenRecentRepo(repo_path.clone())),
+            )
+            .selected(current_repo.as_ref() == Some(&repo_path)),
+        );
+    }
+
+    nodes.push(
+        automation_node(
+            "repo-list",
+            AutomationRole::List,
+            Some("repo-list"),
+            Some("Recent repositories"),
+            None::<AutomationNodeAction>,
+        )
+        .children(repo_children),
+    );
+
+    nodes
 }
 
 fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {

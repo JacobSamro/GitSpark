@@ -6297,17 +6297,23 @@ impl GitSparkApp {
             .cloned()
             .collect();
         let repo_list = if repos_snapshot.is_empty() {
+            let empty_message = if repo_filter.is_empty() {
+                "No recent repositories"
+            } else {
+                "Sorry, I can't find that repository"
+            };
             div().flex_1().child(
-                div()
-                    .w_full()
-                    .py(px(20.0))
+                v_flex()
+                    .size_full()
                     .items_center()
                     .justify_center()
+                    .px(px(14.0))
                     .child(
                         div()
                             .text_size(theme::z(12.0))
                             .text_color(theme::text_muted())
-                            .child("No recent repositories"),
+                            .text_align(gpui::TextAlign::Center)
+                            .child(empty_message),
                     ),
             )
         } else {
