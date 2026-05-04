@@ -2802,6 +2802,24 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub fn menu_rename_current_branch(&mut self, cx: &mut Context<Self>) {
+        let Some(snapshot) = self.repo.snapshot.as_ref() else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        let branch_name = snapshot.repo.current_branch.clone();
+        self.repo.new_branch_name = branch_name.clone();
+        self.new_branch_cursor = self.repo.new_branch_name.len();
+        self.new_branch_selection = None;
+        self.nav.active_dialog = ActiveDialog::RenameBranch {
+            old_name: branch_name,
+        };
+        self.messages.error_message.clear();
+        cx.notify();
+    }
+
     pub fn menu_merge_branch(&mut self, cx: &mut Context<Self>) {
         self.nav.show_branch_selector = true;
         self.nav.branch_selector_mode = BranchSelectorMode::Merge;

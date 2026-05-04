@@ -32,6 +32,7 @@ actions!(
         MenuViewOnGitHub,
         MenuRepositorySettings,
         MenuNewBranch,
+        MenuRenameBranch,
         MenuMergeBranch,
         MenuStashChanges,
         MenuZoomIn,
@@ -161,6 +162,12 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
     }
     {
         let view = view.clone();
+        cx.on_action(move |_: &MenuRenameBranch, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_rename_current_branch(cx));
+        });
+    }
+    {
+        let view = view.clone();
         cx.on_action(move |_: &MenuMergeBranch, cx| {
             let _ = view.update(cx, |app, cx| app.menu_merge_branch(cx));
         });
@@ -200,6 +207,7 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         KeyBinding::new("cmd-shift-f", MenuShowInFinder, None),
         KeyBinding::new("cmd-shift-g", MenuViewOnGitHub, None),
         KeyBinding::new("cmd-shift-n", MenuNewBranch, None),
+        KeyBinding::new("cmd-shift-r", MenuRenameBranch, None),
         KeyBinding::new("cmd-shift-s", MenuStashChanges, None),
         KeyBinding::new("cmd-+", MenuZoomIn, None),
         KeyBinding::new("cmd--", MenuZoomOut, None),
@@ -270,6 +278,7 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
             name: "Branch".into(),
             items: vec![
                 MenuItem::action("New Branch...", MenuNewBranch),
+                MenuItem::action("Rename...", MenuRenameBranch),
                 MenuItem::action("Merge into Current Branch...", MenuMergeBranch),
                 MenuItem::separator(),
                 MenuItem::action("Stash All Changes...", MenuStashChanges),
