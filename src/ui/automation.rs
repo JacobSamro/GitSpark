@@ -699,7 +699,8 @@ impl GitSparkApp {
             show_settings: self.nav.show_settings,
             show_repo_selector: self.nav.show_repo_selector,
             show_branch_selector: self.nav.show_branch_selector,
-            show_network_dropdown: self.nav.show_network_dropdown,
+            show_network_dropdown: self.nav.show_network_dropdown
+                && self.network_dropdown_available(),
             active_dialog: active_dialog_name(&self.nav.active_dialog).to_string(),
             network_action: self.network.active_action.map(network_action_name),
             ai_in_flight: self.commit.ai_in_flight,
@@ -1251,6 +1252,8 @@ impl GitSparkApp {
                 children.extend(no_changes_action_nodes(
                     has_github_remote,
                     snapshot.repo.remote_name.is_some(),
+                    snapshot.repo.ahead,
+                    snapshot.repo.behind,
                 ));
             }
 
@@ -1338,32 +1341,7 @@ impl GitSparkApp {
             );
         }
 
-        children.extend([
-            automation_node(
-                "network-fetch",
-                AutomationRole::Button,
-                Some("button-network-fetch"),
-                Some("Fetch"),
-                Some(AutomationNodeAction::Network(NetworkAction::Fetch)),
-            )
-            .enabled(self.repo.snapshot.is_some()),
-            automation_node(
-                "network-pull",
-                AutomationRole::Button,
-                Some("button-network-pull"),
-                Some("Pull"),
-                Some(AutomationNodeAction::Network(NetworkAction::Pull)),
-            )
-            .enabled(self.repo.snapshot.is_some()),
-            automation_node(
-                "network-push",
-                AutomationRole::Button,
-                Some("button-network-push"),
-                Some("Push"),
-                Some(AutomationNodeAction::Network(NetworkAction::Push)),
-            )
-            .enabled(self.repo.snapshot.is_some()),
-        ]);
+        children.extend(self.network_action_nodes());
 
         automation_node(
             "gitspark-root",
@@ -1373,6 +1351,116 @@ impl GitSparkApp {
             None,
         )
         .children(children)
+    }
+
+    fn network_action_nodes(&self) -> Vec<AutomationNode> {
+        let Some(snapshot) = self.repo.snapshot.as_ref() else {
+            return vec![
+                automation_node(
+                    "network-primary",
+                    AutomationRole::Button,
+                    Some("button-network-primary"),
+                    Some("Fetch"),
+                    None,
+                )
+                .enabled(false),
+                automation_node(
+                    "network-caret",
+                    AutomationRole::Button,
+                    Some("network-caret"),
+                    Some("Network options"),
+                    None,
+                )
+                .visible(false)
+                .enabled(false),
+            ];
+        };
+
+        let remote_name = snapshot.repo.remote_name.as_deref().unwrap_or("origin");
+        let primary_action = NetworkAction::from_snapshot(snapshot);
+        let primary_label = primary_action.title(remote_name);
+        let has_dropdown = matches!(primary_action, NetworkAction::Pull | NetworkAction::Push);
+        let actions_enabled = self.network.active_action.is_none();
+
+        let mut nodes = vec![
+            automation_node(
+                "network-primary",
+                AutomationRole::Button,
+                Some("button-network-primary"),
+                Some(primary_label.as_str()),
+                Some(AutomationNodeAction::Network(primary_action)),
+            )
+            .enabled(actions_enabled),
+            automation_node(
+                "network-caret",
+                AutomationRole::Button,
+                Some("network-caret"),
+                Some("Network options"),
+                None,
+            )
+            .visible(has_dropdown)
+            .enabled(has_dropdown && actions_enabled),
+            automation_node(
+                "network-fetch",
+                AutomationRole::Button,
+                Some("button-network-fetch"),
+                Some("Fetch"),
+                Some(AutomationNodeAction::Network(NetworkAction::Fetch)),
+            )
+            .visible(primary_action == NetworkAction::Fetch)
+            .enabled(primary_action == NetworkAction::Fetch && actions_enabled),
+            automation_node(
+                "network-pull",
+                AutomationRole::Button,
+                Some("button-network-pull"),
+                Some("Pull"),
+                Some(AutomationNodeAction::Network(NetworkAction::Pull)),
+            )
+            .visible(primary_action == NetworkAction::Pull)
+            .enabled(primary_action == NetworkAction::Pull && actions_enabled),
+            automation_node(
+                "network-push",
+                AutomationRole::Button,
+                Some("button-network-push"),
+                Some("Push"),
+                Some(AutomationNodeAction::Network(NetworkAction::Push)),
+            )
+            .visible(primary_action == NetworkAction::Push)
+            .enabled(primary_action == NetworkAction::Push && actions_enabled),
+        ];
+
+        if self.nav.show_network_dropdown && has_dropdown {
+            let fetch_label = format!("Fetch {remote_name}");
+            nodes.push(
+                automation_node(
+                    "network-dropdown",
+                    AutomationRole::List,
+                    Some("network-dropdown"),
+                    Some("Network options"),
+                    None,
+                )
+                .children(vec![
+                    automation_node(
+                        "network-dropdown-fetch",
+                        AutomationRole::Button,
+                        Some("network-dropdown-fetch"),
+                        Some(fetch_label.as_str()),
+                        Some(AutomationNodeAction::Network(NetworkAction::Fetch)),
+                    )
+                    .enabled(actions_enabled),
+                ]),
+            );
+        }
+
+        nodes
+    }
+
+    fn network_dropdown_available(&self) -> bool {
+        self.repo
+            .snapshot
+            .as_ref()
+            .map(NetworkAction::from_snapshot)
+            .is_some_and(|action| matches!(action, NetworkAction::Pull | NetworkAction::Push))
     }
 
     fn query_automation_nodes(&self, selector: &AutomationSelector) -> Vec<AutomationNode> {
@@ -1843,7 +1931,12 @@ fn automation_node(
     }
 }
 
-fn no_changes_action_nodes(has_github_remote: bool, has_remote: bool) -> Vec<AutomationNode> {
+fn no_changes_action_nodes(
+    has_github_remote: bool,
+    has_remote: bool,
+    ahead: usize,
+    behind: usize,
+) -> Vec<AutomationNode> {
     let mut nodes = Vec::new();
 
     if !has_remote {
@@ -1855,6 +1948,24 @@ fn no_changes_action_nodes(has_github_remote: bool, has_remote: bool) -> Vec<Aut
             Some(AutomationNodeAction::Network(
                 NetworkAction::PublishRepository,
             )),
+        ));
+    }
+
+    if has_remote && behind > 0 {
+        nodes.push(automation_node(
+            "no-changes-pull",
+            AutomationRole::Button,
+            Some("no-changes-pull"),
+            Some("Pull"),
+            Some(AutomationNodeAction::Network(NetworkAction::Pull)),
+        ));
+    } else if has_remote && ahead > 0 {
+        nodes.push(automation_node(
+            "no-changes-push",
+            AutomationRole::Button,
+            Some("no-changes-push"),
+            Some("Push"),
+            Some(AutomationNodeAction::Network(NetworkAction::Push)),
         ));
     }
 

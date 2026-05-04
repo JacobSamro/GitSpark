@@ -2540,6 +2540,14 @@ impl Render for GitSparkApp {
 
         // Right column: branch + network toolbar sections + workspace
         // Branch selector overlay lives inside the right column so it aligns naturally
+        let show_network_overlay = self.nav.show_network_dropdown
+            && self
+                .repo
+                .snapshot
+                .as_ref()
+                .map(NetworkAction::from_snapshot)
+                .is_some_and(|action| matches!(action, NetworkAction::Pull | NetworkAction::Push));
+
         let right_column = div()
             .size_full()
             .min_h_0()
@@ -2556,7 +2564,7 @@ impl Render for GitSparkApp {
             } else {
                 None
             })
-            .children(if self.nav.show_network_dropdown {
+            .children(if show_network_overlay {
                 Some(self.render_network_dropdown_overlay(cx))
             } else {
                 None
@@ -3291,8 +3299,9 @@ impl GitSparkApp {
             cx.notify();
         }));
 
-        let show_network_dropdown =
-            self.nav.show_network_dropdown && network_action != NetworkAction::PublishRepository;
+        let has_network_dropdown =
+            matches!(network_action, NetworkAction::Pull | NetworkAction::Push);
+        let show_network_dropdown = self.nav.show_network_dropdown && has_network_dropdown;
         let (network_main, network_caret) = toolbar::render_network_parts(
             &network_label,
             ahead,
@@ -3324,6 +3333,15 @@ impl GitSparkApp {
             if app.repo.snapshot.is_none() {
                 return;
             }
+            let Some(snapshot) = app.repo.snapshot.as_ref() else {
+                return;
+            };
+            let action = NetworkAction::from_snapshot(snapshot);
+            if !matches!(action, NetworkAction::Pull | NetworkAction::Push) {
+                app.nav.show_network_dropdown = false;
+                cx.notify();
+                return;
+            }
             app.nav.show_network_dropdown = !app.nav.show_network_dropdown;
             app.nav.show_repo_selector = false;
             app.nav.show_branch_selector = false;
@@ -3340,15 +3358,18 @@ impl GitSparkApp {
             .border_color(theme::toolbar_button_border())
             .child(branch_section)
             .child(toolbar::vertical_divider())
-            .child(div().flex_none().w(px(231.0)).h_full().child(
-                h_flex().size_full().child(network_main).children(
-                    if network_action == NetworkAction::PublishRepository {
-                        None
-                    } else {
-                        Some(network_caret)
-                    },
+            .child(
+                div().flex_none().w(px(231.0)).h_full().child(
+                    h_flex()
+                        .size_full()
+                        .child(network_main)
+                        .children(if has_network_dropdown {
+                            Some(network_caret)
+                        } else {
+                            None
+                        }),
                 ),
-            ));
+            );
 
         (left, right)
     }
@@ -4835,6 +4856,7 @@ impl GitSparkApp {
         if sidebar_tab == SidebarTab::Changes && diffs.is_empty() {
             let snapshot = self.repo.snapshot.as_ref();
             let ahead = snapshot.map(|s| s.repo.ahead).unwrap_or(0);
+            let behind = snapshot.map(|s| s.repo.behind).unwrap_or(0);
             let remote = snapshot.and_then(|s| s.repo.remote_name.as_deref());
             let has_github_remote = snapshot.map(|s| s.repo.has_github_remote).unwrap_or(false);
             return h_resizable("workspace-panels")
@@ -4842,6 +4864,7 @@ impl GitSparkApp {
                     resizable_panel().child(crate::ui::sidebar::render_no_changes_state(
                         &view,
                         ahead,
+                        behind,
                         remote,
                         has_github_remote,
                         cx,

@@ -655,6 +655,7 @@ fn render_tristate_checkbox(state: CheckState) -> Div {
 pub fn render_no_changes_state(
     view: &Entity<GitSparkApp>,
     ahead: usize,
+    behind: usize,
     remote: Option<&str>,
     has_github_remote: bool,
     _cx: &mut Context<GitSparkApp>,
@@ -667,75 +668,114 @@ pub fn render_no_changes_state(
 
     let mut cards = v_flex().w_full().gap(z(8.0));
 
-    // --- Card 1: Push commits (highlighted blue, only when commits to push) ---
-    if ahead > 0 && remote.is_some() {
-        let push_title = format!(
-            "Push {} to the origin remote",
-            if ahead == 1 {
-                "1 commit".to_string()
-            } else {
-                format!("{ahead} commits")
-            }
-        );
-        let push_subtitle = format!(
-            "You have {} local {} waiting to be pushed to GitHub.",
-            ahead,
-            if ahead == 1 { "commit" } else { "commits" }
-        );
+    // --- Card 1: Pull or push commits (highlighted blue when a sync action is available) ---
+    if let Some(remote_name) = remote {
+        let sync_action = if behind > 0 {
+            Some((
+                "card-pull",
+                "card-pull-btn",
+                crate::ui::domain_state::NetworkAction::Pull,
+                "Pull",
+                behind,
+                format!(
+                    "Pull {} from the {remote_name} remote",
+                    if behind == 1 {
+                        "1 commit".to_string()
+                    } else {
+                        format!("{behind} commits")
+                    }
+                ),
+                format!(
+                    "There {} {} remote {} on {remote_name} that {} not exist on your machine.",
+                    if behind == 1 { "is" } else { "are" },
+                    behind,
+                    if behind == 1 { "commit" } else { "commits" },
+                    if behind == 1 { "does" } else { "do" }
+                ),
+            ))
+        } else if ahead > 0 {
+            Some((
+                "card-push",
+                "card-push-btn",
+                crate::ui::domain_state::NetworkAction::Push,
+                "Push",
+                ahead,
+                format!(
+                    "Push {} to the {remote_name} remote",
+                    if ahead == 1 {
+                        "1 commit".to_string()
+                    } else {
+                        format!("{ahead} commits")
+                    }
+                ),
+                format!(
+                    "You have {} local {} waiting to be pushed to GitHub.",
+                    ahead,
+                    if ahead == 1 { "commit" } else { "commits" }
+                ),
+            ))
+        } else {
+            None
+        };
 
-        cards = cards.child(
-            h_flex()
-                .id("card-push")
-                .w_full()
-                .p(z(16.0))
-                .gap(z(12.0))
-                .items_start()
-                .rounded(z(theme::CORNER_RADIUS))
-                .bg(theme::push_card_bg())
-                .border_1()
-                .border_color(theme::push_card_border())
-                // Left: text content
-                .child(
-                    v_flex()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(z(4.0))
-                        .child(
+        if let Some((card_id, button_id, action, verb, count, title, subtitle)) = sync_action {
+            let button_label = format!("{verb} {remote_name}");
+            let helper = format!(
+                "Always available in the toolbar when there {} {} {} to {} or",
+                if count == 1 { "is" } else { "are" },
+                count,
+                if count == 1 { "commit" } else { "commits" },
+                verb.to_ascii_lowercase()
+            );
+
+            cards = cards.child(
+                h_flex()
+                    .id(card_id)
+                    .w_full()
+                    .p(z(16.0))
+                    .gap(z(12.0))
+                    .items_start()
+                    .rounded(z(theme::CORNER_RADIUS))
+                    .bg(theme::push_card_bg())
+                    .border_1()
+                    .border_color(theme::push_card_border())
+                    // Left: text content
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap(z(4.0))
+                            .child(
+                                div()
+                                    .text_size(z(14.0))
+                                    .text_color(theme::text_main())
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(title),
+                            )
+                            .child(
+                                div()
+                                    .text_size(z(13.0))
+                                    .text_color(theme::text_main())
+                                    .child(subtitle),
+                            )
+                            .child({
+                                let mut row =
+                                    h_flex().gap(z(4.0)).items_center().flex_wrap().child(
+                                        div()
+                                            .text_size(z(13.0))
+                                            .text_color(theme::push_card_text())
+                                            .child(helper),
+                                    );
+                                row = row.child(kbd_badge("\u{2318}"));
+                                row = row.child(kbd_badge("P"));
+                                row
+                            }),
+                    )
+                    // Right: action button
+                    .child(
+                        div().flex_shrink_0().child(
                             div()
-                                .text_size(z(14.0))
-                                .text_color(theme::text_main())
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(push_title),
-                        )
-                        .child(
-                            div()
-                                .text_size(z(13.0))
-                                .text_color(theme::text_main())
-                                .child(push_subtitle),
-                        )
-                        .child({
-                            let mut row = h_flex()
-                                .gap(z(4.0))
-                                .items_center()
-                                .flex_wrap()
-                                .child(
-                                    div()
-                                        .text_size(z(13.0))
-                                        .text_color(theme::push_card_text())
-                                        .child("Always available in the toolbar when there are local commits waiting to be pushed or"),
-                                );
-                            row = row.child(kbd_badge("\u{2318}"));
-                            row = row.child(kbd_badge("P"));
-                            row
-                        }),
-                )
-                // Right: action button
-                .child(
-                    div()
-                        .flex_shrink_0()
-                        .child(
-                            div()
-                                .id("push-btn")
+                                .id(button_id)
                                 .px(z(12.0))
                                 .py(z(2.0))
                                 .rounded(z(theme::CORNER_RADIUS))
@@ -745,20 +785,19 @@ pub fn render_no_changes_state(
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .cursor_pointer()
                                 .hover(|s| s.bg(theme::commit_button_hover_bg()))
-                                .child("Push origin")
+                                .child(button_label)
                                 .on_click(move |_evt, _win, cx| {
                                     vh_push.update(cx, |app, cx| {
                                         app.handle_toolbar_action(
-                                            crate::ui::app::ToolbarAction::RunNetworkAction(
-                                                crate::ui::domain_state::NetworkAction::Push,
-                                            ),
+                                            crate::ui::app::ToolbarAction::RunNetworkAction(action),
                                             cx,
                                         );
                                     });
                                 }),
                         ),
-                ),
-        );
+                    ),
+            );
+        }
     }
 
     if remote.is_none() {
