@@ -87,6 +87,14 @@ pub(crate) fn render_settings_modal(
     window: &Window,
     cx: &mut Context<GitSparkApp>,
 ) -> impl IntoElement {
+    let bounds = window.bounds();
+    let window_width = bounds.size.width / px(1.0);
+    let window_height = bounds.size.height / px(1.0);
+    let panel_width = (window_width - 32.0).clamp(560.0, 920.0);
+    let panel_height = (window_height - 64.0).clamp(460.0, 640.0);
+    let panel_left = ((window_width - panel_width) / 2.0).max(16.0);
+    let panel_top = ((window_height - panel_height) / 2.0).max(16.0);
+
     let repo_scope = app
         .repo
         .snapshot
@@ -172,14 +180,13 @@ pub(crate) fn render_settings_modal(
         && app.settings.ai.provider == AiProvider::OpenRouter
         && app.settings_modal.show_model_picker;
 
-    let content_body = v_flex()
-        .w_full()
-        .p(theme::z(24.0))
-        .gap(theme::z(18.0))
-        .child(content);
+    let content_body = v_flex().w_full().p(theme::z(24.0)).child(content);
 
     let content_scroll: AnyElement = {
-        let base = div().id("settings-content-scroll").size_full();
+        let base = div()
+            .id("settings-content-scroll")
+            .size_full()
+            .bg(theme::panel_bg());
         if lock_content_scroll {
             base.overflow_hidden()
                 .child(content_body)
@@ -198,26 +205,39 @@ pub(crate) fn render_settings_modal(
         .on_key_down(cx.listener(GitSparkApp::handle_settings_key))
         .occlude()
         .absolute()
-        .top(theme::z(40.0))
-        .right(theme::z(40.0))
-        .bottom(theme::z(40.0))
-        .left(theme::z(40.0))
+        .left(px(panel_left))
+        .top(px(panel_top))
+        .w(px(panel_width))
+        .h(px(panel_height))
         .bg(theme::panel_bg())
         .border_1()
         .border_color(theme::border())
         .rounded(theme::z(theme::CORNER_RADIUS))
+        .shadow_lg()
         .overflow_hidden()
         .child(render_header(cx))
-        .child(render_nav(app, cx))
-        .child(Divider::horizontal().color(theme::border()))
-        .child(div().flex_1().overflow_hidden().child(content_scroll))
+        .child(
+            h_flex()
+                .flex_1()
+                .w_full()
+                .overflow_hidden()
+                .child(render_nav(app, cx))
+                .child(Divider::vertical().color(theme::border()))
+                .child(
+                    div()
+                        .flex_1()
+                        .h_full()
+                        .overflow_hidden()
+                        .child(content_scroll),
+                ),
+        )
         .child(Divider::horizontal().color(theme::border()))
         .child(
             h_flex()
                 .w_full()
-                .min_h(theme::z(64.0))
+                .min_h(theme::z(60.0))
                 .px(theme::z(24.0))
-                .py(theme::z(14.0))
+                .py(theme::z(12.0))
                 .justify_between()
                 .items_center()
                 .gap(theme::z(12.0))
@@ -266,43 +286,30 @@ pub(crate) fn render_settings_modal(
 fn render_header(cx: &mut Context<GitSparkApp>) -> impl IntoElement {
     h_flex()
         .w_full()
-        .px(theme::z(24.0))
-        .py(theme::z(20.0))
+        .h(theme::z(50.0))
+        .px(theme::z(16.0))
         .justify_between()
-        .items_start()
+        .items_center()
         .gap(theme::z(16.0))
+        .border_b_1()
+        .border_color(theme::border())
         .child(
-            v_flex()
-                .gap(theme::z(6.0))
-                .child(
-                    div()
-                        .text_size(theme::z(22.0))
-                        .text_color(theme::text_main())
-                        .font_weight(FontWeight::BOLD)
-                        .child("Settings"),
-                )
-                .child(
-                    div()
-                        .text_size(theme::z(12.0))
-                        .text_color(theme::text_muted())
-                        .child(
-                            "Git configuration, AI commit preferences, and repository defaults.",
-                        ),
-                ),
+            div()
+                .text_size(theme::z(14.0))
+                .text_color(theme::text_main())
+                .font_weight(FontWeight::BOLD)
+                .child("Settings"),
         )
         .child(
             div()
                 .id("settings-close-header")
-                .w(theme::z(32.0))
-                .h(theme::z(32.0))
+                .w(theme::z(28.0))
+                .h(theme::z(28.0))
                 .flex()
                 .items_center()
                 .justify_center()
-                .rounded(theme::z(theme::CORNER_RADIUS))
-                .border_1()
-                .border_color(theme::border())
-                .bg(theme::surface_bg())
-                .text_size(theme::z(20.0))
+                .rounded(theme::z(theme::CORNER_RADIUS_SM))
+                .text_size(theme::z(18.0))
                 .text_color(theme::text_muted())
                 .cursor_pointer()
                 .hover(|s| s.bg(theme::hover_bg()).text_color(theme::text_main()))
@@ -315,42 +322,60 @@ fn render_header(cx: &mut Context<GitSparkApp>) -> impl IntoElement {
 
 fn render_nav(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElement {
     let sections = [
-        (SettingsSection::Git, "Git"),
-        (SettingsSection::Ai, "AI Commit"),
-        (SettingsSection::Appearance, "Appearance"),
-        (SettingsSection::Integrations, "Integrations"),
+        (SettingsSection::Git, "settings-tab-git", "Git"),
+        (SettingsSection::Ai, "settings-tab-ai", "AI Commit"),
+        (
+            SettingsSection::Appearance,
+            "settings-tab-appearance",
+            "Appearance",
+        ),
+        (
+            SettingsSection::Integrations,
+            "settings-tab-integrations",
+            "Integrations",
+        ),
     ];
 
-    let mut row = h_flex()
-        .w_full()
+    let mut rail = v_flex()
+        .id("settings-nav")
+        .w(theme::z(220.0))
+        .h_full()
         .flex_shrink_0()
-        .border_b_1()
-        .border_color(theme::border());
+        .p(theme::z(14.0))
+        .gap(theme::z(6.0))
+        .bg(theme::surface_bg_muted());
 
-    for (section, label) in sections {
+    for (section, test_id, label) in sections {
         let is_active = app.nav.settings_section == section;
-        row = row.child(
+        rail = rail.child(
             h_flex()
-                .id(SharedString::from(format!("settings-tab-{label}")))
-                .flex_1()
-                .h(theme::z(36.0))
+                .id(test_id)
+                .w_full()
+                .h(theme::z(34.0))
+                .px(theme::z(12.0))
+                .gap(theme::z(8.0))
                 .items_center()
-                .justify_center()
+                .rounded(theme::z(theme::CORNER_RADIUS))
                 .cursor_pointer()
-                .border_b_2()
-                .border_color(if is_active {
-                    theme::accent()
+                .bg(if is_active {
+                    theme::commit_button_bg()
                 } else {
-                    gpui::transparent_black()
+                    gpui::transparent_black().into()
                 })
-                .hover(|s| s.bg(theme::hover_bg()))
+                .hover(move |s| {
+                    s.bg(if is_active {
+                        theme::commit_button_bg()
+                    } else {
+                        theme::hover_bg()
+                    })
+                })
                 .child(
                     div()
-                        .text_size(theme::z(theme::FONT_SIZE))
+                        .text_size(theme::z(12.0))
                         .text_color(if is_active {
-                            theme::text_main()
+                            theme::commit_button_text()
                         } else {
-                            theme::text_muted()
+                            theme::text_main()
                         })
                         .font_weight(FontWeight::SEMIBOLD)
                         .child(label),
@@ -369,7 +394,7 @@ fn render_nav(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElem
         );
     }
 
-    row
+    rail
 }
 
 fn render_git_section(
@@ -441,13 +466,24 @@ fn render_git_section(
                 .border_color(theme::border())
                 .bg(theme::surface_bg_muted())
                 .child(
-                    Switch::new("settings-pull-rebase")
-                        .checked(app.repo.identity.pull_rebase.unwrap_or(false))
-                        .label("Use pull.rebase")
-                        .on_click(cx.listener(|app, checked: &bool, _window, cx| {
-                            app.repo.identity.pull_rebase = Some(*checked);
-                            cx.notify();
-                        })),
+                    h_flex()
+                        .gap(theme::z(10.0))
+                        .items_center()
+                        .child(
+                            Switch::new("settings-pull-rebase")
+                                .checked(app.repo.identity.pull_rebase.unwrap_or(false))
+                                .on_click(cx.listener(|app, checked: &bool, _window, cx| {
+                                    app.repo.identity.pull_rebase = Some(*checked);
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            div()
+                                .text_size(theme::z(12.0))
+                                .text_color(theme::text_main())
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child("Use pull.rebase"),
+                        ),
                 )
                 .child(
                     div()
@@ -472,7 +508,7 @@ fn render_ai_section(
         .child(render_section_header(
             "AI Commit",
             "Commit message generation",
-            "These settings control the model and prompt used for AI commit suggestions.",
+            "Choose the provider, model, endpoint, and prompt used for AI commit suggestions.",
         ))
         .child(render_provider_group(app, cx))
         .child(render_model_group(app, window, cx))
@@ -509,10 +545,9 @@ fn render_provider_group(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> im
         .gap(theme::z(10.0))
         .child(render_field_label("Provider", None))
         .child(
-            h_flex()
+            v_flex()
                 .w_full()
-                .gap(theme::z(12.0))
-                .items_start()
+                .gap(theme::z(8.0))
                 .child(render_provider_radio(
                     app,
                     "settings-provider-openrouter",
@@ -556,7 +591,8 @@ fn render_provider_radio(
                 cx,
             );
         }))
-        .flex_1()
+        .w_full()
+        .min_h(theme::z(72.0))
         .p(theme::z(12.0))
         .rounded(theme::z(theme::CORNER_RADIUS))
         .border_1()
@@ -585,26 +621,27 @@ fn render_model_group(
 ) -> impl IntoElement {
     let provider = app.settings.ai.provider.clone();
 
-    v_flex()
-        .w_full()
-        .gap(theme::z(10.0))
-        .child(render_field_label("Model", None))
-        .child(match provider {
-            AiProvider::OpenRouter => render_openrouter_models(app, window, cx).into_any_element(),
-            AiProvider::OpenAICompatible => render_text_input(
-                app,
-                window,
-                cx,
-                "settings-ai-model",
-                SettingsField::AiModel,
-                "Model",
-                "gpt-4.1-mini",
-                false,
-                false,
-                None,
-            )
+    match provider {
+        AiProvider::OpenRouter => v_flex()
+            .w_full()
+            .gap(theme::z(10.0))
+            .child(render_field_label("Model", None))
+            .child(render_openrouter_models(app, window, cx))
             .into_any_element(),
-        })
+        AiProvider::OpenAICompatible => render_text_input(
+            app,
+            window,
+            cx,
+            "settings-ai-model",
+            SettingsField::AiModel,
+            "Model",
+            "gpt-4.1-mini",
+            false,
+            false,
+            None,
+        )
+        .into_any_element(),
+    }
 }
 
 fn render_openrouter_models(
@@ -925,7 +962,7 @@ fn render_endpoint_group(
 fn render_section_header(eyebrow: &str, title: &str, description: &str) -> impl IntoElement {
     v_flex()
         .w_full()
-        .gap(theme::z(6.0))
+        .gap(theme::z(5.0))
         .child(
             div()
                 .text_size(theme::z(10.0))
@@ -935,7 +972,7 @@ fn render_section_header(eyebrow: &str, title: &str, description: &str) -> impl 
         )
         .child(
             div()
-                .text_size(theme::z(20.0))
+                .text_size(theme::z(17.0))
                 .text_color(theme::text_main())
                 .font_weight(FontWeight::BOLD)
                 .child(title.to_string()),
@@ -1006,9 +1043,12 @@ fn render_text_input(
 
     let field_shell = div()
         .id(id)
+        .track_focus(&app.settings_modal.focus)
+        .key_context("text-field")
+        .on_key_down(cx.listener(GitSparkApp::handle_settings_key))
         .w_full()
         .min_h(if multiline {
-            theme::z(160.0)
+            theme::z(132.0)
         } else {
             theme::z(36.0)
         })
