@@ -1096,6 +1096,47 @@ impl GitSparkApp {
         self.filters.branch_filter_text.clear();
         self.branch_filter_cursor = 0;
         self.nav.show_branch_selector = false;
+        self.nav.active_dialog = ActiveDialog::None;
+        cx.notify();
+    }
+
+    pub(crate) fn rename_branch(&mut self, old_name: String, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            return;
+        };
+
+        let new_name = self.repo.new_branch_name.trim().to_string();
+        if new_name.is_empty() {
+            self.messages.error_message = "Type a new branch name.".to_string();
+            cx.notify();
+            return;
+        }
+        if new_name == old_name {
+            self.nav.active_dialog = ActiveDialog::None;
+            cx.notify();
+            return;
+        }
+
+        self.messages.status_message = format!("Renaming branch '{old_name}' to '{new_name}'...");
+        self.messages.error_message.clear();
+        let tx = self.event_tx.clone();
+        let git = GitClient::new();
+        let old = old_name.clone();
+        let new_name_for_event = new_name.clone();
+        thread::spawn(move || {
+            let res = git
+                .rename_branch(&path, &old, &new_name)
+                .map_err(|e| e.to_string());
+            tx.send(AppEvent::NetworkActionCompleted(
+                res,
+                format!("Renamed branch to '{new_name_for_event}'"),
+            ));
+        });
+        self.repo.new_branch_name.clear();
+        self.new_branch_cursor = 0;
+        self.new_branch_selection = None;
+        self.nav.active_dialog = ActiveDialog::None;
         cx.notify();
     }
 
@@ -1589,8 +1630,12 @@ impl GitSparkApp {
                 }
             }
             BranchContextAction::Rename => {
-                // Not yet implemented
-                self.messages.status_message = "Branch rename not yet implemented.".to_string();
+                self.repo.new_branch_name = branch_name.clone();
+                self.new_branch_cursor = self.repo.new_branch_name.len();
+                self.new_branch_selection = None;
+                self.nav.active_dialog = ActiveDialog::RenameBranch {
+                    old_name: branch_name,
+                };
             }
         }
         cx.notify();
@@ -4450,6 +4495,7 @@ impl GitSparkApp {
 
         let (dialog_width, dialog_height) = match &self.nav.active_dialog {
             ActiveDialog::CreateBranch => (400.0, 230.0),
+            ActiveDialog::RenameBranch { .. } => (400.0, 230.0),
             ActiveDialog::DiscardChanges { .. } => (420.0, 230.0),
             ActiveDialog::StashAndSwitch { .. } => (576.0, 360.0),
             ActiveDialog::RestoreStash => (500.0, 360.0),
@@ -4543,7 +4589,7 @@ impl GitSparkApp {
                                         div()
                                             .id("new-branch-name-input")
                                             .track_focus(&self.new_branch_focus)
-                                            .key_context("new-branch-name")
+                                            .key_context("text-field")
                                             .on_key_down(cx.listener(Self::handle_new_branch_key))
                                             .w_full()
                                             .h(theme::z(28.0))
@@ -4634,8 +4680,164 @@ impl GitSparkApp {
                                             .child("Create Branch"),
                                     )
                                     .on_click(cx.listener(|app, _evt, _win, cx| {
-                                        app.nav.active_dialog = ActiveDialog::None;
                                         app.create_branch(cx);
+                                    })),
+                            ),
+                    )
+            }
+            ActiveDialog::RenameBranch { old_name } => {
+                let branch_name = &self.repo.new_branch_name;
+                let old_name_for_click = old_name.clone();
+
+                v_flex()
+                    .w(px(400.0))
+                    .bg(theme::panel_bg())
+                    .rounded(theme::z(theme::CORNER_RADIUS))
+                    .border_1()
+                    .border_color(theme::border())
+                    .shadow_lg()
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .px(theme::z(16.0))
+                            .py(theme::z(12.0))
+                            .items_center()
+                            .justify_between()
+                            .border_b_1()
+                            .border_color(theme::border())
+                            .child(
+                                div()
+                                    .text_size(theme::z(14.0))
+                                    .text_color(theme::text_main())
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("Rename Branch"),
+                            )
+                            .child(
+                                div()
+                                    .id("rename-branch-close")
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::hover_bg()))
+                                    .rounded(px(4.0))
+                                    .p(px(4.0))
+                                    .child(
+                                        Icon::new(IconName::Close)
+                                            .size(px(14.0))
+                                            .text_color(theme::text_muted()),
+                                    )
+                                    .on_click(cx.listener(|app, _evt, _win, cx| {
+                                        app.nav.active_dialog = ActiveDialog::None;
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .p(theme::z(16.0))
+                            .gap(theme::z(12.0))
+                            .child(
+                                v_flex()
+                                    .gap(theme::z(4.0))
+                                    .child(
+                                        div()
+                                            .text_size(theme::z(12.0))
+                                            .text_color(theme::text_muted())
+                                            .child("Name"),
+                                    )
+                                    .child(
+                                        div()
+                                            .id("rename-branch-name-input")
+                                            .track_focus(&self.new_branch_focus)
+                                            .key_context("text-field")
+                                            .on_key_down(cx.listener(Self::handle_new_branch_key))
+                                            .w_full()
+                                            .h(theme::z(28.0))
+                                            .px(theme::z(8.0))
+                                            .flex()
+                                            .items_center()
+                                            .rounded(theme::z(theme::CORNER_RADIUS))
+                                            .bg(theme::bg())
+                                            .border_1()
+                                            .border_color(theme::accent())
+                                            .cursor_text()
+                                            .child(
+                                                div()
+                                                    .text_size(theme::z(12.0))
+                                                    .text_color(if branch_name.is_empty() {
+                                                        theme::text_muted()
+                                                    } else {
+                                                        theme::text_main()
+                                                    })
+                                                    .child(if branch_name.is_empty() {
+                                                        "branch-name".to_string()
+                                                    } else {
+                                                        branch_name.clone()
+                                                    }),
+                                            )
+                                            .on_click(cx.listener(|app, _evt, window, cx| {
+                                                window.focus(&app.new_branch_focus);
+                                                app.new_branch_cursor =
+                                                    app.repo.new_branch_name.len();
+                                                app.new_branch_selection = None;
+                                                cx.notify();
+                                            })),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .text_size(theme::z(11.0))
+                                    .text_color(theme::text_muted())
+                                    .child(format!("Current branch name: {old_name}")),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .px(theme::z(16.0))
+                            .py(theme::z(12.0))
+                            .justify_end()
+                            .gap(theme::z(8.0))
+                            .border_t_1()
+                            .border_color(theme::border())
+                            .child(
+                                div()
+                                    .id("rename-branch-cancel")
+                                    .px(theme::z(12.0))
+                                    .py(theme::z(6.0))
+                                    .rounded(theme::z(theme::CORNER_RADIUS))
+                                    .bg(theme::surface_bg())
+                                    .border_1()
+                                    .border_color(theme::surface_bg_alt())
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::toolbar_hover_bg()))
+                                    .child(
+                                        div()
+                                            .text_size(theme::z(12.0))
+                                            .text_color(theme::text_main())
+                                            .child("Cancel"),
+                                    )
+                                    .on_click(cx.listener(|app, _evt, _win, cx| {
+                                        app.nav.active_dialog = ActiveDialog::None;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .id("rename-branch-confirm")
+                                    .px(theme::z(12.0))
+                                    .py(theme::z(6.0))
+                                    .rounded(theme::z(theme::CORNER_RADIUS))
+                                    .bg(theme::commit_button_bg())
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::commit_button_hover_bg()))
+                                    .child(
+                                        div()
+                                            .text_size(theme::z(12.0))
+                                            .text_color(theme::commit_button_text())
+                                            .child("Rename Branch"),
+                                    )
+                                    .on_click(cx.listener(move |app, _evt, _win, cx| {
+                                        app.rename_branch(old_name_for_click.clone(), cx);
                                     })),
                             ),
                     )

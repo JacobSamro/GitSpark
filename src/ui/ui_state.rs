@@ -39,6 +39,9 @@ pub enum ActiveDialog {
     StashAndSwitch {
         target_branch: String,
     },
+    RenameBranch {
+        old_name: String,
+    },
     RestoreStash,
     PublishRepository,
 }

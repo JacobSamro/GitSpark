@@ -287,6 +287,7 @@ pub(crate) enum AutomationHistoryAction {
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum AutomationBranchAction {
+    Rename,
     Delete,
     ViewOnGithub,
 }
@@ -441,6 +442,7 @@ enum AutomationNodeAction {
     SetNewBranchName,
     SetBranchSwitchMode(bool),
     ConfirmCreateBranch,
+    ConfirmRenameBranch,
     ConfirmStashAndSwitch,
     ShowRestoreStash,
     RestoreStash,
@@ -947,6 +949,32 @@ impl GitSparkApp {
             ]);
         }
 
+        if matches!(self.nav.active_dialog, ActiveDialog::RenameBranch { .. }) {
+            children.extend([
+                automation_node(
+                    "rename-branch-name-input",
+                    AutomationRole::Textbox,
+                    Some("rename-branch-name-input"),
+                    Some(self.repo.new_branch_name.as_str()),
+                    Some(AutomationNodeAction::SetNewBranchName),
+                ),
+                automation_node(
+                    "rename-branch-cancel",
+                    AutomationRole::Button,
+                    Some("rename-branch-cancel"),
+                    Some("Cancel"),
+                    Some(AutomationNodeAction::CancelDialog),
+                ),
+                automation_node(
+                    "rename-branch-confirm",
+                    AutomationRole::Button,
+                    Some("rename-branch-confirm"),
+                    Some("Rename Branch"),
+                    Some(AutomationNodeAction::ConfirmRenameBranch),
+                ),
+            ]);
+        }
+
         if let Some(snapshot) = &self.repo.snapshot {
             let has_github_remote = self.repo_has_github_remote();
             children.push(
@@ -1251,8 +1279,14 @@ impl GitSparkApp {
                 cx.notify();
             }
             AutomationNodeAction::ConfirmCreateBranch => {
-                self.nav.active_dialog = ActiveDialog::None;
                 self.create_branch(cx);
+            }
+            AutomationNodeAction::ConfirmRenameBranch => {
+                let old_name = match &self.nav.active_dialog {
+                    ActiveDialog::RenameBranch { old_name } => old_name.clone(),
+                    _ => return AutomationResponse::failure("rename branch dialog is not active"),
+                };
+                self.rename_branch(old_name, cx);
             }
             AutomationNodeAction::ConfirmStashAndSwitch => {
                 let target_branch = match &self.nav.active_dialog {
@@ -1461,6 +1495,7 @@ impl GitSparkApp {
     ) {
         let action = match action {
             AutomationBranchAction::Delete => BranchContextAction::Delete,
+            AutomationBranchAction::Rename => BranchContextAction::Rename,
             AutomationBranchAction::ViewOnGithub => BranchContextAction::ViewOnGitHub,
         };
         self.handle_branch_context_action(name, action, cx);
@@ -1836,11 +1871,18 @@ fn history_action_nodes(
 
 fn branch_action_nodes(name: &str, has_github_remote: bool) -> Vec<AutomationNode> {
     let slug = stable_test_slug(name);
-    let mut actions = vec![(
-        "delete",
-        crate::ui::labels::delete_branch_menu(),
-        AutomationBranchAction::Delete,
-    )];
+    let mut actions = vec![
+        (
+            "rename",
+            crate::ui::labels::rename_branch_menu(),
+            AutomationBranchAction::Rename,
+        ),
+        (
+            "delete",
+            crate::ui::labels::delete_branch_menu(),
+            AutomationBranchAction::Delete,
+        ),
+    ];
 
     if has_github_remote {
         actions.push((
@@ -2046,6 +2088,7 @@ fn active_dialog_name(dialog: &ActiveDialog) -> &'static str {
         ActiveDialog::CreateBranch => "create_branch",
         ActiveDialog::DiscardChanges { .. } => "discard_changes",
         ActiveDialog::StashAndSwitch { .. } => "stash_and_switch",
+        ActiveDialog::RenameBranch { .. } => "rename_branch",
         ActiveDialog::RestoreStash => "restore_stash",
         ActiveDialog::PublishRepository => "publish_repository",
     }

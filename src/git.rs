@@ -283,6 +283,30 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn rename_branch(
+        &self,
+        repo_path: &Path,
+        old_name: &str,
+        new_name: &str,
+    ) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let old_name = old_name.trim();
+        let new_name = new_name.trim();
+        if old_name.is_empty() {
+            bail!("branch name cannot be empty");
+        }
+        if new_name.is_empty() {
+            bail!("new branch name cannot be empty");
+        }
+        if old_name == new_name {
+            return self.snapshot(&repo_path);
+        }
+
+        self.run_git(&repo_path, &["branch", "-m", old_name, new_name])
+            .with_context(|| format!("failed to rename branch '{old_name}' to '{new_name}'"))?;
+        self.snapshot(&repo_path)
+    }
+
     pub fn create_branch(&self, repo_path: &Path, branch_name: &str) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let branch_name = branch_name.trim();

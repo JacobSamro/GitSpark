@@ -32,7 +32,7 @@ pub(crate) fn build_branch_context_menu(
         .max_w(px(240.0))
         .item(branch_menu_item(
             labels::rename_branch_menu(),
-            false, // not implemented yet
+            true,
             view.clone(),
             branch_name.clone(),
             BranchContextAction::Rename,
