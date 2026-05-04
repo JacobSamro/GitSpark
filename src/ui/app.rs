@@ -3414,7 +3414,10 @@ impl GitSparkApp {
         let commit_label = if self.commit.ai_in_flight {
             "Generating commit details\u{2026}".to_string()
         } else if file_count > 0 {
-            format!("Commit {file_count} files to {branch_name}")
+            format!(
+                "Commit {} to {branch_name}",
+                crate::ui::labels::commit_files(file_count)
+            )
         } else {
             format!("Commit to {branch_name}")
         };
@@ -3643,7 +3646,7 @@ impl GitSparkApp {
                             .text_size(theme::z(12.0))
                             .text_color(theme::text_muted())
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(format!("{} changed files", diffs.len())),
+                            .child(crate::ui::labels::changed_files(diffs.len())),
                     ),
             )
             .child(

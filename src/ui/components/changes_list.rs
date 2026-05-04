@@ -84,7 +84,7 @@ fn render_changes_header(ui: &mut egui::Ui, count: usize) {
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.label(
-                RichText::new(format!("{count} changed files"))
+                RichText::new(crate::ui::labels::changed_files(count))
                     .color(TEXT_MAIN)
                     .strong(),
             );

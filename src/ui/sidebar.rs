@@ -143,7 +143,7 @@ pub fn render_sidebar_interactive(
                     div().into_any_element()
                 };
 
-                // Empty file list — just the header showing "0 changed files"
+                // Empty file list — just the header showing the zero-count state.
                 v_flex()
                     .flex_1()
                     .min_h_0()
@@ -164,7 +164,7 @@ pub fn render_sidebar_interactive(
                                     .text_size(z(11.0))
                                     .text_color(theme::text_muted())
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .child("0 changed files"),
+                                    .child(crate::ui::labels::changed_files(0)),
                             ),
                     )
                     .child(stash_row)
@@ -190,9 +190,9 @@ pub fn render_sidebar_interactive(
                 };
 
                 let header_label = if included_count == file_count {
-                    format!("{file_count} changed files")
+                    crate::ui::labels::changed_files(file_count)
                 } else {
-                    format!("{included_count} of {file_count} changed files")
+                    crate::ui::labels::included_changed_files(included_count, file_count)
                 };
 
                 // Include-all header: checkbox + "N of M changed files"

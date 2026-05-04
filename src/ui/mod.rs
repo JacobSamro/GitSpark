@@ -4,6 +4,7 @@ pub mod branch_context_menu;
 pub mod changes_context_menu;
 pub mod domain_state;
 pub mod history_context_menu;
+pub mod labels;
 pub mod settings_modal;
 pub mod sidebar;
 pub mod status_bar;

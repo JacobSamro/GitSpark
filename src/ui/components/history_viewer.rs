@@ -127,10 +127,7 @@ pub fn render_history_viewer(
                                 )
                                 .show_inside(ui, |ui| {
                                     ui.label(
-                                        RichText::new(format!(
-                                            "{} changed files",
-                                            diffs.len()
-                                        ))
+                                        RichText::new(crate::ui::labels::changed_files(diffs.len()))
                                         .strong()
                                         .color(TEXT_MAIN),
                                     );
