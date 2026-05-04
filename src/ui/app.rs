@@ -4671,7 +4671,7 @@ fn reveal_path(path: &Path) -> Result<(), Box<dyn std::error::Error + Send + Syn
 
     #[cfg(not(target_os = "macos"))]
     {
-        open::that_detached(path)
+        Ok(open::that_detached(path)?)
     }
 }
 
