@@ -1605,6 +1605,33 @@ mod tests {
         let _ = fs::remove_dir_all(repo);
     }
 
+    #[test]
+    fn deletes_current_branch_after_switching_to_fallback() {
+        let repo = temp_repo("delete-current-branch");
+        fs::write(repo.join("README.md"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+        run_git(&repo, &["switch", "-c", "feature/delete-current"]);
+
+        let snapshot = GitClient::new()
+            .delete_branch_from_current_worktree(&repo, "feature/delete-current")
+            .unwrap();
+
+        assert_eq!(snapshot.repo.current_branch, "main");
+        assert!(
+            !snapshot
+                .branches
+                .iter()
+                .any(|branch| branch.name == "feature/delete-current"),
+            "deleted branch should be absent from snapshot"
+        );
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
     fn temp_repo(name: &str) -> std::path::PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
