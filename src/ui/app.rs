@@ -2067,6 +2067,14 @@ impl GitSparkApp {
             self.messages.error_message = "No repository selected.".to_string();
             return;
         };
+        if Path::new(relative_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            == Some(".gitignore")
+        {
+            self.messages.error_message = "Cannot ignore .gitignore.".to_string();
+            return;
+        }
 
         let pattern = relative_path.replace('\\', "/");
         match self.git.append_gitignore_pattern(&repo_path, &pattern) {

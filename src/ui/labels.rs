@@ -21,12 +21,12 @@ pub(crate) fn included_changed_files(included: usize, total: usize) -> String {
 pub(crate) fn discard_changes_menu() -> &'static str {
     #[cfg(target_os = "macos")]
     {
-        "Discard Changes"
+        "Discard Changes…"
     }
 
     #[cfg(not(target_os = "macos"))]
     {
-        "Discard changes"
+        "Discard changes…"
     }
 }
 
@@ -272,7 +272,7 @@ mod tests {
     fn uses_platform_menu_label_casing() {
         #[cfg(target_os = "macos")]
         {
-            assert_eq!(discard_changes_menu(), "Discard Changes");
+            assert_eq!(discard_changes_menu(), "Discard Changes…");
             assert_eq!(ignore_file_menu(), "Ignore File (Add to .gitignore)");
             assert_eq!(
                 ignore_all_extension_menu("rs"),
@@ -306,7 +306,7 @@ mod tests {
 
         #[cfg(target_os = "windows")]
         {
-            assert_eq!(discard_changes_menu(), "Discard changes");
+            assert_eq!(discard_changes_menu(), "Discard changes…");
             assert_eq!(ignore_file_menu(), "Ignore file (add to .gitignore)");
             assert_eq!(
                 ignore_all_extension_menu("rs"),
@@ -340,7 +340,7 @@ mod tests {
 
         #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
         {
-            assert_eq!(discard_changes_menu(), "Discard changes");
+            assert_eq!(discard_changes_menu(), "Discard changes…");
             assert_eq!(ignore_file_menu(), "Ignore file (add to .gitignore)");
             assert_eq!(
                 ignore_all_extension_menu("rs"),

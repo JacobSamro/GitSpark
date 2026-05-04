@@ -27,7 +27,21 @@ pub(crate) fn build_changes_context_menu(
     let ext = std::path::Path::new(&path)
         .extension()
         .map(|e| e.to_string_lossy().to_string());
-    let show_view_on_github = view.read(cx).repo_has_github_remote();
+    let basename = std::path::Path::new(&path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    let app = view.read(cx);
+    let show_view_on_github = app.repo_has_github_remote();
+    let change_status = app
+        .repo
+        .snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.changes.iter().find(|change| change.path == path))
+        .map(|change| change.status.as_str())
+        .unwrap_or_default();
+    let ignore_enabled = basename != ".gitignore";
+    let file_action_enabled = !is_deleted_change_status(change_status);
 
     let mut m = menu
         .min_w(px(220.0))
@@ -42,7 +56,7 @@ pub(crate) fn build_changes_context_menu(
         .separator()
         .item(changes_menu_item(
             labels::ignore_file_menu(),
-            true,
+            ignore_enabled,
             view.clone(),
             path.clone(),
             ChangesContextAction::IgnoreFile,
@@ -51,7 +65,7 @@ pub(crate) fn build_changes_context_menu(
     if let Some(ext) = ext {
         m = m.item(changes_menu_item(
             &labels::ignore_all_extension_menu(&ext),
-            true,
+            ignore_enabled,
             view.clone(),
             path.clone(),
             ChangesContextAction::IgnoreExtension,
@@ -77,21 +91,21 @@ pub(crate) fn build_changes_context_menu(
         .separator()
         .item(changes_menu_item(
             labels::reveal_in_file_manager_menu(),
-            true,
+            file_action_enabled,
             view.clone(),
             path.clone(),
             ChangesContextAction::RevealInFinder,
         ))
         .item(changes_menu_item(
             labels::open_in_external_editor_menu(),
-            true,
+            file_action_enabled,
             view.clone(),
             path.clone(),
             ChangesContextAction::OpenInExternalEditor,
         ))
         .item(changes_menu_item(
             labels::open_with_default_program_menu(),
-            true,
+            file_action_enabled,
             view.clone(),
             path.clone(),
             ChangesContextAction::OpenWithDefault,
@@ -108,6 +122,10 @@ pub(crate) fn build_changes_context_menu(
     }
 
     m
+}
+
+fn is_deleted_change_status(status: &str) -> bool {
+    status.contains('D') && !status.contains('A') && !status.contains('?')
 }
 
 fn changes_menu_item(

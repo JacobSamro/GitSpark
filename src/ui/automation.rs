@@ -1226,7 +1226,11 @@ impl GitSparkApp {
             );
 
             for change in &snapshot.changes {
-                children.extend(change_action_nodes(change.path.as_str(), has_github_remote));
+                children.extend(change_action_nodes(
+                    change.path.as_str(),
+                    change.status.as_str(),
+                    has_github_remote,
+                ));
             }
 
             children.push(
@@ -1977,27 +1981,37 @@ fn settings_field_node(
     )])
 }
 
-fn change_action_nodes(path: &str, has_github_remote: bool) -> Vec<AutomationNode> {
+fn change_action_nodes(path: &str, status: &str, has_github_remote: bool) -> Vec<AutomationNode> {
     let slug = stable_test_slug(path);
     let extension = std::path::Path::new(path)
         .extension()
         .map(|ext| ext.to_string_lossy().to_string())
         .unwrap_or_default();
+    let basename = std::path::Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    let ignore_enabled = basename != ".gitignore";
+    let file_action_enabled =
+        !(status.contains('D') && !status.contains('A') && !status.contains('?'));
     let mut actions = vec![
         (
             "discard",
             crate::ui::labels::discard_changes_menu().to_string(),
             AutomationChangeAction::Discard,
+            true,
         ),
         (
             "prompt-discard",
             "Prompt discard change".to_string(),
             AutomationChangeAction::PromptDiscard,
+            true,
         ),
         (
             "ignore-path",
             crate::ui::labels::ignore_file_menu().to_string(),
             AutomationChangeAction::IgnorePath,
+            ignore_enabled,
         ),
         (
             "ignore-extension",
@@ -2007,31 +2021,37 @@ fn change_action_nodes(path: &str, has_github_remote: bool) -> Vec<AutomationNod
                 crate::ui::labels::ignore_all_extension_menu(&extension)
             },
             AutomationChangeAction::IgnoreExtension,
+            ignore_enabled,
         ),
         (
             "copy-full-path",
             crate::ui::labels::copy_file_path_menu().to_string(),
             AutomationChangeAction::CopyFullPath,
+            true,
         ),
         (
             "copy-relative-path",
             crate::ui::labels::copy_relative_file_path_menu().to_string(),
             AutomationChangeAction::CopyRelativePath,
+            true,
         ),
         (
             "reveal-in-finder",
             crate::ui::labels::reveal_in_file_manager_menu().to_string(),
             AutomationChangeAction::RevealInFinder,
+            file_action_enabled,
         ),
         (
             "open-in-editor",
             crate::ui::labels::open_in_external_editor_menu().to_string(),
             AutomationChangeAction::OpenInEditor,
+            file_action_enabled,
         ),
         (
             "open-with-default",
             crate::ui::labels::open_with_default_program_menu().to_string(),
             AutomationChangeAction::OpenWithDefault,
+            file_action_enabled,
         ),
     ];
 
@@ -2040,12 +2060,13 @@ fn change_action_nodes(path: &str, has_github_remote: bool) -> Vec<AutomationNod
             "view-on-github",
             "View on GitHub".to_string(),
             AutomationChangeAction::ViewOnGithub,
+            true,
         ));
     }
 
     actions
         .into_iter()
-        .map(|(suffix, label, action)| {
+        .map(|(suffix, label, action, enabled)| {
             automation_node(
                 format!("change-{slug}-{suffix}"),
                 AutomationRole::Button,
@@ -2053,6 +2074,7 @@ fn change_action_nodes(path: &str, has_github_remote: bool) -> Vec<AutomationNod
                 Some(label.as_str()),
                 Some(AutomationNodeAction::ChangeFile(path.to_string(), action)),
             )
+            .enabled(enabled)
         })
         .collect()
 }
