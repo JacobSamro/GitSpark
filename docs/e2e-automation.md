@@ -76,6 +76,8 @@ For broader local coverage, run the full suite. It creates a fresh temporary sam
 node e2e/full-suite.mjs
 ```
 
+CI runs `node --check` for all E2E scripts and runs the native full suite on `ubuntu-24.04` under `xvfb` so the real GPUI desktop app is launched and driven through the automation channel.
+
 Current full-suite coverage:
 
 ```text
