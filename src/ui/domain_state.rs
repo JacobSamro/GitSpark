@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::models::{CommitSuggestion, DiffEntry, GitIdentity, RepoSnapshot};
+use crate::models::{ChangeEntry, CommitSuggestion, DiffEntry, GitIdentity, RepoSnapshot};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NetworkAction {
@@ -55,6 +55,7 @@ impl NetworkAction {
 pub struct RepoState {
     pub snapshot: Option<RepoSnapshot>,
     pub identity: GitIdentity,
+    pub global_identity: GitIdentity,
     pub branch_target: String,
     pub merge_target: String,
     pub new_branch_name: String,
@@ -62,6 +63,7 @@ pub struct RepoState {
     pub pending_cherry_pick_oid: Option<String>,
     pub switch_branch_bring_changes: bool,
     pub has_stash: bool,
+    pub stash_files: Vec<ChangeEntry>,
 }
 
 impl Default for RepoState {
@@ -69,6 +71,7 @@ impl Default for RepoState {
         Self {
             snapshot: None,
             identity: GitIdentity::default(),
+            global_identity: GitIdentity::default(),
             branch_target: String::new(),
             merge_target: String::new(),
             new_branch_name: String::new(),
@@ -76,6 +79,7 @@ impl Default for RepoState {
             pending_cherry_pick_oid: None,
             switch_branch_bring_changes: false,
             has_stash: false,
+            stash_files: Vec::new(),
         }
     }
 }

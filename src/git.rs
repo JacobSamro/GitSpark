@@ -1,9 +1,9 @@
-use std::fs;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{Duration, SystemTime};
+use std::{env, fs};
 
 use anyhow::{Context, Result, anyhow, bail};
 
@@ -236,6 +236,23 @@ impl GitClient {
         self.run_git(&repo_path, &["stash", "pop"])
             .context("failed to pop stash")?;
         self.snapshot(&repo_path)
+    }
+
+    pub fn latest_stash_files(&self, repo_path: &Path) -> Result<Vec<ChangeEntry>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let output = self.run_git(
+            &repo_path,
+            &[
+                "stash",
+                "show",
+                "--name-status",
+                "--include-untracked",
+                "--format=",
+                "stash@{0}",
+            ],
+        )?;
+
+        Ok(output.lines().filter_map(parse_name_status_line).collect())
     }
 
     pub fn undo_last_commit(&self, repo_path: &Path) -> Result<RepoSnapshot> {
@@ -597,19 +614,29 @@ impl GitClient {
         })
     }
 
-    pub fn write_identity(&self, repo_path: &Path, identity: &GitIdentity) -> Result<()> {
-        let repo_path = self.resolve_repo_root(repo_path)?;
+    pub fn read_global_identity(&self) -> Result<GitIdentity> {
+        Ok(GitIdentity {
+            user_name: self.read_optional_global_config("user.name")?,
+            user_email: self.read_optional_global_config("user.email")?,
+            pull_rebase: self.read_optional_global_bool_config("pull.rebase")?,
+            default_branch: non_empty(self.read_optional_global_config("init.defaultBranch")?),
+        })
+    }
 
-        self.write_string_config(&repo_path, "user.name", &identity.user_name)?;
-        self.write_string_config(&repo_path, "user.email", &identity.user_email)?;
-        self.write_bool_config(&repo_path, "pull.rebase", identity.pull_rebase)?;
-        self.write_optional_string_config(
-            &repo_path,
+    pub fn write_global_identity(&self, identity: &GitIdentity) -> Result<()> {
+        self.write_global_string_config("user.name", &identity.user_name)?;
+        self.write_global_string_config("user.email", &identity.user_email)?;
+        self.write_optional_global_string_config(
             "init.defaultBranch",
             identity.default_branch.as_deref(),
         )?;
 
         Ok(())
+    }
+
+    pub fn write_pull_rebase(&self, repo_path: &Path, value: Option<bool>) -> Result<()> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        self.write_bool_config(&repo_path, "pull.rebase", value)
     }
 
     fn snapshot(&self, repo_path: &Path) -> Result<RepoSnapshot> {
@@ -1087,6 +1114,16 @@ impl GitClient {
         }
     }
 
+    fn read_optional_global_config(&self, key: &str) -> Result<String> {
+        match run_git_global(&["config", "--global", "--get", key]) {
+            Ok(value) => Ok(value.trim().to_string()),
+            Err(error) if is_config_missing(&error) => Ok(String::new()),
+            Err(error) => {
+                Err(error).with_context(|| format!("failed reading global config '{key}'"))
+            }
+        }
+    }
+
     fn read_optional_bool_config(&self, repo_path: &Path, key: &str) -> Result<Option<bool>> {
         let value = self.read_optional_config(repo_path, key)?;
         if value.is_empty() {
@@ -1098,8 +1135,15 @@ impl GitClient {
             .with_context(|| format!("invalid boolean value for '{key}': '{value}'"))
     }
 
-    fn write_string_config(&self, repo_path: &Path, key: &str, value: &str) -> Result<()> {
-        self.write_optional_string_config(repo_path, key, non_empty(value.to_string()).as_deref())
+    fn read_optional_global_bool_config(&self, key: &str) -> Result<Option<bool>> {
+        let value = self.read_optional_global_config(key)?;
+        if value.is_empty() {
+            return Ok(None);
+        }
+
+        parse_git_bool(&value)
+            .map(Some)
+            .with_context(|| format!("invalid global boolean value for '{key}': '{value}'"))
     }
 
     fn write_optional_string_config(
@@ -1143,6 +1187,27 @@ impl GitClient {
                 .map(|_| ())
                 .with_context(|| format!("failed writing config '{key}'")),
             None => self.write_optional_string_config(repo_path, key, None),
+        }
+    }
+
+    fn write_global_string_config(&self, key: &str, value: &str) -> Result<()> {
+        self.write_optional_global_string_config(key, non_empty(value.to_string()).as_deref())
+    }
+
+    fn write_optional_global_string_config(&self, key: &str, value: Option<&str>) -> Result<()> {
+        match value {
+            Some(value) => run_git_global(&["config", "--global", key, value])
+                .map(|_| ())
+                .with_context(|| format!("failed writing global config '{key}'")),
+            None => {
+                if run_git_global(&["config", "--global", "--get", key]).is_err() {
+                    return Ok(());
+                }
+
+                run_git_global(&["config", "--global", "--unset", key])
+                    .map(|_| ())
+                    .with_context(|| format!("failed clearing global config '{key}'"))
+            }
         }
     }
 
@@ -1205,6 +1270,12 @@ fn run_git_command(repo_path: &Path, args: &[&str]) -> Result<Output> {
         repo_path.display(),
         message
     ))
+}
+
+fn run_git_global(args: &[&str]) -> Result<String> {
+    let current_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let output = run_git_command(&current_dir, args)?;
+    String::from_utf8(output.stdout).context("git output was not valid UTF-8")
 }
 
 fn parse_status_porcelain_v2(bytes: &[u8]) -> Result<StatusSnapshot> {
@@ -1453,6 +1524,24 @@ fn non_empty(value: String) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+fn parse_name_status_line(line: &str) -> Option<ChangeEntry> {
+    let mut parts = line.split('\t');
+    let status = parts.next()?.trim();
+    if status.is_empty() {
+        return None;
+    }
+
+    let path = parts.last()?.trim();
+    if path.is_empty() {
+        return None;
+    }
+
+    Some(ChangeEntry {
+        path: path.to_string(),
+        status: status.to_string(),
+    })
 }
 
 fn looks_binary_diff(diff: &str) -> bool {

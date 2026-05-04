@@ -1039,8 +1039,21 @@ impl GitSparkApp {
     }
 
     pub(crate) fn show_restore_stash_dialog(&mut self, cx: &mut Context<Self>) {
+        if let Some(path) = self.repo_path().map(PathBuf::from) {
+            match self.git.latest_stash_files(&path) {
+                Ok(files) => {
+                    self.repo.stash_files = files;
+                    self.messages.error_message.clear();
+                }
+                Err(err) => {
+                    self.repo.stash_files.clear();
+                    self.messages.error_message = format!("Could not read stash files: {err}");
+                }
+            }
+        } else {
+            self.repo.stash_files.clear();
+        }
         self.nav.active_dialog = ActiveDialog::RestoreStash;
-        self.messages.error_message.clear();
         cx.notify();
     }
 
@@ -1234,26 +1247,34 @@ impl GitSparkApp {
     // ------------------------------------------------------------------
 
     fn save_git_config(&mut self) {
-        let Some(path) = self.repo_path().map(PathBuf::from) else {
-            self.messages.error_message = "No repository selected.".to_string();
-            return;
-        };
-
-        match self.git.write_identity(&path, &self.repo.identity) {
+        match self.git.write_global_identity(&self.repo.global_identity) {
             Ok(()) => {
-                // Also persist default branch in app settings
-                self.settings.default_branch = self.repo.identity.default_branch.clone();
+                if let Some(path) = self.repo_path().map(PathBuf::from) {
+                    if let Err(err) = self
+                        .git
+                        .write_pull_rebase(&path, self.repo.identity.pull_rebase)
+                    {
+                        self.messages.error_message = format!(
+                            "Saved global Git config, but failed to save repository pull behavior: {err}"
+                        );
+                        return;
+                    }
+                }
+
+                // Also persist default branch in app settings.
+                self.settings.default_branch = self.repo.global_identity.default_branch.clone();
                 self.persist_settings();
                 self.messages.status_message = "Git config saved.".to_string();
                 self.messages.error_message.clear();
             }
             Err(err) => {
-                self.messages.error_message = format!("Failed to save git config: {err}");
+                self.messages.error_message = format!("Failed to save global Git config: {err}");
             }
         }
     }
 
     fn load_identity(&mut self, path: &Path) {
+        self.load_global_identity();
         match self.git.read_identity(path) {
             Ok(mut identity) => {
                 // Fall back to app settings default branch if git config doesn't have one
@@ -1265,6 +1286,21 @@ impl GitSparkApp {
             Err(err) => {
                 self.repo.identity = GitIdentity::default();
                 self.messages.error_message = format!("Could not load git config: {err}");
+            }
+        }
+    }
+
+    fn load_global_identity(&mut self) {
+        match self.git.read_global_identity() {
+            Ok(mut identity) => {
+                if identity.default_branch.is_none() {
+                    identity.default_branch = self.settings.default_branch.clone();
+                }
+                self.repo.global_identity = identity;
+            }
+            Err(err) => {
+                self.repo.global_identity = GitIdentity::default();
+                self.messages.error_message = format!("Could not load global Git config: {err}");
             }
         }
     }
@@ -1925,6 +1961,14 @@ impl GitSparkApp {
         self.load_identity(&snapshot.repo.path);
         self.ensure_repo_watch(&snapshot.repo.path);
         self.repo.has_stash = has_stash;
+        if has_stash {
+            self.repo.stash_files = self
+                .git
+                .latest_stash_files(&snapshot.repo.path)
+                .unwrap_or_default();
+        } else {
+            self.repo.stash_files.clear();
+        }
         self.repo.snapshot = Some(snapshot);
         self.reconcile_commit_inclusions(&changed_paths);
 
@@ -2102,15 +2146,15 @@ impl Render for GitSparkApp {
         self.settings_modal.git_user_name_cursor = self
             .settings_modal
             .git_user_name_cursor
-            .min(self.repo.identity.user_name.len());
+            .min(self.repo.global_identity.user_name.len());
         self.settings_modal.git_user_email_cursor = self
             .settings_modal
             .git_user_email_cursor
-            .min(self.repo.identity.user_email.len());
+            .min(self.repo.global_identity.user_email.len());
         self.settings_modal.git_default_branch_cursor =
             self.settings_modal.git_default_branch_cursor.min(
                 self.repo
-                    .identity
+                    .global_identity
                     .default_branch
                     .as_deref()
                     .unwrap_or("")
@@ -3333,6 +3377,9 @@ impl GitSparkApp {
 
         self.close_history_context_menu();
         self.nav.show_settings = true;
+        if self.nav.settings_section == crate::ui::ui_state::SettingsSection::Git {
+            self.load_global_identity();
+        }
         let field = if self.nav.settings_section == crate::ui::ui_state::SettingsSection::Ai
             && self.settings.ai.provider == AiProvider::OpenRouter
         {
@@ -3352,11 +3399,14 @@ impl GitSparkApp {
 
     pub(crate) fn settings_field_value(&self, field: SettingsField) -> &str {
         match field {
-            SettingsField::GitUserName => self.repo.identity.user_name.as_str(),
-            SettingsField::GitUserEmail => self.repo.identity.user_email.as_str(),
-            SettingsField::GitDefaultBranch => {
-                self.repo.identity.default_branch.as_deref().unwrap_or("")
-            }
+            SettingsField::GitUserName => self.repo.global_identity.user_name.as_str(),
+            SettingsField::GitUserEmail => self.repo.global_identity.user_email.as_str(),
+            SettingsField::GitDefaultBranch => self
+                .repo
+                .global_identity
+                .default_branch
+                .as_deref()
+                .unwrap_or(""),
             SettingsField::AiModel => self.settings.ai.model.as_str(),
             SettingsField::AiEndpoint => self.settings.ai.endpoint.as_str(),
             SettingsField::AiApiKey => self.settings.ai.api_key.as_str(),
@@ -3439,7 +3489,7 @@ impl GitSparkApp {
                     selection: self.settings_modal.git_user_name_selection,
                 };
                 let h = crate::ui::text_field::handle_text_key(
-                    &mut self.repo.identity.user_name,
+                    &mut self.repo.global_identity.user_name,
                     &mut state,
                     multiline,
                     event,
@@ -3455,7 +3505,7 @@ impl GitSparkApp {
                     selection: self.settings_modal.git_user_email_selection,
                 };
                 let h = crate::ui::text_field::handle_text_key(
-                    &mut self.repo.identity.user_email,
+                    &mut self.repo.global_identity.user_email,
                     &mut state,
                     multiline,
                     event,
@@ -3468,7 +3518,7 @@ impl GitSparkApp {
             SettingsField::GitDefaultBranch => {
                 let value = self
                     .repo
-                    .identity
+                    .global_identity
                     .default_branch
                     .get_or_insert_with(String::new);
                 let mut state = crate::ui::text_field::TextFieldState {
@@ -4402,7 +4452,7 @@ impl GitSparkApp {
             ActiveDialog::CreateBranch => (400.0, 230.0),
             ActiveDialog::DiscardChanges { .. } => (420.0, 230.0),
             ActiveDialog::StashAndSwitch { .. } => (576.0, 360.0),
-            ActiveDialog::RestoreStash => (420.0, 210.0),
+            ActiveDialog::RestoreStash => (500.0, 360.0),
             ActiveDialog::PublishRepository => (
                 crate::ui::publish_dialog::PUBLISH_DIALOG_WIDTH,
                 crate::ui::publish_dialog::PUBLISH_DIALOG_HEIGHT,
@@ -4825,105 +4875,186 @@ impl GitSparkApp {
                             }),
                     )
             }
-            ActiveDialog::RestoreStash => v_flex()
-                .w(px(420.0))
-                .bg(theme::panel_bg())
-                .rounded(theme::z(theme::CORNER_RADIUS))
-                .border_1()
-                .border_color(theme::border())
-                .shadow_lg()
-                .child(
-                    h_flex()
+            ActiveDialog::RestoreStash => {
+                let stash_files = Arc::new(self.repo.stash_files.clone());
+                let stash_file_count = stash_files.len();
+                let stash_file_list = if stash_file_count == 0 {
+                    div()
+                        .id("restore-stash-file-list")
                         .w_full()
-                        .px(theme::z(16.0))
-                        .py(theme::z(12.0))
-                        .items_center()
-                        .gap(theme::z(8.0))
-                        .border_b_1()
+                        .p(theme::z(12.0))
+                        .rounded(theme::z(theme::CORNER_RADIUS))
+                        .border_1()
                         .border_color(theme::border())
-                        .child(
-                            Icon::new(IconName::Inbox)
-                                .size(px(16.0))
-                                .text_color(theme::accent()),
-                        )
-                        .child(
-                            div()
-                                .text_size(theme::z(14.0))
-                                .text_color(theme::text_main())
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child("Restore Stashed Changes"),
-                        ),
-                )
-                .child(
-                    v_flex()
-                        .w_full()
-                        .p(theme::z(16.0))
-                        .gap(theme::z(8.0))
-                        .child(
-                            div()
-                                .text_size(theme::z(12.0))
-                                .text_color(theme::text_main())
-                                .child("Restore the latest stash into your working tree?"),
-                        )
+                        .bg(theme::surface_bg_muted())
                         .child(
                             div()
                                 .text_size(theme::z(12.0))
                                 .text_color(theme::text_muted())
-                                .child("This can modify files in the selected repository and may fail if the current changes conflict."),
-                        ),
-                )
-                .child(
-                    h_flex()
-                        .w_full()
-                        .px(theme::z(16.0))
-                        .py(theme::z(12.0))
-                        .justify_end()
-                        .gap(theme::z(8.0))
-                        .border_t_1()
-                        .border_color(theme::border())
-                        .child(
-                            div()
-                                .id("restore-stash-cancel")
-                                .px(theme::z(12.0))
-                                .py(theme::z(6.0))
-                                .rounded(theme::z(theme::CORNER_RADIUS))
-                                .bg(theme::surface_bg())
-                                .border_1()
-                                .border_color(theme::surface_bg_alt())
-                                .cursor_pointer()
-                                .hover(|s| s.bg(theme::toolbar_hover_bg()))
-                                .child(
-                                    div()
-                                        .text_size(theme::z(12.0))
-                                        .text_color(theme::text_main())
-                                        .child("Cancel"),
-                                )
-                                .on_click(cx.listener(|app, _evt, _win, cx| {
-                                    app.nav.active_dialog = ActiveDialog::None;
-                                    cx.notify();
-                                })),
+                                .child("No file list is available for this stash."),
                         )
+                        .into_any_element()
+                } else {
+                    div()
+                        .id("restore-stash-file-list")
+                        .h(px(128.0))
+                        .w_full()
+                        .rounded(theme::z(theme::CORNER_RADIUS))
+                        .border_1()
+                        .border_color(theme::border())
+                        .bg(theme::surface_bg_muted())
+                        .overflow_hidden()
                         .child(
-                            div()
-                                .id("restore-stash-confirm")
-                                .px(theme::z(12.0))
-                                .py(theme::z(6.0))
-                                .rounded(theme::z(theme::CORNER_RADIUS))
-                                .bg(theme::commit_button_bg())
-                                .cursor_pointer()
-                                .hover(|s| s.bg(theme::commit_button_hover_bg()))
-                                .child(
-                                    div()
-                                        .text_size(theme::z(12.0))
-                                        .text_color(theme::commit_button_text())
-                                        .child("Restore Stash"),
-                                )
-                                .on_click(cx.listener(|app, _evt, _win, cx| {
-                                    app.nav.active_dialog = ActiveDialog::None;
-                                    app.restore_stash(cx);
-                                })),
-                        ),
-                ),
+                            uniform_list("restore-stash-files", stash_file_count, {
+                                let stash_files = stash_files.clone();
+                                move |range, _window, _cx| {
+                                    range
+                                        .map(|ix| {
+                                            let file = &stash_files[ix];
+                                            h_flex()
+                                                .id(SharedString::from(format!(
+                                                    "restore-stash-file-{}",
+                                                    stable_ui_id(&file.path)
+                                                )))
+                                                .h(px(28.0))
+                                                .w_full()
+                                                .px(theme::z(10.0))
+                                                .items_center()
+                                                .gap(theme::z(8.0))
+                                                .border_b_1()
+                                                .border_color(theme::border())
+                                                .child(
+                                                    div()
+                                                        .w(px(18.0))
+                                                        .text_size(theme::z(11.0))
+                                                        .text_color(theme::text_muted())
+                                                        .font_weight(FontWeight::SEMIBOLD)
+                                                        .child(compact_change_status(&file.status)),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .min_w_0()
+                                                        .flex_1()
+                                                        .text_size(theme::z(12.0))
+                                                        .text_color(theme::text_main())
+                                                        .truncate()
+                                                        .child(file.path.clone()),
+                                                )
+                                                .into_any_element()
+                                        })
+                                        .collect()
+                                }
+                            })
+                            .h_full()
+                            .with_sizing_behavior(ListSizingBehavior::Infer),
+                        )
+                        .into_any_element()
+                };
+
+                v_flex()
+                    .w(px(500.0))
+                    .bg(theme::panel_bg())
+                    .rounded(theme::z(theme::CORNER_RADIUS))
+                    .border_1()
+                    .border_color(theme::border())
+                    .shadow_lg()
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .px(theme::z(16.0))
+                            .py(theme::z(12.0))
+                            .items_center()
+                            .gap(theme::z(8.0))
+                            .border_b_1()
+                            .border_color(theme::border())
+                            .child(
+                                Icon::new(IconName::Inbox)
+                                    .size(px(16.0))
+                                    .text_color(theme::accent()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(theme::z(14.0))
+                                    .text_color(theme::text_main())
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("Restore Stashed Changes"),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .p(theme::z(16.0))
+                            .gap(theme::z(10.0))
+                            .child(
+                                div()
+                                    .text_size(theme::z(12.0))
+                                    .text_color(theme::text_main())
+                                    .child(format!(
+                                        "Restore the latest stash with {}?",
+                                        pluralize_files(stash_file_count)
+                                    )),
+                            )
+                            .child(
+                                div()
+                                    .text_size(theme::z(12.0))
+                                    .text_color(theme::text_muted())
+                                    .child("This can modify files in the selected repository and may fail if the current changes conflict."),
+                            )
+                            .child(stash_file_list),
+                    )
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .px(theme::z(16.0))
+                            .py(theme::z(12.0))
+                            .justify_end()
+                            .gap(theme::z(8.0))
+                            .border_t_1()
+                            .border_color(theme::border())
+                            .child(
+                                div()
+                                    .id("restore-stash-cancel")
+                                    .px(theme::z(12.0))
+                                    .py(theme::z(6.0))
+                                    .rounded(theme::z(theme::CORNER_RADIUS))
+                                    .bg(theme::surface_bg())
+                                    .border_1()
+                                    .border_color(theme::surface_bg_alt())
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::toolbar_hover_bg()))
+                                    .child(
+                                        div()
+                                            .text_size(theme::z(12.0))
+                                            .text_color(theme::text_main())
+                                            .child("Cancel"),
+                                    )
+                                    .on_click(cx.listener(|app, _evt, _win, cx| {
+                                        app.nav.active_dialog = ActiveDialog::None;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .id("restore-stash-confirm")
+                                    .px(theme::z(12.0))
+                                    .py(theme::z(6.0))
+                                    .rounded(theme::z(theme::CORNER_RADIUS))
+                                    .bg(theme::commit_button_bg())
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::commit_button_hover_bg()))
+                                    .child(
+                                        div()
+                                            .text_size(theme::z(12.0))
+                                            .text_color(theme::commit_button_text())
+                                            .child("Restore Stash"),
+                                    )
+                                    .on_click(cx.listener(|app, _evt, _win, cx| {
+                                        app.nav.active_dialog = ActiveDialog::None;
+                                        app.restore_stash(cx);
+                                    })),
+                            ),
+                    )
+            }
             ActiveDialog::PublishRepository => {
                 crate::ui::publish_dialog::render_publish_dialog(self, window, cx)
             }
@@ -5918,6 +6049,49 @@ fn default_commit_summary_for_change(change: &ChangeEntry) -> String {
         "Update"
     };
     format!("{verb} {filename}")
+}
+
+fn compact_change_status(status: &str) -> &'static str {
+    if status.contains('?') || status.contains('A') {
+        "A"
+    } else if status.contains('M') {
+        "M"
+    } else if status.contains('D') {
+        "D"
+    } else if status.contains('R') {
+        "R"
+    } else {
+        "?"
+    }
+}
+
+fn pluralize_files(count: usize) -> String {
+    match count {
+        0 => "no listed files".to_string(),
+        1 => "1 file".to_string(),
+        count => format!("{count} files"),
+    }
+}
+
+fn stable_ui_id(value: &str) -> String {
+    let slug: String = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+
+    if slug.is_empty() {
+        "item".to_string()
+    } else {
+        slug
+    }
 }
 
 fn diff_line_stats(diffs: &[DiffEntry]) -> (usize, usize) {

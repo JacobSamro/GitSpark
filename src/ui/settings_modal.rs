@@ -389,15 +389,19 @@ fn render_git_section(
     cx: &mut Context<GitSparkApp>,
 ) -> impl IntoElement {
     let description = repo_scope
-        .map(|path| format!("Applies to {path}"))
-        .unwrap_or_else(|| "Open a repository to edit local Git configuration.".to_string());
+        .map(|path| {
+            format!("Author and default branch are global. Pull behavior applies to {path}.")
+        })
+        .unwrap_or_else(|| {
+            "Author and default branch are stored in global Git config.".to_string()
+        });
 
     v_flex()
         .w_full()
         .gap(theme::z(20.0))
         .child(render_section_header(
             "Git",
-            "Repository Git configuration",
+            "Git configuration",
             &description,
         ))
         .child(
@@ -440,7 +444,7 @@ fn render_git_section(
             "main",
             false,
             false,
-            Some("Used for new repositories created from this clone."),
+            Some("Used as the default branch name for new repositories."),
         ))
         .child(
             div()
