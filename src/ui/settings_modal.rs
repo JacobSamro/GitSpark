@@ -143,7 +143,8 @@ pub(crate) fn render_settings_modal(
     let content_body = v_flex()
         .w_full()
         .items_center()
-        .p(theme::z(24.0))
+        .px(theme::z(24.0))
+        .py(theme::z(14.0))
         .child(div().w_full().max_w(theme::z(680.0)).child(content));
 
     let content_scroll: AnyElement = {
@@ -746,7 +747,7 @@ fn render_ai_section(
 ) -> impl IntoElement {
     v_flex()
         .w_full()
-        .gap(theme::z(20.0))
+        .gap(theme::z(10.0))
         .child(render_section_header(
             "AI Commit",
             "Commit message generation",
@@ -784,7 +785,7 @@ fn render_ai_section(
 fn render_provider_group(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElement {
     v_flex()
         .w_full()
-        .gap(theme::z(10.0))
+        .gap(theme::z(8.0))
         .child(render_field_label("Provider", None))
         .child(
             h_flex()
@@ -834,8 +835,8 @@ fn render_provider_radio(
             );
         }))
         .w_full()
-        .min_h(theme::z(66.0))
-        .p(theme::z(12.0))
+        .min_h(theme::z(58.0))
+        .p(theme::z(9.0))
         .rounded(theme::z(theme::CORNER_RADIUS))
         .border_1()
         .border_color(if selected {
@@ -1290,7 +1291,7 @@ fn render_text_input(
         .on_key_down(cx.listener(GitSparkApp::handle_settings_key))
         .w_full()
         .min_h(if multiline {
-            theme::z(132.0)
+            theme::z(80.0)
         } else {
             theme::z(36.0)
         })
