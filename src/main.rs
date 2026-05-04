@@ -246,7 +246,7 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         Menu {
             name: "GitSpark".into(),
             items: vec![
-                MenuItem::action("Settings...", MenuShowSettings),
+                MenuItem::action("Settings…", MenuShowSettings),
                 MenuItem::separator(),
                 MenuItem::os_submenu("Services", SystemMenuType::Services),
                 MenuItem::separator(),
@@ -256,7 +256,7 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         Menu {
             name: "File".into(),
             items: vec![MenuItem::action(
-                "Add Local Repository...",
+                "Add Local Repository…",
                 MenuOpenRepository,
             )],
         },
@@ -301,18 +301,18 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
                 MenuItem::action("Show in Finder", MenuShowInFinder),
                 MenuItem::action("Open in External Editor", MenuOpenExternalEditor),
                 MenuItem::separator(),
-                MenuItem::action("Repository Settings...", MenuRepositorySettings),
+                MenuItem::action("Repository Settings…", MenuRepositorySettings),
             ],
         },
         Menu {
             name: "Branch".into(),
             items: vec![
-                MenuItem::action("New Branch...", MenuNewBranch),
-                MenuItem::action("Rename...", MenuRenameBranch),
-                MenuItem::action("Merge into Current Branch...", MenuMergeBranch),
+                MenuItem::action("New Branch…", MenuNewBranch),
+                MenuItem::action("Rename…", MenuRenameBranch),
+                MenuItem::action("Merge into Current Branch…", MenuMergeBranch),
                 MenuItem::separator(),
-                MenuItem::action("Discard All Changes...", MenuDiscardAllChanges),
-                MenuItem::action("Stash All Changes...", MenuStashChanges),
+                MenuItem::action("Discard All Changes…", MenuDiscardAllChanges),
+                MenuItem::action("Stash All Changes…", MenuStashChanges),
             ],
         },
     ]);
