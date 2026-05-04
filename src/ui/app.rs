@@ -1763,6 +1763,11 @@ impl GitSparkApp {
         let previous_commit = self.selection.selected_commit.clone();
         let current_branch = snapshot.repo.current_branch.clone();
         let has_stash = snapshot.stash_count > 0;
+        let changed_paths: Vec<String> = snapshot
+            .changes
+            .iter()
+            .map(|change| change.path.clone())
+            .collect();
         self.close_history_context_menu();
         self.selection.selected_change = snapshot.changes.first().map(|change| change.path.clone());
         self.repo.branch_target = current_branch;
@@ -1776,6 +1781,7 @@ impl GitSparkApp {
         self.ensure_repo_watch(&snapshot.repo.path);
         self.repo.has_stash = has_stash;
         self.repo.snapshot = Some(snapshot);
+        self.reconcile_commit_inclusions(&changed_paths);
 
         let next_selected_commit = self.repo.snapshot.as_ref().and_then(|repo| {
             previous_commit
@@ -1801,6 +1807,44 @@ impl GitSparkApp {
             .snapshot
             .as_ref()
             .map(|snapshot| snapshot.repo.path.as_path())
+    }
+
+    fn reconcile_commit_inclusions(&mut self, changed_paths: &[String]) {
+        if self.commit.include_all {
+            self.commit.included_files.clear();
+            return;
+        }
+
+        self.commit.included_files.retain(|path| {
+            changed_paths
+                .iter()
+                .any(|changed_path| changed_path == path)
+        });
+
+        if !changed_paths.is_empty() && self.commit.included_files.len() == changed_paths.len() {
+            self.commit.include_all = true;
+            self.commit.included_files.clear();
+        }
+    }
+
+    pub(crate) fn commit_file_count(&self) -> usize {
+        self.repo
+            .snapshot
+            .as_ref()
+            .map(|snapshot| {
+                if self.commit.include_all {
+                    snapshot.changes.len()
+                } else {
+                    self.commit.included_files.len()
+                }
+            })
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn can_commit(&self) -> bool {
+        !self.commit.summary.trim().is_empty()
+            && self.commit_file_count() > 0
+            && !self.commit.ai_in_flight
     }
 
     #[allow(dead_code)]
@@ -1893,7 +1937,7 @@ impl Render for GitSparkApp {
         let summary_focused = self.summary_focus.is_focused(window);
         let description_focused = self.description_focus.is_focused(window);
         let branch_filter_focused = self.branch_filter_focus.is_focused(window);
-        let _repo_filter_focused = self.repo_filter_focus.is_focused(window);
+        let repo_filter_focused = self.repo_filter_focus.is_focused(window);
 
         // Clamp filter cursors
         self.branch_filter_cursor = self
@@ -1909,7 +1953,8 @@ impl Render for GitSparkApp {
         // Left column: repo toolbar section + sidebar (or repo selector)
         let left_column = v_flex().size_full().min_h_0().child(toolbar_left).child(
             if self.nav.show_repo_selector {
-                self.render_repo_selector_panel(cx).into_any_element()
+                self.render_repo_selector_panel(repo_filter_focused, cx)
+                    .into_any_element()
             } else {
                 self.render_sidebar(summary_focused, description_focused, cx)
                     .into_any_element()
@@ -2047,6 +2092,9 @@ impl GitSparkApp {
         )
         .on_click(cx.listener(|app, _evt, _win, cx| {
             app.handle_toolbar_action(ToolbarAction::ToggleRepoSelector, cx);
+            if app.nav.show_repo_selector {
+                _win.focus(&app.repo_filter_focus);
+            }
         }));
 
         let left = h_flex()
@@ -3326,18 +3374,7 @@ impl GitSparkApp {
         let description_group = v_flex().w_full().child(description_field).child(action_bar);
 
         // Commit button label with file count
-        let file_count = self
-            .repo
-            .snapshot
-            .as_ref()
-            .map(|s| {
-                if self.commit.include_all {
-                    s.changes.len()
-                } else {
-                    self.commit.included_files.len()
-                }
-            })
-            .unwrap_or(0);
+        let file_count = self.commit_file_count();
 
         let commit_label = if self.commit.ai_in_flight {
             "Generating commit details\u{2026}".to_string()
@@ -3347,8 +3384,7 @@ impl GitSparkApp {
             format!("Commit to {branch_name}")
         };
 
-        let can_commit =
-            !self.commit.summary.trim().is_empty() && file_count > 0 && !self.commit.ai_in_flight;
+        let can_commit = self.can_commit();
 
         // Summary length hint (> 50 chars)
         let summary_hint = if self.commit.summary.len() > 50 {
@@ -4148,7 +4184,7 @@ impl GitSparkApp {
             )
     }
 
-    fn render_repo_selector_panel(&self, cx: &mut Context<Self>) -> Div {
+    fn render_repo_selector_panel(&self, repo_filter_focused: bool, cx: &mut Context<Self>) -> Div {
         let recent_repos = self.settings.recent_repos.clone();
         let current_repo = self
             .repo
@@ -4214,6 +4250,46 @@ impl GitSparkApp {
             );
 
         // --- Filter bar ---
+        let filter_text = &self.filters.repo_filter_text;
+        let cursor = self.repo_filter_cursor.min(filter_text.len());
+        let repo_filter_child: AnyElement = if filter_text.is_empty() && !repo_filter_focused {
+            div()
+                .text_size(theme::z(theme::FONT_SIZE))
+                .text_color(theme::text_muted())
+                .child("Filter")
+                .into_any_element()
+        } else {
+            let before = &filter_text[..cursor];
+            let after = &filter_text[cursor..];
+            h_flex()
+                .items_center()
+                .overflow_x_hidden()
+                .text_size(theme::z(theme::FONT_SIZE))
+                .child(
+                    div()
+                        .text_color(theme::text_main())
+                        .whitespace_nowrap()
+                        .child(before.to_string()),
+                )
+                .child(if repo_filter_focused {
+                    div()
+                        .w(px(1.0))
+                        .h(px(14.0))
+                        .bg(theme::text_main())
+                        .flex_shrink_0()
+                        .into_any_element()
+                } else {
+                    div().into_any_element()
+                })
+                .child(
+                    div()
+                        .text_color(theme::text_main())
+                        .whitespace_nowrap()
+                        .child(after.to_string()),
+                )
+                .into_any_element()
+        };
+
         let filter_bar = h_flex()
             .w_full()
             .flex_shrink_0()
@@ -4221,9 +4297,12 @@ impl GitSparkApp {
             .py(px(10.0))
             .gap(px(8.0))
             .items_center()
-            // Filter input placeholder
             .child(
                 h_flex()
+                    .id("repo-filter-input")
+                    .track_focus(&self.repo_filter_focus)
+                    .key_context("text-field")
+                    .on_key_down(cx.listener(Self::handle_repo_filter_key))
                     .flex_1()
                     .h(px(28.0))
                     .px(px(8.0))
@@ -4231,19 +4310,19 @@ impl GitSparkApp {
                     .gap(px(6.0))
                     .rounded(theme::z(theme::CORNER_RADIUS))
                     .border_1()
-                    .border_color(theme::accent())
+                    .border_color(if repo_filter_focused {
+                        theme::accent()
+                    } else {
+                        theme::surface_bg_alt()
+                    })
                     .bg(theme::bg())
+                    .cursor_text()
                     .child(
                         Icon::new(IconName::Search)
                             .size(px(14.0))
                             .text_color(theme::text_muted()),
                     )
-                    .child(
-                        div()
-                            .text_size(theme::z(theme::FONT_SIZE))
-                            .text_color(theme::text_muted())
-                            .child("Filter"),
-                    ),
+                    .child(repo_filter_child),
             )
             // Add button
             .child(

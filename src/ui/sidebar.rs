@@ -68,6 +68,45 @@ fn status_label(status: &str) -> &'static str {
     }
 }
 
+fn render_stash_row(view: Entity<GitSparkApp>) -> AnyElement {
+    h_flex()
+        .id("stash-indicator")
+        .w_full()
+        .h(z(32.0))
+        .px(z(10.0))
+        .items_center()
+        .gap(z(6.0))
+        .bg(theme::surface_bg())
+        .border_b_1()
+        .border_color(theme::border())
+        .flex_shrink_0()
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::hover_bg()))
+        .child(
+            Icon::new(IconName::Inbox)
+                .size(z(14.0))
+                .text_color(theme::text_muted()),
+        )
+        .child(
+            div()
+                .flex_1()
+                .text_size(z(12.0))
+                .text_color(theme::text_main())
+                .child("Stashed Changes"),
+        )
+        .child(
+            Icon::new(IconName::ChevronRight)
+                .size(z(12.0))
+                .text_color(theme::text_muted()),
+        )
+        .on_click(move |_evt, _win, cx| {
+            view.update(cx, |app, cx| {
+                app.restore_stash(cx);
+            });
+        })
+        .into_any_element()
+}
+
 // ---------------------------------------------------------------------------
 // Public render entry point (interactive, with click handlers)
 // ---------------------------------------------------------------------------
@@ -98,6 +137,12 @@ pub fn render_sidebar_interactive(
     let content: AnyElement = match sidebar_tab {
         SidebarTab::Changes => {
             if changes.is_empty() {
+                let stash_row = if app.repo.has_stash {
+                    render_stash_row(view.clone())
+                } else {
+                    div().into_any_element()
+                };
+
                 // Empty file list — just the header showing "0 changed files"
                 v_flex()
                     .flex_1()
@@ -122,6 +167,7 @@ pub fn render_sidebar_interactive(
                                     .child("0 changed files"),
                             ),
                     )
+                    .child(stash_row)
                     .into_any_element()
             } else {
                 let file_count = changes.len();
@@ -194,47 +240,11 @@ pub fn render_sidebar_interactive(
                 let cap_included_files: std::collections::HashSet<String> =
                     app.commit.included_files.clone();
 
-                // Stash indicator
-                let mut stash_row: AnyElement = div().into_any_element();
-                if app.repo.has_stash {
-                    let stash_view = view.clone();
-                    stash_row = h_flex()
-                        .id("stash-indicator")
-                        .w_full()
-                        .h(z(32.0))
-                        .px(z(10.0))
-                        .items_center()
-                        .gap(z(6.0))
-                        .bg(theme::surface_bg())
-                        .border_b_1()
-                        .border_color(theme::border())
-                        .flex_shrink_0()
-                        .cursor_pointer()
-                        .hover(|s| s.bg(theme::hover_bg()))
-                        .child(
-                            Icon::new(IconName::Inbox)
-                                .size(z(14.0))
-                                .text_color(theme::text_muted()),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .text_size(z(12.0))
-                                .text_color(theme::text_main())
-                                .child("Stashed Changes"),
-                        )
-                        .child(
-                            Icon::new(IconName::ChevronRight)
-                                .size(z(12.0))
-                                .text_color(theme::text_muted()),
-                        )
-                        .on_click(move |_evt, _win, cx| {
-                            stash_view.update(cx, |app, cx| {
-                                app.restore_stash(cx);
-                            });
-                        })
-                        .into_any_element();
-                }
+                let stash_row = if app.repo.has_stash {
+                    render_stash_row(view.clone())
+                } else {
+                    div().into_any_element()
+                };
 
                 v_flex()
                     .flex_1()

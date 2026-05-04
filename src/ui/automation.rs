@@ -738,7 +738,7 @@ impl GitSparkApp {
                 Some("Commit"),
                 Some(AutomationNodeAction::CommitAll),
             )
-            .enabled(!self.commit.summary.trim().is_empty()),
+            .enabled(self.can_commit()),
             automation_node(
                 "undo-last-commit",
                 AutomationRole::Button,

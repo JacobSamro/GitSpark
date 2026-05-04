@@ -94,6 +94,17 @@ Key details:
 - `Keystroke.key_char` = typed character; `.key` = key name ("backspace", "enter", etc.)
 - `cx.read_from_clipboard()` for paste support
 - Track cursor as byte offset; use char boundary helpers for safe movement
+- Every visible text field must have `.track_focus(...)`, `.key_context("text-field")`, and `.on_key_down(...)`. If a filter/input renders a placeholder but cannot accept real keyboard input on macOS, it is not implemented correctly.
+
+## Mac Visual Verification
+
+Mac UI work must be tested visually in the native app, not only through automation. Verify UI behavior with both:
+- Real native-app visual checks for hit targets, modal placement, loading/error messages, contrast, scrolling, and actual keyboard input.
+- The app's native automation state for semantic comparison (`test_tree`, `snapshot`, stable IDs, enabled/selected state).
+
+When checking a feature, compare what is visible with the automation state. Example: if the UI shows `1 changed files`, the automation snapshot should report one change; if a button looks disabled, the automation node should be disabled too.
+
+Mac UI work is not done if only automation passes. It must also be checked visually in the native app.
 
 ## Flex Layout Gotchas (CRITICAL)
 

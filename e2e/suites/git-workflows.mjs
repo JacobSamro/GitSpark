@@ -405,6 +405,9 @@ export async function testStashAndSwitchDialog(app, fixture) {
   await expect(app.getByTestId("stash-switch")).toBeVisible({
     timeoutMs: 15_000,
   });
+  await app
+    .getByTestId("input-commit-summary")
+    .fill("stale include state guard");
   await app.getByTestId("stash-switch").click();
   await app.waitForSnapshot(
     (snapshot) =>
@@ -415,6 +418,14 @@ export async function testStashAndSwitchDialog(app, fixture) {
       !snapshot.repo?.changes.some((change) => change.path === "README.md"),
     { timeoutMs: 15_000 },
   );
+  const cleanBranchCommitButton = (await app.getByTestId("button-commit-all").all())[0];
+  assert(
+    cleanBranchCommitButton?.enabled === false,
+    "stash-and-switch disables commit button when target branch has no local changes",
+  );
+  await expect(app.getByTestId("stash-indicator")).toBeVisible({
+    timeoutMs: 10_000,
+  });
 
   await app.getByTestId("branch-main").click();
   await app.waitForSnapshot(
