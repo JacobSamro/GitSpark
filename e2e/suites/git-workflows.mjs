@@ -362,6 +362,16 @@ export async function testStashFlows(app, fixture) {
   await app.getByTestId("stash-indicator").click();
   await app.waitForSnapshot(
     (snapshot) =>
+      snapshot.active_dialog === "restore_stash" &&
+      snapshot.repo?.stash_count === 1,
+    { timeoutMs: 10_000 },
+  );
+  await expect(app.getByTestId("restore-stash-file-readme-md")).toBeVisible({
+    timeoutMs: 10_000,
+  });
+  await app.getByTestId("restore-stash-confirm").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
       snapshot.status_message === "Restored stash complete." &&
       snapshot.repo?.stash_count === 0 &&
       snapshot.repo?.changes.some((change) => change.path === "README.md"),
@@ -446,6 +456,16 @@ export async function testStashAndSwitchDialog(app, fixture) {
     timeoutMs: 10_000,
   });
   await app.getByTestId("stash-indicator").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.active_dialog === "restore_stash" &&
+      snapshot.repo?.stash_count === 1,
+    { timeoutMs: 10_000 },
+  );
+  await expect(app.getByTestId("restore-stash-file-readme-md")).toBeVisible({
+    timeoutMs: 10_000,
+  });
+  await app.getByTestId("restore-stash-confirm").click();
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.status_message === "Restored stash complete." &&
