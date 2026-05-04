@@ -808,6 +808,17 @@ impl GitSparkApp {
     }
 
     fn push_origin(&mut self, cx: &mut Context<Self>) {
+        if self
+            .repo
+            .snapshot
+            .as_ref()
+            .map(NetworkAction::from_snapshot)
+            == Some(NetworkAction::PublishRepository)
+        {
+            self.run_network_action(NetworkAction::PublishRepository, cx);
+            return;
+        }
+
         self.run_network_action(NetworkAction::Push, cx);
     }
 
