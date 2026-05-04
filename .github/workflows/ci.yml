@@ -88,6 +88,9 @@ jobs:
           node --check e2e/gitspark.mjs
           node --check e2e/selector-smoke.mjs
           node --check e2e/full-suite.mjs
+          for file in e2e/suites/*.mjs e2e/support/*.mjs; do
+            node --check "$file"
+          done
 
   e2e-native:
     name: Native E2E linux-x64
