@@ -1367,6 +1367,12 @@ impl GitSparkApp {
         let Some(path) = self.repo_path().map(PathBuf::from) else {
             return;
         };
+        if !self.can_undo_last_commit() {
+            self.messages.error_message =
+                "Cannot undo the last commit while it has tags.".to_string();
+            cx.notify();
+            return;
+        }
         self.nav.undo_commit = None;
         self.messages.status_message = "Undoing last commit...".to_string();
         let tx = self.event_tx.clone();
@@ -2376,6 +2382,29 @@ impl GitSparkApp {
             return Some(format!("A tag named {tag_name} already exists."));
         }
         None
+    }
+
+    pub(crate) fn can_undo_last_commit(&self) -> bool {
+        self.nav.undo_commit.is_some()
+            && self
+                .repo
+                .snapshot
+                .as_ref()
+                .and_then(|snapshot| {
+                    snapshot
+                        .repo
+                        .head_oid
+                        .as_ref()
+                        .and_then(|head_oid| {
+                            snapshot
+                                .history
+                                .iter()
+                                .find(|commit| &commit.oid == head_oid)
+                        })
+                        .or_else(|| snapshot.history.first())
+                })
+                .map(|commit| commit.tags.is_empty())
+                .unwrap_or(false)
     }
 
     pub(crate) fn can_reset_to_commit(&self, oid: &str) -> bool {
@@ -3464,7 +3493,12 @@ impl GitSparkApp {
         // Commit form with interactive handlers (only on Changes tab)
         if sidebar_tab == SidebarTab::Changes {
             // Undo commit banner (auto-dismiss after 15 seconds)
-            if let Some((ref summary, created_at)) = self.nav.undo_commit {
+            if let Some((summary, created_at)) = self
+                .nav
+                .undo_commit
+                .as_ref()
+                .filter(|_| self.can_undo_last_commit())
+            {
                 let elapsed = created_at.elapsed().as_secs();
                 if elapsed < 15 {
                     let summary_text = if summary.len() > 30 {

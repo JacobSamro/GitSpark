@@ -780,7 +780,8 @@ impl GitSparkApp {
                 Some("Undo"),
                 Some(AutomationNodeAction::UndoLastCommit),
             )
-            .visible(self.nav.undo_commit.is_some()),
+            .visible(self.can_undo_last_commit())
+            .enabled(self.can_undo_last_commit()),
             automation_node(
                 "settings-toggle",
                 AutomationRole::Button,

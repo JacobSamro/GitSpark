@@ -706,11 +706,62 @@ export async function testUndoLastCommit(app, fixture) {
     { timeoutMs: 15_000 },
   );
 
+  const taggedHeadSnapshot = await app.waitForSnapshot(
+    (snapshot) => snapshot.repo?.history[0]?.summary === "test: undo coverage",
+    { timeoutMs: 10_000 },
+  );
+  await app.command({
+    command: "history_action",
+    oid: taggedHeadSnapshot.repo.history[0].oid,
+    action: "create_tag",
+  });
+  await app.getByTestId("create-tag-name-input").fill("undo-guard-tag");
+  await app.getByTestId("create-tag-confirm").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Created tag 'undo-guard-tag' complete." &&
+      snapshot.repo?.history[0]?.tags.includes("undo-guard-tag") &&
+      !snapshot.test_tree.children.some(
+        (node) => node.id === "undo-last-commit" && node.visible,
+      ),
+    { timeoutMs: 15_000 },
+  );
+
+  await fs.appendFile(
+    path.join(fixture.workRepo, "README.md"),
+    "\nuntagged undo coverage edit\n",
+  );
+  await app.command({ command: "refresh_repo" });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Repository refreshed." &&
+      snapshot.repo?.changes.some((change) => change.path === "README.md"),
+    { timeoutMs: 10_000 },
+  );
+
+  await app
+    .getByTestId("input-commit-summary")
+    .fill("test: undo untagged coverage");
+  await app
+    .getByTestId("input-commit-body")
+    .fill("Covers undoing a newer untagged local commit.");
+  await app.getByTestId("button-commit-all").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Commit created." &&
+      snapshot.repo?.changes.length === 0 &&
+      snapshot.repo?.history[0]?.summary === "test: undo untagged coverage" &&
+      snapshot.test_tree.children.some(
+        (node) => node.id === "undo-last-commit" && node.visible,
+      ),
+    { timeoutMs: 15_000 },
+  );
+
   await app.getByTestId("button-undo-last-commit").click();
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.status_message === "Undid last commit." &&
-      snapshot.repo?.history[0]?.summary !== "test: undo coverage" &&
+      snapshot.repo?.history[0]?.summary !== "test: undo untagged coverage" &&
       snapshot.repo?.changes.some((change) => change.path === "README.md"),
     { timeoutMs: 15_000 },
   );
