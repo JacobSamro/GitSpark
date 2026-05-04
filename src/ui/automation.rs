@@ -909,6 +909,8 @@ impl GitSparkApp {
         }
 
         if matches!(self.nav.active_dialog, ActiveDialog::CreateBranch) {
+            let branch_validation = self.create_branch_validation_message();
+            let show_branch_validation = !self.repo.new_branch_name.trim().is_empty();
             children.extend([
                 automation_node(
                     "new-branch-name",
@@ -930,8 +932,20 @@ impl GitSparkApp {
                     Some("dialog-create-branch"),
                     Some("Create Branch"),
                     Some(AutomationNodeAction::ConfirmCreateBranch),
-                ),
+                )
+                .enabled(branch_validation.is_none()),
             ]);
+            if show_branch_validation {
+                if let Some(message) = branch_validation {
+                    children.push(automation_node(
+                        "create-branch-validation-message",
+                        AutomationRole::Status,
+                        Some("create-branch-validation-message"),
+                        Some(message.as_str()),
+                        None::<AutomationNodeAction>,
+                    ));
+                }
+            }
         }
 
         if matches!(self.nav.active_dialog, ActiveDialog::DiscardChanges { .. }) {

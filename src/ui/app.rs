@@ -1195,6 +1195,11 @@ impl GitSparkApp {
             cx.notify();
             return;
         }
+        if self.branch_name_exists(&name) {
+            self.messages.error_message = format!("A branch named {name} already exists.");
+            cx.notify();
+            return;
+        }
 
         let start_point = self.repo.new_branch_start_point.clone();
         self.messages.status_message = format!("Creating branch '{name}'...");
@@ -2375,6 +2380,37 @@ impl GitSparkApp {
                         .any(|tag| tag == tag_name)
                 })
                 .unwrap_or(false)
+    }
+
+    pub(crate) fn branch_name_exists(&self, branch_name: &str) -> bool {
+        let branch_name = branch_name.trim();
+        !branch_name.is_empty()
+            && self
+                .repo
+                .snapshot
+                .as_ref()
+                .map(|snapshot| {
+                    snapshot
+                        .branches
+                        .iter()
+                        .any(|branch| branch.name == branch_name)
+                })
+                .unwrap_or(false)
+    }
+
+    pub(crate) fn create_branch_validation_message(&self) -> Option<String> {
+        let branch_name = self.repo.new_branch_name.trim();
+        if branch_name.is_empty() {
+            return Some("Type a branch name.".to_string());
+        }
+        if self.branch_name_exists(branch_name) {
+            return Some(format!("A branch named {branch_name} already exists."));
+        }
+        None
+    }
+
+    pub(crate) fn can_create_branch_from_dialog(&self) -> bool {
+        self.create_branch_validation_message().is_none()
     }
 
     pub(crate) fn create_tag_validation_message(&self) -> Option<String> {
@@ -5399,6 +5435,9 @@ impl GitSparkApp {
         let dialog_content = match &self.nav.active_dialog {
             ActiveDialog::CreateBranch => {
                 let branch_name = &self.repo.new_branch_name;
+                let validation_message = self.create_branch_validation_message();
+                let show_validation_message = !branch_name.trim().is_empty();
+                let can_create = validation_message.is_none();
                 let current = self
                     .repo
                     .snapshot
@@ -5515,6 +5554,18 @@ impl GitSparkApp {
                                     .text_size(theme::z(11.0))
                                     .text_color(theme::text_muted())
                                     .child(starting_point),
+                            )
+                            .children(
+                                validation_message
+                                    .as_ref()
+                                    .filter(|_| show_validation_message)
+                                    .map(|message| {
+                                        div()
+                                            .id("create-branch-validation-message")
+                                            .text_size(theme::z(11.0))
+                                            .text_color(theme::danger())
+                                            .child(message.clone())
+                                    }),
                             ),
                     )
                     // Footer
@@ -5555,16 +5606,36 @@ impl GitSparkApp {
                                     .px(theme::z(12.0))
                                     .py(theme::z(6.0))
                                     .rounded(theme::z(theme::CORNER_RADIUS))
-                                    .bg(theme::commit_button_bg())
-                                    .cursor_pointer()
-                                    .hover(|s| s.bg(theme::commit_button_hover_bg()))
+                                    .bg(if can_create {
+                                        theme::commit_button_bg()
+                                    } else {
+                                        theme::surface_bg()
+                                    })
+                                    .border_1()
+                                    .border_color(if can_create {
+                                        theme::commit_button_bg()
+                                    } else {
+                                        theme::surface_bg_alt()
+                                    })
+                                    .when(can_create, |el| {
+                                        el.cursor_pointer()
+                                            .hover(|s| s.bg(theme::commit_button_hover_bg()))
+                                    })
                                     .child(
                                         div()
                                             .text_size(theme::z(12.0))
-                                            .text_color(theme::commit_button_text())
+                                            .text_color(if can_create {
+                                                theme::commit_button_text()
+                                            } else {
+                                                theme::text_muted()
+                                            })
                                             .child("Create Branch"),
                                     )
                                     .on_click(cx.listener(|app, _evt, _win, cx| {
+                                        if !app.can_create_branch_from_dialog() {
+                                            cx.notify();
+                                            return;
+                                        }
                                         app.create_branch(cx);
                                     })),
                             ),

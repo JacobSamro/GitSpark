@@ -79,6 +79,29 @@ export async function testCreateBranchDialog(app) {
   );
 
   await app.getByTestId("button-branch-selector").click();
+  await app.getByTestId("input-branch-filter").fill("dialog-created");
+  await app.getByTestId("button-branch-new").click();
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.active_dialog === "create_branch",
+    { timeoutMs: 10_000 },
+  );
+  await expect(
+    app.getByText("A branch named dialog-created already exists."),
+  ).toBeVisible({ timeoutMs: 10_000 });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "dialog-create-branch" && node.enabled === false,
+      ),
+    { timeoutMs: 10_000 },
+  );
+  await app.getByTestId("dialog-cancel").click();
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.active_dialog === "none",
+    { timeoutMs: 10_000 },
+  );
+
+  await app.getByTestId("button-branch-selector").click();
   await app.getByTestId("input-branch-filter").fill("");
   await app.getByTestId("button-branch-new").click();
   await app.waitForSnapshot(
