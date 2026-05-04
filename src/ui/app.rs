@@ -2525,6 +2525,7 @@ impl Render for GitSparkApp {
             .on_action(cx.listener(Self::handle_menu_pull))
             .on_action(cx.listener(Self::handle_menu_push))
             .on_action(cx.listener(Self::handle_menu_publish_repository))
+            .on_action(cx.listener(Self::handle_menu_repository_settings))
             .on_action(cx.listener(Self::handle_menu_new_branch))
             .on_action(cx.listener(Self::handle_menu_merge_branch))
             .on_action(cx.listener(Self::handle_menu_zoom_in))
@@ -2672,6 +2673,11 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub fn menu_repository_settings(&mut self, cx: &mut Context<Self>) {
+        self.open_settings_modal(Some(crate::ui::ui_state::SettingsSection::Git), cx);
+        cx.notify();
+    }
+
     pub fn menu_new_branch(&mut self, cx: &mut Context<Self>) {
         self.repo.new_branch_name = self.filters.branch_filter_text.clone();
         self.new_branch_cursor = self.repo.new_branch_name.len();
@@ -2782,6 +2788,16 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         self.run_network_action(NetworkAction::PublishRepository, cx);
+    }
+
+    fn handle_menu_repository_settings(
+        &mut self,
+        _: &crate::MenuRepositorySettings,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_settings_modal(Some(crate::ui::ui_state::SettingsSection::Git), cx);
+        self.activate_settings_field(SettingsField::GitUserName, window, cx);
     }
 
     fn handle_menu_new_branch(

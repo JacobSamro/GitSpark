@@ -27,6 +27,7 @@ actions!(
         MenuOpenExternalEditor,
         MenuShowInFinder,
         MenuViewOnGitHub,
+        MenuRepositorySettings,
         MenuNewBranch,
         MenuMergeBranch,
         MenuZoomIn,
@@ -126,6 +127,12 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
     }
     {
         let view = view.clone();
+        cx.on_action(move |_: &MenuRepositorySettings, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_repository_settings(cx));
+        });
+    }
+    {
+        let view = view.clone();
         cx.on_action(move |_: &MenuNewBranch, cx| {
             let _ = view.update(cx, |app, cx| app.menu_new_branch(cx));
         });
@@ -217,6 +224,8 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
                 MenuItem::action("Open in External Editor", MenuOpenExternalEditor),
                 MenuItem::action("Show in Finder", MenuShowInFinder),
                 MenuItem::action("View on GitHub", MenuViewOnGitHub),
+                MenuItem::separator(),
+                MenuItem::action("Repository Settings...", MenuRepositorySettings),
             ],
         },
         Menu {
