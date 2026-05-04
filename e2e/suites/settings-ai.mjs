@@ -16,6 +16,16 @@ export async function testAiValidation(app) {
 export async function testSettingsPersistence(app, fixture) {
   await app.getByTestId("button-settings").click();
   await app.getByTestId("settings-tab-git").click();
+  await app.getByTestId("settings-git-user-name").fill(".");
+  await app.getByTestId("settings-git-user-email").fill("precise@gitspark.local");
+  await app.getByTestId("settings-save-git").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.error_message ===
+      "Name is invalid, it consists only of disallowed characters.",
+    { timeoutMs: 10_000 },
+  );
+
   await app.getByTestId("settings-git-user-name").fill("GitSpark Precise");
   await app
     .getByTestId("settings-git-user-email")
