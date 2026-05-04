@@ -220,7 +220,10 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         },
         Menu {
             name: "File".into(),
-            items: vec![MenuItem::action("Open Repository...", MenuOpenRepository)],
+            items: vec![MenuItem::action(
+                "Add Local Repository...",
+                MenuOpenRepository,
+            )],
         },
         Menu {
             name: "Edit".into(),
