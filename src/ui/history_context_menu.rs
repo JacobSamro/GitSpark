@@ -26,13 +26,7 @@ pub(crate) fn build_history_context_menu(
     _window: &mut Window,
     cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
-    let remote_available = view
-        .read(cx)
-        .repo
-        .snapshot
-        .as_ref()
-        .and_then(|snapshot| snapshot.repo.remote_name.as_deref())
-        .is_some();
+    let has_github_remote = view.read(cx).repo_has_github_remote();
 
     menu.min_w(px(220.0))
         .max_w(px(260.0))
@@ -110,7 +104,7 @@ pub(crate) fn build_history_context_menu(
         ))
         .item(menu_item(
             "View on GitHub",
-            remote_available,
+            has_github_remote,
             view,
             oid,
             HistoryContextMenuAction::ViewOnGitHub,

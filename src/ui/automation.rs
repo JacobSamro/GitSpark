@@ -1015,6 +1015,7 @@ impl GitSparkApp {
                 children.extend(history_action_nodes(
                     commit.short_oid.as_str(),
                     commit.oid.as_str(),
+                    has_github_remote,
                 ));
             }
 
@@ -1033,7 +1034,7 @@ impl GitSparkApp {
                 .iter()
                 .filter(|branch| !branch.is_current && !branch.is_remote)
             {
-                children.extend(branch_action_nodes(branch.name.as_str()));
+                children.extend(branch_action_nodes(branch.name.as_str(), has_github_remote));
             }
 
             children.push(
@@ -1780,9 +1781,13 @@ fn change_action_nodes(path: &str, has_github_remote: bool) -> Vec<AutomationNod
         .collect()
 }
 
-fn history_action_nodes(short_oid: &str, oid: &str) -> Vec<AutomationNode> {
+fn history_action_nodes(
+    short_oid: &str,
+    oid: &str,
+    has_github_remote: bool,
+) -> Vec<AutomationNode> {
     let slug = stable_test_slug(short_oid);
-    [
+    let mut actions = vec![
         (
             "checkout",
             crate::ui::labels::checkout_commit_menu(),
@@ -1805,50 +1810,58 @@ fn history_action_nodes(short_oid: &str, oid: &str) -> Vec<AutomationNode> {
         ),
         ("copy-sha", "Copy SHA", AutomationHistoryAction::CopySha),
         ("copy-diff", "Copy diff", AutomationHistoryAction::CopyDiff),
-        (
+    ];
+
+    if has_github_remote {
+        actions.push((
             "view-on-github",
             "View on GitHub",
             AutomationHistoryAction::ViewOnGithub,
-        ),
-    ]
-    .into_iter()
-    .map(|(suffix, label, action)| {
-        automation_node(
-            format!("commit-{slug}-{suffix}"),
-            AutomationRole::Button,
-            Some(format!("commit-{slug}-{suffix}")),
-            Some(label),
-            Some(AutomationNodeAction::History(oid.to_string(), action)),
-        )
-    })
-    .collect()
+        ));
+    }
+
+    actions
+        .into_iter()
+        .map(|(suffix, label, action)| {
+            automation_node(
+                format!("commit-{slug}-{suffix}"),
+                AutomationRole::Button,
+                Some(format!("commit-{slug}-{suffix}")),
+                Some(label),
+                Some(AutomationNodeAction::History(oid.to_string(), action)),
+            )
+        })
+        .collect()
 }
 
-fn branch_action_nodes(name: &str) -> Vec<AutomationNode> {
+fn branch_action_nodes(name: &str, has_github_remote: bool) -> Vec<AutomationNode> {
     let slug = stable_test_slug(name);
-    [
-        (
-            "delete",
-            crate::ui::labels::delete_branch_menu(),
-            AutomationBranchAction::Delete,
-        ),
-        (
+    let mut actions = vec![(
+        "delete",
+        crate::ui::labels::delete_branch_menu(),
+        AutomationBranchAction::Delete,
+    )];
+
+    if has_github_remote {
+        actions.push((
             "view-on-github",
             "View on GitHub",
             AutomationBranchAction::ViewOnGithub,
-        ),
-    ]
-    .into_iter()
-    .map(|(suffix, label, action)| {
-        automation_node(
-            format!("branch-{slug}-{suffix}"),
-            AutomationRole::Button,
-            Some(format!("branch-{slug}-{suffix}")),
-            Some(label),
-            Some(AutomationNodeAction::Branch(name.to_string(), action)),
-        )
-    })
-    .collect()
+        ));
+    }
+
+    actions
+        .into_iter()
+        .map(|(suffix, label, action)| {
+            automation_node(
+                format!("branch-{slug}-{suffix}"),
+                AutomationRole::Button,
+                Some(format!("branch-{slug}-{suffix}")),
+                Some(label),
+                Some(AutomationNodeAction::Branch(name.to_string(), action)),
+            )
+        })
+        .collect()
 }
 
 fn collect_matching_nodes(

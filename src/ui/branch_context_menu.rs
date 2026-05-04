@@ -18,13 +18,7 @@ pub(crate) fn build_branch_context_menu(
     _window: &mut Window,
     cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
-    let remote_available = view
-        .read(cx)
-        .repo
-        .snapshot
-        .as_ref()
-        .and_then(|s| s.repo.remote_name.as_deref())
-        .is_some();
+    let has_github_remote = view.read(cx).repo_has_github_remote();
 
     let is_current = view
         .read(cx)
@@ -53,7 +47,7 @@ pub(crate) fn build_branch_context_menu(
         .separator()
         .item(branch_menu_item(
             "View on GitHub",
-            remote_available,
+            has_github_remote,
             view,
             branch_name,
             BranchContextAction::ViewOnGitHub,
