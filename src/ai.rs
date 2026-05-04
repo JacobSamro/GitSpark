@@ -1,3 +1,5 @@
+use std::env;
+
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
 
@@ -21,7 +23,17 @@ impl AiClient {
             bail!("AI API key is missing. Add one in settings before generating commit messages.");
         }
 
-        let endpoint = settings.provider.default_endpoint();
+        let endpoint_override = env::var("GITSPARK_AI_ENDPOINT")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let endpoint = endpoint_override
+            .as_deref()
+            .or_else(|| {
+                let endpoint = settings.endpoint.trim();
+                (!endpoint.is_empty()).then_some(endpoint)
+            })
+            .unwrap_or_else(|| settings.provider.default_endpoint());
         if endpoint.is_empty() {
             bail!("AI endpoint is missing.");
         }
@@ -88,7 +100,11 @@ impl AiClient {
                         .map(String::from)
                 })
                 .unwrap_or_else(|| body.chars().take(200).collect());
-            bail!("AI request failed (HTTP {}): {}", status.as_u16(), error_msg);
+            bail!(
+                "AI request failed (HTTP {}): {}",
+                status.as_u16(),
+                error_msg
+            );
         }
 
         let value: Value =

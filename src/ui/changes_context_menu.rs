@@ -1,4 +1,4 @@
-use gpui::{Entity, InteractiveElement, MouseButton, px, Window, Context};
+use gpui::{Context, Entity, InteractiveElement, MouseButton, Window, px};
 use gpui_component::menu::{ContextMenu, ContextMenuExt, PopupMenu, PopupMenuItem};
 
 use crate::ui::app::GitSparkApp;

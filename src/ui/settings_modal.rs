@@ -119,52 +119,48 @@ pub(crate) fn render_settings_modal(
             render_git_section(app, window, repo_scope.as_deref(), cx).into_any_element()
         }
         SettingsSection::Ai => render_ai_section(app, window, cx).into_any_element(),
-        SettingsSection::Appearance => {
-            v_flex()
-                .flex_1()
-                .p(px(20.0))
-                .gap(px(16.0))
-                .child(
-                    div()
-                        .text_size(px(16.0))
-                        .text_color(theme::text_main())
-                        .font_weight(FontWeight::BOLD)
-                        .child("Appearance"),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .text_color(theme::text_muted())
-                        .child("Theme: Dark (GitHub)"),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .text_color(theme::text_muted())
-                        .child("Additional themes coming soon."),
-                )
-                .into_any_element()
-        }
-        SettingsSection::Integrations => {
-            v_flex()
-                .flex_1()
-                .p(px(20.0))
-                .gap(px(16.0))
-                .child(
-                    div()
-                        .text_size(px(16.0))
-                        .text_color(theme::text_main())
-                        .font_weight(FontWeight::BOLD)
-                        .child("Integrations"),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .text_color(theme::text_muted())
-                        .child("External editor and shell preferences coming soon."),
-                )
-                .into_any_element()
-        }
+        SettingsSection::Appearance => v_flex()
+            .flex_1()
+            .p(px(20.0))
+            .gap(px(16.0))
+            .child(
+                div()
+                    .text_size(px(16.0))
+                    .text_color(theme::text_main())
+                    .font_weight(FontWeight::BOLD)
+                    .child("Appearance"),
+            )
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .text_color(theme::text_muted())
+                    .child("Theme: Dark (GitHub)"),
+            )
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .text_color(theme::text_muted())
+                    .child("Additional themes coming soon."),
+            )
+            .into_any_element(),
+        SettingsSection::Integrations => v_flex()
+            .flex_1()
+            .p(px(20.0))
+            .gap(px(16.0))
+            .child(
+                div()
+                    .text_size(px(16.0))
+                    .text_color(theme::text_main())
+                    .font_weight(FontWeight::BOLD)
+                    .child("Integrations"),
+            )
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .text_color(theme::text_muted())
+                    .child("External editor and shell preferences coming soon."),
+            )
+            .into_any_element(),
     };
 
     let panel = v_flex()
@@ -187,22 +183,19 @@ pub(crate) fn render_settings_modal(
         .child(render_nav(app, cx))
         .child(Divider::horizontal().color(theme::border()))
         .child(
-            div()
-                .flex_1()
-                .overflow_hidden()
-                .child(
-                    div()
-                        .id("settings-content-scroll")
-                        .size_full()
-                        .overflow_y_scrollbar()
-                        .child(
-                            v_flex()
-                                .w_full()
-                                .p(theme::z(24.0))
-                                .gap(theme::z(18.0))
-                                .child(content),
-                        ),
-                ),
+            div().flex_1().overflow_hidden().child(
+                div()
+                    .id("settings-content-scroll")
+                    .size_full()
+                    .overflow_y_scrollbar()
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .p(theme::z(24.0))
+                            .gap(theme::z(18.0))
+                            .child(content),
+                    ),
+            ),
         )
         .child(Divider::horizontal().color(theme::border()))
         .child(
@@ -1033,6 +1026,7 @@ fn mask_password(value: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn truncate_single_line(text: &str, max_chars: usize) -> String {
     let trimmed = text.trim();
     let mut chars = trimmed.chars();

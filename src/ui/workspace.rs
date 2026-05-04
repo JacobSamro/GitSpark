@@ -11,6 +11,7 @@ use crate::ui::theme::z;
 
 // --- Constants ---
 
+#[allow(dead_code)]
 const MAX_INTRA_LINE_CHARS: usize = 1024;
 const EXPAND_STEP: usize = 20;
 
@@ -32,13 +33,14 @@ struct HunkBounds {
 enum ExpansionType {
     None,
     Up,
+    #[allow(dead_code)]
     Down,
     Both,
     Short, // gap <= EXPAND_STEP lines, single unfold button
 }
 
 /// Determine expansion type for each hunk based on boundaries and file length.
-fn compute_expansion_types(hunks: &[HunkBounds], file_line_count: usize) -> Vec<ExpansionType> {
+fn compute_expansion_types(hunks: &[HunkBounds], _file_line_count: usize) -> Vec<ExpansionType> {
     if hunks.is_empty() {
         return vec![];
     }
@@ -69,7 +71,6 @@ fn compute_expansion_types(hunks: &[HunkBounds], file_line_count: usize) -> Vec<
 
     types
 }
-
 
 /// Expand a diff in-memory by inserting context lines from `file_lines`.
 /// Returns new diff text with expanded context.
@@ -245,11 +246,14 @@ pub fn expand_diff_in_memory(
                     if let Some(last_hunk_pos) = out.iter().rposition(|l| l.starts_with("@@ ")) {
                         let new_old_count = prev_bounds.old_count + gap_lines + bounds.old_count;
                         let new_new_count = prev_bounds.new_count + gap_lines + bounds.new_count;
-                        let prev_suffix = hunk_suffixes.get(hi - 1).map(|s| s.as_str()).unwrap_or("");
+                        let prev_suffix =
+                            hunk_suffixes.get(hi - 1).map(|s| s.as_str()).unwrap_or("");
                         out[last_hunk_pos] = format!(
                             "@@ -{},{} +{},{} @@{prev_suffix}",
-                            prev_bounds.old_start, new_old_count,
-                            prev_bounds.new_start, new_new_count,
+                            prev_bounds.old_start,
+                            new_old_count,
+                            prev_bounds.new_start,
+                            new_new_count,
                         );
                     }
 
@@ -310,6 +314,7 @@ enum DiffLineKind {
     Deleted,
     HunkHeader,
     /// A modified line has paired old/new content with optional intra-line highlights.
+    #[allow(dead_code)]
     Modified {
         old_highlight: Option<CharRange>,
         new_highlight: Option<CharRange>,
@@ -438,8 +443,8 @@ fn parse_diff(raw: &str) -> Vec<DiffLine> {
             }
             let add_end = i;
 
-            let del_count = del_end - del_start;
-            let add_count = add_end - add_start;
+            let _del_count = del_end - del_start;
+            let _add_count = add_end - add_start;
 
             // Always emit as separate Deleted then Added lines
             // (matches GitHub Desktop unified diff layout)
@@ -493,6 +498,7 @@ fn parse_diff(raw: &str) -> Vec<DiffLine> {
 ///
 /// Returns `(old_range, new_range)` where each range marks the changed
 /// character span. If a line is too long, returns `(None, None)`.
+#[allow(dead_code)]
 fn find_changed_ranges(old_line: &str, new_line: &str) -> (Option<CharRange>, Option<CharRange>) {
     let old_chars: Vec<char> = old_line.chars().collect();
     let new_chars: Vec<char> = new_line.chars().collect();
@@ -805,7 +811,9 @@ fn render_hunk_header(
                     .hover(hover_blue)
                     .child(icon_el("icons/chevrons-down.svg"))
                     .child(
-                        div().flex_1().pl(z(5.0))
+                        div()
+                            .flex_1()
+                            .pl(z(5.0))
                             .font_family("monospace")
                             .text_size(z(12.0))
                             .text_color(theme::text_muted()),
@@ -830,7 +838,9 @@ fn render_hunk_header(
                     .hover(hover_blue)
                     .child(icon_el("icons/chevrons-up.svg"))
                     .child(
-                        div().flex_1().pl(z(5.0))
+                        div()
+                            .flex_1()
+                            .pl(z(5.0))
                             .text_color(theme::text_muted())
                             .child(content),
                     )
@@ -865,7 +875,11 @@ fn render_hunk_header(
                     .on_click(move |_evt, _win, cx| {
                         let fp = fp.clone();
                         vh_click.update(cx, |app, cx| {
-                            app.expand_diff_context(fp, hunk_index, DiffExpandDirection::MergeWithPrevious);
+                            app.expand_diff_context(
+                                fp,
+                                hunk_index,
+                                DiffExpandDirection::MergeWithPrevious,
+                            );
                             cx.notify();
                         });
                     });
@@ -898,7 +912,7 @@ fn add_hunk_context_menu(
     row: Stateful<Div>,
     vh: &Entity<GitSparkApp>,
     file_path: &str,
-    hunk_index: usize,
+    _hunk_index: usize,
     has_original_diff: bool,
 ) -> gpui_component::menu::ContextMenu<Stateful<Div>> {
     let vh_ctx = vh.clone();
@@ -909,28 +923,26 @@ fn add_hunk_context_menu(
         if has_original_diff {
             let vh2 = vh.clone();
             let fp2 = fp.clone();
-            menu.item(
-                PopupMenuItem::new("Collapse Expanded Lines")
-                    .on_click(move |_evt, _win, cx| {
-                        let fp = fp2.clone();
-                        vh2.update(cx, |app, cx| {
-                            app.collapse_diff(fp);
-                            cx.notify();
-                        });
-                    }),
-            )
+            menu.item(PopupMenuItem::new("Collapse Expanded Lines").on_click(
+                move |_evt, _win, cx| {
+                    let fp = fp2.clone();
+                    vh2.update(cx, |app, cx| {
+                        app.collapse_diff(fp);
+                        cx.notify();
+                    });
+                },
+            ))
         } else {
             let vh2 = vh.clone();
             let fp2 = fp.clone();
             menu.item(
-                PopupMenuItem::new("Expand Whole File")
-                    .on_click(move |_evt, _win, cx| {
-                        let fp = fp2.clone();
-                        vh2.update(cx, |app, cx| {
-                            app.expand_diff_context(fp, 0, DiffExpandDirection::All);
-                            cx.notify();
-                        });
-                    }),
+                PopupMenuItem::new("Expand Whole File").on_click(move |_evt, _win, cx| {
+                    let fp = fp2.clone();
+                    vh2.update(cx, |app, cx| {
+                        app.expand_diff_context(fp, 0, DiffExpandDirection::All);
+                        cx.notify();
+                    });
+                }),
             )
         }
     })
@@ -1020,11 +1032,7 @@ pub fn render_workspace(
                 .lines()
                 .filter_map(|l| parse_hunk_header(l))
                 .collect();
-            let file_line_count = entry
-                .file_contents
-                .as_ref()
-                .map(|c| c.len())
-                .unwrap_or(0);
+            let file_line_count = entry.file_contents.as_ref().map(|c| c.len()).unwrap_or(0);
             let expansion_types = compute_expansion_types(&hunk_bounds, file_line_count);
 
             let mut scroll_content = div().flex().flex_col().w_full();

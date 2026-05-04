@@ -32,8 +32,13 @@ pub enum OpenRouterModelsState {
 pub enum ActiveDialog {
     None,
     CreateBranch,
-    DiscardChanges { paths: Vec<String> },
-    StashAndSwitch { target_branch: String },
+    DiscardChanges {
+        paths: Vec<String>,
+    },
+    #[allow(dead_code)]
+    StashAndSwitch {
+        target_branch: String,
+    },
 }
 
 impl Default for ActiveDialog {
@@ -43,6 +48,7 @@ impl Default for ActiveDialog {
 }
 
 pub struct NavState {
+    #[allow(dead_code)]
     pub main_tab: MainTab,
     pub sidebar_tab: SidebarTab,
     pub show_settings: bool,
@@ -73,14 +79,20 @@ impl Default for NavState {
 
 #[derive(Clone, Copy, Default)]
 pub struct ChangeFilterOptions {
+    #[allow(dead_code)]
     pub included_in_commit: bool,
+    #[allow(dead_code)]
     pub excluded_from_commit: bool,
+    #[allow(dead_code)]
     pub new_files: bool,
+    #[allow(dead_code)]
     pub modified_files: bool,
+    #[allow(dead_code)]
     pub deleted_files: bool,
 }
 
 impl ChangeFilterOptions {
+    #[allow(dead_code)]
     pub fn active_count(self) -> usize {
         [
             self.included_in_commit,
@@ -96,7 +108,9 @@ impl ChangeFilterOptions {
 }
 
 pub struct FilterState {
+    #[allow(dead_code)]
     pub filter_text: String,
+    #[allow(dead_code)]
     pub change_filters: ChangeFilterOptions,
     pub repo_filter_text: String,
     pub branch_filter_text: String,

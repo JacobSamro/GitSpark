@@ -16,12 +16,14 @@ use crate::ui::ui_state::SidebarTab;
 // ---------------------------------------------------------------------------
 
 const CHANGE_ROW_HEIGHT: f32 = 29.0;
+#[allow(dead_code)]
 const HISTORY_ROW_HEIGHT: f32 = 40.0; // summary + meta + padding
 
 // ---------------------------------------------------------------------------
 // Color helpers
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 fn accent_selection_bg() -> Hsla {
     theme::with_alpha(theme::accent_muted(), 0.2)
 }
@@ -47,12 +49,9 @@ fn render_status_icon(status: &str, selected: bool) -> Div {
         normal_color
     };
 
-    div().flex_shrink_0().child(
-        gpui::svg()
-            .path(icon_path)
-            .size(z(16.0))
-            .text_color(color),
-    )
+    div()
+        .flex_shrink_0()
+        .child(gpui::svg().path(icon_path).size(z(16.0)).text_color(color))
 }
 
 fn status_label(status: &str) -> &'static str {
@@ -249,87 +248,135 @@ pub fn render_sidebar_interactive(
                         .into_any_element();
                 }
 
-                v_flex().flex_1().min_h_0().child(include_header).child(stash_row).child(
-                div().id("changes-scroll").flex_1().min_h_0().overflow_y_scrollbar().child(
-                    uniform_list("changes-list", changes_snapshot.len(), {
-                        let view = view.clone();
-                        move |range, _win, _cx| {
-                            range
-                                .map(|ix| {
-                                    let change = &changes_snapshot[ix];
-                                    let is_selected = sel.as_deref() == Some(change.path.as_str());
-                                    let is_included = cap_include_all
-                                        || cap_included_files.contains(&change.path);
-                                    let path = change.path.clone();
-                                    let checkbox_path = change.path.clone();
-                                    let checkbox_view = view.clone();
-                                    let click_view = view.clone();
-                                    let ctx_path = change.path.clone();
-                                    changes_context_menu::bind_changes_context_click(
-                                        render_change_row(change, is_selected, is_included, checkbox_view, checkbox_path)
-                                            .id(SharedString::from(format!("change-{}", change.path)))
-                                            .cursor_pointer()
-                                            .hover(|s| s.bg(if is_selected { theme::accent() } else { theme::list_hover_bg() }))
-                                            .on_click(move |_evt, _win, cx| {
-                                                let path = path.clone();
-                                                click_view.update(cx, |app, cx| {
-                                                    app.selection.selected_change = Some(path.clone());
-                                                    app.refresh_file_diff(path);
-                                                    cx.notify();
-                                                });
-                                            }),
-                                        view.clone(),
-                                        ctx_path,
-                                    )
-                                    .into_any_element()
-                                })
-                                .collect()
-                        }
-                    })
+                v_flex()
                     .flex_1()
-                    .with_sizing_behavior(ListSizingBehavior::Infer),
-                ).into_any_element()
-                ).into_any_element()
+                    .min_h_0()
+                    .child(include_header)
+                    .child(stash_row)
+                    .child(
+                        div()
+                            .id("changes-scroll")
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_y_scrollbar()
+                            .child(
+                                uniform_list("changes-list", changes_snapshot.len(), {
+                                    let view = view.clone();
+                                    move |range, _win, _cx| {
+                                        range
+                                            .map(|ix| {
+                                                let change = &changes_snapshot[ix];
+                                                let is_selected =
+                                                    sel.as_deref() == Some(change.path.as_str());
+                                                let is_included = cap_include_all
+                                                    || cap_included_files.contains(&change.path);
+                                                let path = change.path.clone();
+                                                let checkbox_path = change.path.clone();
+                                                let checkbox_view = view.clone();
+                                                let click_view = view.clone();
+                                                let ctx_path = change.path.clone();
+                                                changes_context_menu::bind_changes_context_click(
+                                                    render_change_row(
+                                                        change,
+                                                        is_selected,
+                                                        is_included,
+                                                        checkbox_view,
+                                                        checkbox_path,
+                                                    )
+                                                    .id(SharedString::from(format!(
+                                                        "change-{}",
+                                                        change.path
+                                                    )))
+                                                    .cursor_pointer()
+                                                    .hover(|s| {
+                                                        s.bg(if is_selected {
+                                                            theme::accent()
+                                                        } else {
+                                                            theme::list_hover_bg()
+                                                        })
+                                                    })
+                                                    .on_click(move |_evt, _win, cx| {
+                                                        let path = path.clone();
+                                                        click_view.update(cx, |app, cx| {
+                                                            app.selection.selected_change =
+                                                                Some(path.clone());
+                                                            app.refresh_file_diff(path);
+                                                            cx.notify();
+                                                        });
+                                                    }),
+                                                    view.clone(),
+                                                    ctx_path,
+                                                )
+                                                .into_any_element()
+                                            })
+                                            .collect()
+                                    }
+                                })
+                                .flex_1()
+                                .with_sizing_behavior(ListSizingBehavior::Infer),
+                            )
+                            .into_any_element(),
+                    )
+                    .into_any_element()
             }
         }
         SidebarTab::History => {
             if history.is_empty() {
-                div().flex_1().child(render_empty_state("No history")).into_any_element()
+                div()
+                    .flex_1()
+                    .child(render_empty_state("No history"))
+                    .into_any_element()
             } else {
                 let history_snapshot: Vec<CommitInfo> = history.to_vec();
                 let sel = selected_commit.clone();
-                div().id("history-scroll").flex_1().min_h_0().overflow_y_scrollbar().child(
-                    uniform_list("history-list", history_snapshot.len(), {
-                        let view = view.clone();
-                        move |range, _win, _cx| {
-                            range
-                                .map(|ix| {
-                                    let commit = &history_snapshot[ix];
-                                    let is_selected = sel.as_deref() == Some(commit.oid.as_str());
-                                    let oid = commit.oid.clone();
-                                    let click_view = view.clone();
-                                    history_context_menu::bind_history_context_click(
-                                        render_history_row(commit, is_selected)
-                                        .id(SharedString::from(format!("commit-{}", commit.oid)))
-                                        .cursor_pointer()
-                                        .hover(move |s| s.bg(if is_selected { theme::accent() } else { theme::list_hover_bg() }))
-                                        .on_click(move |_evt, _win, cx| {
-                                            let oid = oid.clone();
-                                            click_view.update(cx, |app, cx| {
-                                                app.select_commit(oid, cx);
-                                            });
-                                        }),
-                                        view.clone(),
-                                        commit.oid.clone(),
-                                    )
-                                        .into_any_element()
-                                })
-                                .collect()
-                        }
-                    })
+                div()
+                    .id("history-scroll")
                     .flex_1()
-                    .with_sizing_behavior(ListSizingBehavior::Infer),
-                ).into_any_element()
+                    .min_h_0()
+                    .overflow_y_scrollbar()
+                    .child(
+                        uniform_list("history-list", history_snapshot.len(), {
+                            let view = view.clone();
+                            move |range, _win, _cx| {
+                                range
+                                    .map(|ix| {
+                                        let commit = &history_snapshot[ix];
+                                        let is_selected =
+                                            sel.as_deref() == Some(commit.oid.as_str());
+                                        let oid = commit.oid.clone();
+                                        let click_view = view.clone();
+                                        history_context_menu::bind_history_context_click(
+                                            render_history_row(commit, is_selected)
+                                                .id(SharedString::from(format!(
+                                                    "commit-{}",
+                                                    commit.oid
+                                                )))
+                                                .cursor_pointer()
+                                                .hover(move |s| {
+                                                    s.bg(if is_selected {
+                                                        theme::accent()
+                                                    } else {
+                                                        theme::list_hover_bg()
+                                                    })
+                                                })
+                                                .on_click(move |_evt, _win, cx| {
+                                                    let oid = oid.clone();
+                                                    click_view.update(cx, |app, cx| {
+                                                        app.select_commit(oid, cx);
+                                                    });
+                                                }),
+                                            view.clone(),
+                                            commit.oid.clone(),
+                                        )
+                                        .into_any_element()
+                                    })
+                                    .collect()
+                            }
+                        })
+                        .flex_1()
+                        .with_sizing_behavior(ListSizingBehavior::Infer),
+                    )
+                    .into_any_element()
             }
         }
     };
@@ -372,7 +419,11 @@ fn render_interactive_tab_bar(
                 .bg(theme::toolbar_badge_bg())
                 .text_size(z(theme::FONT_SIZE_XS))
                 .text_color(theme::text_main())
-                .child(if change_count > 300 { "300+".to_string() } else { change_count.to_string() }),
+                .child(if change_count > 300 {
+                    "300+".to_string()
+                } else {
+                    change_count.to_string()
+                }),
         );
     }
 
@@ -600,7 +651,7 @@ pub fn render_no_changes_state(
     view: &Entity<GitSparkApp>,
     ahead: usize,
     remote: Option<&str>,
-    cx: &mut Context<GitSparkApp>,
+    _cx: &mut Context<GitSparkApp>,
 ) -> Div {
     let vh_push = view.clone();
     let vh_editor = view.clone();
@@ -613,7 +664,11 @@ pub fn render_no_changes_state(
     if ahead > 0 && remote.is_some() {
         let push_title = format!(
             "Push {} to the origin remote",
-            if ahead == 1 { "1 commit".to_string() } else { format!("{ahead} commits") }
+            if ahead == 1 {
+                "1 commit".to_string()
+            } else {
+                format!("{ahead} commits")
+            }
         );
         let push_subtitle = format!(
             "You have {} local {} waiting to be pushed to GitHub.",
@@ -801,15 +856,12 @@ fn suggestion_card(
     button_label: &str,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Div {
-    let mut shortcut_row = h_flex()
-        .gap(z(4.0))
-        .items_center()
-        .child(
-            div()
-                .text_size(z(13.0))
-                .text_color(theme::text_muted())
-                .child(shortcut_prefix.to_string()),
-        );
+    let mut shortcut_row = h_flex().gap(z(4.0)).items_center().child(
+        div()
+            .text_size(z(13.0))
+            .text_color(theme::text_muted())
+            .child(shortcut_prefix.to_string()),
+    );
     for key in keys {
         shortcut_row = shortcut_row.child(kbd_badge(key));
     }
@@ -838,24 +890,22 @@ fn suggestion_card(
         )
         // Right: action button
         .child(
-            div()
-                .flex_shrink_0()
-                .child(
-                    div()
-                        .id(SharedString::from(id.to_string()))
-                        .px(z(12.0))
-                        .py(z(2.0))
-                        .rounded(z(theme::CORNER_RADIUS))
-                        .bg(theme::surface_bg())
-                        .border_1()
-                        .border_color(theme::border())
-                        .text_size(z(13.0))
-                        .text_color(theme::text_main())
-                        .cursor_pointer()
-                        .hover(|s| s.bg(theme::hover_bg()))
-                        .child(button_label.to_string())
-                        .on_click(on_click),
-                ),
+            div().flex_shrink_0().child(
+                div()
+                    .id(SharedString::from(id.to_string()))
+                    .px(z(12.0))
+                    .py(z(2.0))
+                    .rounded(z(theme::CORNER_RADIUS))
+                    .bg(theme::surface_bg())
+                    .border_1()
+                    .border_color(theme::border())
+                    .text_size(z(13.0))
+                    .text_color(theme::text_main())
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::hover_bg()))
+                    .child(button_label.to_string())
+                    .on_click(on_click),
+            ),
         )
 }
 
@@ -910,9 +960,7 @@ pub fn render_history_row(commit: &CommitInfo, selected: bool) -> Div {
 
     // Version tags
     for tag in &commit.tags {
-        summary_row = summary_row.child(
-            Tag::secondary().xsmall().child(tag.clone()),
-        );
+        summary_row = summary_row.child(Tag::secondary().xsmall().child(tag.clone()));
     }
 
     if commit.is_head {

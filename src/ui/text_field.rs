@@ -25,6 +25,7 @@ impl Default for TextFieldState {
 }
 
 impl TextFieldState {
+    #[allow(dead_code)]
     pub fn clamp(&mut self, len: usize) {
         self.cursor = self.cursor.min(len);
         if let Some(sel) = &mut self.selection {
@@ -39,16 +40,24 @@ fn ordered(a: usize, b: usize) -> (usize, usize) {
 }
 
 fn prev_boundary(s: &str, pos: usize) -> usize {
-    if pos == 0 { return 0; }
+    if pos == 0 {
+        return 0;
+    }
     let mut p = pos - 1;
-    while p > 0 && !s.is_char_boundary(p) { p -= 1; }
+    while p > 0 && !s.is_char_boundary(p) {
+        p -= 1;
+    }
     p
 }
 
 fn next_boundary(s: &str, pos: usize) -> usize {
-    if pos >= s.len() { return s.len(); }
+    if pos >= s.len() {
+        return s.len();
+    }
     let mut p = pos + 1;
-    while p < s.len() && !s.is_char_boundary(p) { p += 1; }
+    while p < s.len() && !s.is_char_boundary(p) {
+        p += 1;
+    }
     p
 }
 
@@ -233,15 +242,32 @@ pub fn render_text_content(
         return h_flex()
             .items_center()
             .text_size(z(12.0))
-            .child(div().w(px(1.0)).h(px(14.0)).bg(theme::text_main()).flex_shrink_0())
-            .child(div().text_color(theme::text_muted()).child(placeholder.to_string()));
+            .child(
+                div()
+                    .w(px(1.0))
+                    .h(px(14.0))
+                    .bg(theme::text_main())
+                    .flex_shrink_0(),
+            )
+            .child(
+                div()
+                    .text_color(theme::text_muted())
+                    .child(placeholder.to_string()),
+            );
     }
 
     if !focused {
         return if multiline {
-            div().text_size(z(12.0)).text_color(theme::text_main()).child(value.to_string())
+            div()
+                .text_size(z(12.0))
+                .text_color(theme::text_main())
+                .child(value.to_string())
         } else {
-            div().text_size(z(12.0)).text_color(theme::text_main()).truncate().child(value.to_string())
+            div()
+                .text_size(z(12.0))
+                .text_color(theme::text_main())
+                .truncate()
+                .child(value.to_string())
         };
     }
 
@@ -258,28 +284,56 @@ pub fn render_text_content(
         let mut row = if multiline {
             h_flex().items_start().text_size(z(12.0)).flex_wrap()
         } else {
-            h_flex().items_center().overflow_x_hidden().text_size(z(12.0))
+            h_flex()
+                .items_center()
+                .overflow_x_hidden()
+                .text_size(z(12.0))
         };
 
         if !before_sel.is_empty() {
-            let mut el = div().text_color(theme::text_main()).child(before_sel.to_string());
-            if nowrap { el = el.whitespace_nowrap(); }
+            let mut el = div()
+                .text_color(theme::text_main())
+                .child(before_sel.to_string());
+            if nowrap {
+                el = el.whitespace_nowrap();
+            }
             row = row.child(el);
         }
         if cursor_pos == sel_start {
-            row = row.child(div().w(px(1.0)).h(px(14.0)).bg(theme::text_main()).flex_shrink_0());
+            row = row.child(
+                div()
+                    .w(px(1.0))
+                    .h(px(14.0))
+                    .bg(theme::text_main())
+                    .flex_shrink_0(),
+            );
         }
         if !selected.is_empty() {
-            let mut el = div().text_color(gpui::white()).bg(sel_bg).child(selected.to_string());
-            if nowrap { el = el.whitespace_nowrap(); }
+            let mut el = div()
+                .text_color(gpui::white())
+                .bg(sel_bg)
+                .child(selected.to_string());
+            if nowrap {
+                el = el.whitespace_nowrap();
+            }
             row = row.child(el);
         }
         if cursor_pos == sel_end {
-            row = row.child(div().w(px(1.0)).h(px(14.0)).bg(theme::text_main()).flex_shrink_0());
+            row = row.child(
+                div()
+                    .w(px(1.0))
+                    .h(px(14.0))
+                    .bg(theme::text_main())
+                    .flex_shrink_0(),
+            );
         }
         if !after_sel.is_empty() {
-            let mut el = div().text_color(theme::text_main()).child(after_sel.to_string());
-            if nowrap { el = el.whitespace_nowrap(); }
+            let mut el = div()
+                .text_color(theme::text_main())
+                .child(after_sel.to_string());
+            if nowrap {
+                el = el.whitespace_nowrap();
+            }
             row = row.child(el);
         }
         row
@@ -290,17 +344,47 @@ pub fn render_text_content(
             h_flex()
                 .items_start()
                 .text_size(z(12.0))
-                .child(div().text_color(theme::text_main()).child(before.to_string()))
-                .child(div().w(px(1.0)).h(px(14.0)).bg(theme::text_main()).flex_shrink_0())
-                .child(div().text_color(theme::text_main()).child(after.to_string()))
+                .child(
+                    div()
+                        .text_color(theme::text_main())
+                        .child(before.to_string()),
+                )
+                .child(
+                    div()
+                        .w(px(1.0))
+                        .h(px(14.0))
+                        .bg(theme::text_main())
+                        .flex_shrink_0(),
+                )
+                .child(
+                    div()
+                        .text_color(theme::text_main())
+                        .child(after.to_string()),
+                )
         } else {
             h_flex()
                 .items_center()
                 .overflow_x_hidden()
                 .text_size(z(12.0))
-                .child(div().text_color(theme::text_main()).whitespace_nowrap().child(before.to_string()))
-                .child(div().w(px(1.0)).h(px(14.0)).bg(theme::text_main()).flex_shrink_0())
-                .child(div().text_color(theme::text_main()).whitespace_nowrap().child(after.to_string()))
+                .child(
+                    div()
+                        .text_color(theme::text_main())
+                        .whitespace_nowrap()
+                        .child(before.to_string()),
+                )
+                .child(
+                    div()
+                        .w(px(1.0))
+                        .h(px(14.0))
+                        .bg(theme::text_main())
+                        .flex_shrink_0(),
+                )
+                .child(
+                    div()
+                        .text_color(theme::text_main())
+                        .whitespace_nowrap()
+                        .child(after.to_string()),
+                )
         }
     }
 }

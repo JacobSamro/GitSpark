@@ -1,4 +1,5 @@
 pub mod app;
+pub mod automation;
 pub mod branch_context_menu;
 pub mod changes_context_menu;
 pub mod domain_state;

@@ -6,6 +6,13 @@ use anyhow::{Context, Result};
 use crate::models::AppSettings;
 
 pub fn config_path() -> Result<PathBuf> {
+    if let Some(path) = std::env::var_os("GITSPARK_SETTINGS_PATH") {
+        return Ok(PathBuf::from(path));
+    }
+    if let Some(dir) = std::env::var_os("GITSPARK_CONFIG_DIR") {
+        return Ok(PathBuf::from(dir).join("settings.toml"));
+    }
+
     let base = dirs::config_dir().context("could not determine config dir")?;
     Ok(base.join("gitspark").join("settings.toml"))
 }

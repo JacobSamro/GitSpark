@@ -68,6 +68,7 @@ pub struct RepoSnapshot {
     pub diffs: Vec<DiffEntry>,
     pub branches: Vec<BranchInfo>,
     pub history: Vec<CommitInfo>,
+    #[allow(dead_code)]
     pub stash_count: usize,
 }
 
@@ -99,6 +100,7 @@ pub enum AiProvider {
 }
 
 impl AiProvider {
+    #[allow(dead_code)]
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::OpenRouter => "OpenRouter",
@@ -125,6 +127,7 @@ impl AiProvider {
 pub struct CommitSuggestion {
     pub subject: String,
     pub body: String,
+    #[allow(dead_code)]
     pub raw: String,
 }
 

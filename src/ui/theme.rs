@@ -68,6 +68,7 @@ pub fn accent() -> Hsla {
     gpui::rgb(0x1f6feb).into()
 }
 
+#[allow(dead_code)]
 pub fn accent_muted() -> Hsla {
     gpui::rgb(0x0969da).into()
 }
@@ -170,6 +171,7 @@ pub fn push_card_text() -> Hsla {
     gpui::rgb(0x8db1d8).into() // muted blue-white
 }
 
+#[allow(dead_code)]
 pub fn text_field_focus_shadow() -> Hsla {
     with_alpha(accent(), 0.25) // --text-field-focus-shadow-color
 }
@@ -188,6 +190,7 @@ pub fn with_alpha(color: Hsla, alpha: f32) -> Hsla {
 }
 
 /// Linearly interpolate between two colors. `t` is clamped to 0.0..=1.0.
+#[allow(dead_code)]
 pub fn blend(from: Hsla, to: Hsla, t: f32) -> Hsla {
     let t = t.clamp(0.0, 1.0);
     Hsla {
@@ -203,22 +206,33 @@ pub fn blend(from: Hsla, to: Hsla, t: f32) -> Hsla {
 // ---------------------------------------------------------------------------
 
 pub const TOOLBAR_HEIGHT: f32 = 50.0;
+#[allow(dead_code)]
 pub const TOOLBAR_INNER_HEIGHT: f32 = 50.0;
+#[allow(dead_code)]
 pub const TOOLBAR_ITEM_SPACING: f32 = 0.0;
 pub const STATUS_BAR_HEIGHT: f32 = 26.0;
+#[allow(dead_code)]
 pub const SIDEBAR_WIDTH: f32 = 260.0;
+#[allow(dead_code)]
 pub const SIDEBAR_MIN_WIDTH: f32 = 220.0;
+#[allow(dead_code)]
 pub const ROW_HEIGHT: f32 = 32.0;
+#[allow(dead_code)]
 pub const ROW_HEIGHT_COMPACT: f32 = 28.0;
+#[allow(dead_code)]
 pub const CONTROL_HEIGHT: f32 = 34.0;
+#[allow(dead_code)]
 pub const TAB_HEIGHT: f32 = 34.0;
 pub const CORNER_RADIUS: f32 = 6.0;
 pub const CORNER_RADIUS_SM: f32 = 4.0;
+#[allow(dead_code)]
 pub const SECTION_PADDING: f32 = 12.0;
+#[allow(dead_code)]
 pub const ITEM_GAP: f32 = 8.0;
 pub const DIFF_ROW_HEIGHT: f32 = 22.0;
 pub const DIFF_HEADER_HEIGHT: f32 = 32.0;
 pub const DIFF_LINE_NUM_WIDTH: f32 = 50.0;
+#[allow(dead_code)]
 pub const FILTER_BAR_HEIGHT: f32 = 32.0;
 
 // ---------------------------------------------------------------------------
@@ -228,5 +242,7 @@ pub const FILTER_BAR_HEIGHT: f32 = 32.0;
 pub const FONT_SIZE_XS: f32 = 9.0;
 pub const FONT_SIZE_SM: f32 = 11.0;
 pub const FONT_SIZE: f32 = 13.0;
+#[allow(dead_code)]
 pub const FONT_SIZE_MD: f32 = 14.0;
+#[allow(dead_code)]
 pub const FONT_SIZE_LG: f32 = 28.0;

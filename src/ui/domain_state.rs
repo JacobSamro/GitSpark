@@ -7,6 +7,7 @@ pub enum NetworkAction {
     Fetch,
     Pull,
     Push,
+    #[allow(dead_code)]
     PublishBranch,
     PublishRepository,
 }
@@ -45,6 +46,7 @@ impl NetworkAction {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_available(self) -> bool {
         !matches!(self, Self::PublishRepository)
     }

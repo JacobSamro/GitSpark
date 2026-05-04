@@ -29,7 +29,14 @@ impl GitClient {
         // Use diff-tree to get raw list of changed files
         let output = self.run_git(
             &repo_path,
-            &["diff-tree", "--root", "--no-commit-id", "--name-only", "-r", &oid],
+            &[
+                "diff-tree",
+                "--root",
+                "--no-commit-id",
+                "--name-only",
+                "-r",
+                &oid,
+            ],
         )?;
         let files: Vec<String> = output
             .lines()
@@ -158,8 +165,11 @@ impl GitClient {
 
     pub fn stash_all(&self, repo_path: &Path) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
-        self.run_git(&repo_path, &["stash", "push", "-u", "-m", "GitSpark auto-stash"])
-            .context("failed to stash changes")?;
+        self.run_git(
+            &repo_path,
+            &["stash", "push", "-u", "-m", "GitSpark auto-stash"],
+        )
+        .context("failed to stash changes")?;
         self.snapshot(&repo_path)
     }
 
@@ -175,10 +185,6 @@ impl GitClient {
         self.run_git(&repo_path, &["reset", "--soft", "HEAD~1"])
             .context("failed to undo last commit")?;
         self.snapshot(&repo_path)
-    }
-
-    pub fn copy_to_clipboard_text(&self, _text: &str) {
-        // Platform clipboard handled by GPUI, this is a no-op placeholder
     }
 
     pub fn checkout_commit(&self, repo_path: &Path, oid: &str) -> Result<RepoSnapshot> {
@@ -289,6 +295,24 @@ impl GitClient {
 
         Ok(normalize_github_remote_url(remote_url.trim())
             .map(|base| format!("{base}/commit/{oid}")))
+    }
+
+    pub fn github_branch_url(&self, repo_path: &Path, branch_name: &str) -> Result<Option<String>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let branch_name = branch_name.trim();
+        if branch_name.is_empty() {
+            bail!("branch name cannot be empty");
+        }
+        let Some(remote_name) = self.read_primary_remote(&repo_path)? else {
+            return Ok(None);
+        };
+
+        let remote_url = self
+            .run_git(&repo_path, &["remote", "get-url", &remote_name])
+            .with_context(|| format!("failed to read remote URL for '{remote_name}'"))?;
+
+        Ok(normalize_github_remote_url(remote_url.trim())
+            .map(|base| format!("{base}/tree/{branch_name}")))
     }
 
     pub fn commit_all(&self, repo_path: &Path, message: &str) -> Result<RepoSnapshot> {
@@ -765,7 +789,9 @@ impl GitClient {
         if sections.is_empty() {
             // No staged or unstaged diff — file might be untracked or entirely new
             let is_untracked = change.status == "??"
-                || !self.path_is_tracked(repo_path, &change.path).unwrap_or(true);
+                || !self
+                    .path_is_tracked(repo_path, &change.path)
+                    .unwrap_or(true);
             if is_untracked {
                 return self.build_untracked_diff(repo_path, &change.path);
             }
@@ -912,17 +938,18 @@ impl GitClient {
                 .run_git(repo_path, &["config", "--local", key, value])
                 .map(|_| ())
                 .with_context(|| format!("failed writing config '{key}'")),
-            None => self
-                .run_git(repo_path, &["config", "--local", "--unset", key])
-                .map(|_| ())
-                .or_else(|error| {
-                    if is_config_missing(&error) {
-                        Ok(())
-                    } else {
-                        Err(error)
-                    }
-                })
-                .with_context(|| format!("failed clearing config '{key}'")),
+            None => {
+                if self
+                    .run_git(repo_path, &["config", "--local", "--get", key])
+                    .is_err()
+                {
+                    return Ok(());
+                }
+
+                self.run_git(repo_path, &["config", "--local", "--unset", key])
+                    .map(|_| ())
+                    .with_context(|| format!("failed clearing config '{key}'"))
+            }
         }
     }
 
@@ -975,15 +1002,13 @@ fn run_git_command(repo_path: &Path, args: &[&str]) -> Result<Output> {
         command.creation_flags(CREATE_NO_WINDOW);
     }
 
-    let output = command
-        .output()
-        .with_context(|| {
-            format!(
-                "failed to launch git in '{}' with args {:?}",
-                repo_path.display(),
-                args
-            )
-        })?;
+    let output = command.output().with_context(|| {
+        format!(
+            "failed to launch git in '{}' with args {:?}",
+            repo_path.display(),
+            args
+        )
+    })?;
 
     if output.status.success() {
         return Ok(output);
@@ -1162,10 +1187,18 @@ fn format_relative_time(timestamp: SystemTime) -> String {
 }
 
 fn is_config_missing(error: &anyhow::Error) -> bool {
-    let message = error.to_string();
+    let message = error
+        .chain()
+        .map(|error| error.to_string())
+        .collect::<Vec<_>>()
+        .join("\n")
+        .to_ascii_lowercase();
     message.contains("exit status: 1")
         || message.contains("returned non-zero exit status: 1")
         || message.contains("unable to read config")
+        || message.contains("no such section")
+        || message.contains("no such key")
+        || message.contains("key not found")
         || message.contains("key does not contain a section")
 }
 

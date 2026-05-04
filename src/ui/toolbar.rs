@@ -128,15 +128,16 @@ pub fn render_network_parts(
                 .size(z(SECTION_ICON_SIZE))
                 .text_color(theme::text_main());
             if is_in_flight {
-                div().flex_shrink_0().child(
-                    svg_el.with_animation(
+                div()
+                    .flex_shrink_0()
+                    .child(svg_el.with_animation(
                         "spin",
                         Animation::new(Duration::from_secs(1)).repeat(),
                         |svg, delta| {
                             svg.with_transformation(Transformation::rotate(percentage(delta)))
                         },
-                    ),
-                ).into_any_element()
+                    ))
+                    .into_any_element()
             } else {
                 div().flex_shrink_0().child(svg_el).into_any_element()
             }
@@ -146,11 +147,14 @@ pub fn render_network_parts(
             } else {
                 IconName::ArrowDown
             };
-            div().flex_shrink_0().child(
-                Icon::new(icon_name)
-                    .size(z(SECTION_ICON_SIZE))
-                    .text_color(theme::text_main()),
-            ).into_any_element()
+            div()
+                .flex_shrink_0()
+                .child(
+                    Icon::new(icon_name)
+                        .size(z(SECTION_ICON_SIZE))
+                        .text_color(theme::text_main()),
+                )
+                .into_any_element()
         }
     };
 
@@ -281,4 +285,3 @@ fn count_badge(text: &str) -> Div {
 pub fn vertical_divider() -> Divider {
     Divider::vertical().color(theme::toolbar_button_border())
 }
-
