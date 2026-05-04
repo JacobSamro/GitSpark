@@ -267,6 +267,7 @@ pub(crate) enum AutomationChangeAction {
     RevealInFinder,
     OpenInEditor,
     OpenWithDefault,
+    ViewOnGithub,
 }
 
 #[derive(Clone, Deserialize)]
@@ -274,6 +275,7 @@ pub(crate) enum AutomationChangeAction {
 pub(crate) enum AutomationHistoryAction {
     CheckoutCommit,
     RevertChangesInCommit,
+    CreateBranchFromCommit,
     CherryPickCommit,
     CopySha,
     CopyDiff,
@@ -434,8 +436,10 @@ enum AutomationNodeAction {
     ShowSettings(bool),
     SwitchBranch(String),
     StartCreateBranch,
+    SetNewBranchName,
     ConfirmCreateBranch,
     ConfirmStashAndSwitch,
+    RestoreStash,
     SaveGitSettings,
     SaveAiSettings,
     ChangeAiProvider(AiProvider),
@@ -540,6 +544,7 @@ impl GitSparkApp {
                 self.nav.show_repo_selector = show;
                 if show {
                     self.nav.show_branch_selector = false;
+                    self.repo.pending_cherry_pick_oid = None;
                     self.nav.show_network_dropdown = false;
                 }
                 cx.notify();
@@ -825,6 +830,13 @@ impl GitSparkApp {
         if matches!(self.nav.active_dialog, ActiveDialog::CreateBranch) {
             children.extend([
                 automation_node(
+                    "new-branch-name",
+                    AutomationRole::Textbox,
+                    Some("input-new-branch-name"),
+                    Some(self.repo.new_branch_name.as_str()),
+                    Some(AutomationNodeAction::SetNewBranchName),
+                ),
+                automation_node(
                     "dialog-cancel",
                     AutomationRole::Button,
                     Some("dialog-cancel"),
@@ -955,7 +967,7 @@ impl GitSparkApp {
                     AutomationRole::Button,
                     Some("stash-indicator"),
                     Some("Stashed Changes"),
-                    None,
+                    Some(AutomationNodeAction::RestoreStash),
                 ));
             }
 
@@ -1137,6 +1149,9 @@ impl GitSparkApp {
             }
             AutomationNodeAction::ShowBranchSelector(show) => {
                 self.nav.show_branch_selector = show;
+                if !show {
+                    self.repo.pending_cherry_pick_oid = None;
+                }
                 if show {
                     self.nav.show_repo_selector = false;
                     self.nav.show_network_dropdown = false;
@@ -1147,6 +1162,7 @@ impl GitSparkApp {
                 self.nav.show_repo_selector = show;
                 if show {
                     self.nav.show_branch_selector = false;
+                    self.repo.pending_cherry_pick_oid = None;
                     self.nav.show_network_dropdown = false;
                 }
                 cx.notify();
@@ -1156,15 +1172,20 @@ impl GitSparkApp {
                 cx.notify();
             }
             AutomationNodeAction::SwitchBranch(name) => {
-                self.repo.branch_target = name;
-                self.handle_toolbar_action(
-                    ToolbarAction::SwitchBranch(self.repo.branch_target.clone()),
-                    cx,
-                );
+                self.select_branch_from_selector(name, cx);
             }
             AutomationNodeAction::StartCreateBranch => {
                 self.repo.new_branch_name = self.filters.branch_filter_text.clone();
+                self.new_branch_cursor = self.repo.new_branch_name.len();
+                self.new_branch_selection = None;
+                self.repo.new_branch_start_point = None;
                 self.nav.active_dialog = ActiveDialog::CreateBranch;
+                cx.notify();
+            }
+            AutomationNodeAction::SetNewBranchName => {
+                self.repo.new_branch_name = fill_text.unwrap_or_default();
+                self.new_branch_cursor = self.repo.new_branch_name.len();
+                self.new_branch_selection = None;
                 cx.notify();
             }
             AutomationNodeAction::ConfirmCreateBranch => {
@@ -1181,6 +1202,9 @@ impl GitSparkApp {
                     }
                 };
                 self.stash_and_switch_branch(target_branch, cx);
+            }
+            AutomationNodeAction::RestoreStash => {
+                self.restore_stash(cx);
             }
             AutomationNodeAction::SaveGitSettings => {
                 self.handle_settings_action(SettingsAction::SaveGitConfig, cx);
@@ -1324,6 +1348,10 @@ impl GitSparkApp {
             AutomationChangeAction::RevealInFinder => SidebarAction::RevealInFinder(path),
             AutomationChangeAction::OpenInEditor => SidebarAction::OpenInEditor(path),
             AutomationChangeAction::OpenWithDefault => SidebarAction::OpenWithDefault(path),
+            AutomationChangeAction::ViewOnGithub => {
+                self.handle_changes_context_action(path, ChangesContextAction::ViewOnGitHub, cx);
+                return;
+            }
         };
         self.handle_sidebar_action(sidebar_action, cx);
     }
@@ -1338,6 +1366,9 @@ impl GitSparkApp {
             AutomationHistoryAction::CheckoutCommit => HistoryContextMenuAction::CheckoutCommit,
             AutomationHistoryAction::RevertChangesInCommit => {
                 HistoryContextMenuAction::RevertChangesInCommit
+            }
+            AutomationHistoryAction::CreateBranchFromCommit => {
+                HistoryContextMenuAction::CreateBranchFromCommit
             }
             AutomationHistoryAction::CherryPickCommit => HistoryContextMenuAction::CherryPickCommit,
             AutomationHistoryAction::CopySha => HistoryContextMenuAction::CopySha,
@@ -1619,6 +1650,11 @@ fn change_action_nodes(path: &str) -> Vec<AutomationNode> {
             "Open with default program",
             AutomationChangeAction::OpenWithDefault,
         ),
+        (
+            "view-on-github",
+            "View on GitHub",
+            AutomationChangeAction::ViewOnGithub,
+        ),
     ]
     .into_iter()
     .map(|(suffix, label, action)| {
@@ -1650,6 +1686,11 @@ fn history_action_nodes(short_oid: &str, oid: &str) -> Vec<AutomationNode> {
             "cherry-pick",
             "Cherry-pick commit",
             AutomationHistoryAction::CherryPickCommit,
+        ),
+        (
+            "create-branch",
+            "Create branch from commit",
+            AutomationHistoryAction::CreateBranchFromCommit,
         ),
         ("copy-sha", "Copy SHA", AutomationHistoryAction::CopySha),
         ("copy-diff", "Copy diff", AutomationHistoryAction::CopyDiff),

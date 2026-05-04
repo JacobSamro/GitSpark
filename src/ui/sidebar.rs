@@ -230,19 +230,7 @@ pub fn render_sidebar_interactive(
                         )
                         .on_click(move |_evt, _win, cx| {
                             stash_view.update(cx, |app, cx| {
-                                app.messages.status_message = "Restoring stash...".to_string();
-                                if let Some(path) = app.repo_path().map(std::path::PathBuf::from) {
-                                    let tx = app.event_tx.clone();
-                                    let git = crate::git::GitClient::new();
-                                    std::thread::spawn(move || {
-                                        let res = git.stash_pop(&path).map_err(|e| e.to_string());
-                                        tx.send(crate::ui::app::AppEvent::NetworkActionCompleted(
-                                            res,
-                                            "Restored stash".to_string(),
-                                        ));
-                                    });
-                                }
-                                cx.notify();
+                                app.restore_stash(cx);
                             });
                         })
                         .into_any_element();
@@ -498,7 +486,7 @@ pub fn render_change_row(
     checkbox_path: String,
 ) -> Div {
     let bg = if selected {
-        theme::accent()
+        theme::with_alpha(theme::accent(), 0.38)
     } else {
         gpui::transparent_black()
     };
@@ -546,13 +534,20 @@ pub fn render_change_row(
             });
         });
 
-    h_flex()
+    let row = h_flex()
         .w_full()
         .h(z(CHANGE_ROW_HEIGHT))
         .px(z(10.0))
         .items_center()
-        .bg(bg)
-        .gap(z(5.0))
+        .bg(bg);
+
+    let row = if selected {
+        row.border_l_2().border_color(theme::accent()).pl(z(8.0))
+    } else {
+        row
+    };
+
+    row.gap(z(5.0))
         .child(checkbox)
         .child(
             div().flex_1().overflow_x_hidden().child(

@@ -66,7 +66,7 @@ pub(crate) fn build_history_context_menu(
         .separator()
         .item(menu_item(
             "Create Branch from Commit",
-            false,
+            true,
             view.clone(),
             oid.clone(),
             HistoryContextMenuAction::CreateBranchFromCommit,

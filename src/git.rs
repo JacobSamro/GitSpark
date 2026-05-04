@@ -219,6 +219,25 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn create_branch_from_commit(
+        &self,
+        repo_path: &Path,
+        branch_name: &str,
+        oid: &str,
+    ) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let branch_name = branch_name.trim();
+        if branch_name.is_empty() {
+            bail!("branch name cannot be empty");
+        }
+        let oid = self.verify_commit_oid(&repo_path, oid)?;
+        self.run_git(&repo_path, &["switch", "-c", branch_name, &oid])
+            .with_context(|| {
+                format!("failed to create branch '{branch_name}' from commit '{oid}'")
+            })?;
+        self.snapshot(&repo_path)
+    }
+
     pub fn switch_branch(&self, repo_path: &Path, branch_name: &str) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let branch_name = branch_name.trim();
@@ -259,10 +278,31 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    #[allow(dead_code)]
     pub fn cherry_pick_commit(&self, repo_path: &Path, oid: &str) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let oid = self.verify_commit_oid(&repo_path, oid)?;
 
+        self.run_git(&repo_path, &["cherry-pick", &oid])
+            .with_context(|| format!("failed to cherry-pick commit '{oid}'"))?;
+
+        self.snapshot(&repo_path)
+    }
+
+    pub fn cherry_pick_commit_onto_branch(
+        &self,
+        repo_path: &Path,
+        oid: &str,
+        branch_name: &str,
+    ) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let oid = self.verify_commit_oid(&repo_path, oid)?;
+        let branch_name = branch_name.trim();
+        if branch_name.is_empty() {
+            bail!("cherry-pick target branch cannot be empty");
+        }
+
+        self.switch_branch(&repo_path, branch_name)?;
         self.run_git(&repo_path, &["cherry-pick", &oid])
             .with_context(|| format!("failed to cherry-pick commit '{oid}'"))?;
 
@@ -313,6 +353,37 @@ impl GitClient {
 
         Ok(normalize_github_remote_url(remote_url.trim())
             .map(|base| format!("{base}/tree/{branch_name}")))
+    }
+
+    pub fn github_file_url(&self, repo_path: &Path, relative_path: &str) -> Result<Option<String>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let relative_path = relative_path.trim();
+        if relative_path.is_empty() {
+            bail!("file path cannot be empty");
+        }
+
+        let Some(remote_name) = self.read_primary_remote(&repo_path)? else {
+            return Ok(None);
+        };
+
+        let remote_url = self
+            .run_git(&repo_path, &["remote", "get-url", &remote_name])
+            .with_context(|| format!("failed to read remote URL for '{remote_name}'"))?;
+        let branch = self
+            .run_git(&repo_path, &["branch", "--show-current"])
+            .context("failed to read current branch")?;
+        let branch = branch.trim();
+        if branch.is_empty() {
+            bail!("cannot build file URL while HEAD is detached");
+        }
+
+        Ok(normalize_github_remote_url(remote_url.trim()).map(|base| {
+            format!(
+                "{base}/blob/{}/{}",
+                encode_github_url_component(branch),
+                encode_github_path(relative_path)
+            )
+        }))
     }
 
     pub fn commit_all(&self, repo_path: &Path, message: &str) -> Result<RepoSnapshot> {
@@ -1148,11 +1219,69 @@ fn normalize_github_remote_url(remote_url: &str) -> Option<String> {
     }
 }
 
+fn encode_github_path(path: &str) -> String {
+    path.split('/')
+        .map(encode_github_url_component)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn encode_github_url_component(component: &str) -> String {
+    let mut encoded = String::new();
+    for byte in component.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char);
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
+}
+
 fn parse_git_bool(value: &str) -> Result<bool> {
     match value.trim().to_ascii_lowercase().as_str() {
         "true" | "yes" | "on" | "1" => Ok(true),
         "false" | "no" | "off" | "0" => Ok(false),
         other => bail!("unsupported git boolean '{other}'"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{encode_github_path, normalize_github_remote_url};
+
+    #[test]
+    fn normalizes_github_remotes_with_owner_and_repo() {
+        let cases = [
+            (
+                "https://github.com/JacobSamro/GitSpark.git",
+                "https://github.com/JacobSamro/GitSpark",
+            ),
+            (
+                "git@github.com:JacobSamro/GitSpark.git",
+                "https://github.com/JacobSamro/GitSpark",
+            ),
+            (
+                "ssh://git@github.com/JacobSamro/GitSpark.git",
+                "https://github.com/JacobSamro/GitSpark",
+            ),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(
+                normalize_github_remote_url(input).as_deref(),
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn encodes_github_blob_paths_per_segment() {
+        assert_eq!(
+            encode_github_path("dashboards/platform/page one.rs"),
+            "dashboards/platform/page%20one.rs"
+        );
     }
 }
 

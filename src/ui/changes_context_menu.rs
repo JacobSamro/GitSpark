@@ -12,6 +12,7 @@ pub(crate) enum ChangesContextAction {
     CopyRelativePath,
     RevealInFinder,
     OpenInExternalEditor,
+    ViewOnGitHub,
 }
 
 pub(crate) fn build_changes_context_menu(
@@ -81,8 +82,16 @@ pub(crate) fn build_changes_context_menu(
             "Open in External Editor",
             true,
             view.clone(),
-            path,
+            path.clone(),
             ChangesContextAction::OpenInExternalEditor,
+        ))
+        .separator()
+        .item(changes_menu_item(
+            "View on GitHub",
+            true,
+            view,
+            path,
+            ChangesContextAction::ViewOnGitHub,
         ))
 }
 

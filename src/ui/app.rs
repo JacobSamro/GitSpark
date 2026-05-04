@@ -80,6 +80,7 @@ pub enum DiffExpandDirection {
 #[derive(Clone)]
 pub enum ToolbarAction {
     ToggleRepoSelector,
+    #[allow(dead_code)]
     SwitchBranch(String),
     RunNetworkAction(NetworkAction),
     #[allow(dead_code)]
@@ -183,6 +184,9 @@ pub struct GitSparkApp {
     branch_filter_cursor: usize,
     repo_filter_focus: FocusHandle,
     repo_filter_cursor: usize,
+    new_branch_focus: FocusHandle,
+    pub(crate) new_branch_cursor: usize,
+    pub(crate) new_branch_selection: Option<usize>,
     pub(crate) settings_modal: SettingsModalState,
     // Zoom
     rem_size: f32,
@@ -227,6 +231,9 @@ impl GitSparkApp {
             branch_filter_cursor: 0,
             repo_filter_focus: cx.focus_handle(),
             repo_filter_cursor: 0,
+            new_branch_focus: cx.focus_handle(),
+            new_branch_cursor: 0,
+            new_branch_selection: None,
             settings_modal: SettingsModalState::new(cx),
             rem_size: DEFAULT_REM_SIZE,
             render_count: 0,
@@ -539,6 +546,7 @@ impl GitSparkApp {
             ToolbarAction::ToggleRepoSelector => {
                 self.nav.show_repo_selector = !self.nav.show_repo_selector;
                 self.nav.show_branch_selector = false;
+                self.repo.pending_cherry_pick_oid = None;
                 self.nav.show_network_dropdown = false;
             }
             ToolbarAction::SwitchBranch(name) => {
@@ -890,6 +898,27 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub(crate) fn restore_stash(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        self.messages.status_message = "Restoring stash...".to_string();
+        self.messages.error_message.clear();
+        let tx = self.event_tx.clone();
+        let git = GitClient::new();
+        thread::spawn(move || {
+            let res = git.stash_pop(&path).map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::NetworkActionCompleted(
+                res,
+                "Restored stash".to_string(),
+            ));
+        });
+        cx.notify();
+    }
+
     pub(crate) fn create_branch(&mut self, cx: &mut Context<Self>) {
         let Some(path) = self.repo_path().map(PathBuf::from) else {
             self.messages.error_message = "No repository selected.".to_string();
@@ -909,15 +938,23 @@ impl GitSparkApp {
             return;
         }
 
+        let start_point = self.repo.new_branch_start_point.clone();
         self.messages.status_message = format!("Creating branch '{name}'...");
         self.messages.error_message.clear();
         let tx = self.event_tx.clone();
         let git = GitClient::new();
         thread::spawn(move || {
-            let res = git.create_branch(&path, &name).map_err(|e| e.to_string());
+            let res = match start_point {
+                Some(oid) => git.create_branch_from_commit(&path, &name, &oid),
+                None => git.create_branch(&path, &name),
+            }
+            .map_err(|e| e.to_string());
             tx.send(AppEvent::BranchSwitched(res, name));
         });
         self.repo.new_branch_name.clear();
+        self.repo.new_branch_start_point = None;
+        self.new_branch_cursor = 0;
+        self.new_branch_selection = None;
         self.filters.branch_filter_text.clear();
         self.branch_filter_cursor = 0;
         self.nav.show_branch_selector = false;
@@ -1222,13 +1259,15 @@ impl GitSparkApp {
             }
             HistoryContextMenuAction::CherryPickCommit => {
                 let short = short_commit_label(&oid).to_string();
-                self.run_commit_repo_action(
-                    oid,
-                    "Cherry-pick commit".to_string(),
-                    format!("Cherry-picked commit {short}."),
-                    GitClient::cherry_pick_commit,
-                    cx,
-                );
+                self.repo.pending_cherry_pick_oid = Some(oid);
+                self.nav.show_branch_selector = true;
+                self.nav.show_repo_selector = false;
+                self.nav.show_network_dropdown = false;
+                self.filters.branch_filter_text.clear();
+                self.branch_filter_cursor = 0;
+                self.messages.status_message =
+                    format!("Choose a branch to cherry-pick {short} into.");
+                self.messages.error_message.clear();
             }
             HistoryContextMenuAction::CopySha => {
                 cx.write_to_clipboard(ClipboardItem::new_string(oid.clone()));
@@ -1237,13 +1276,43 @@ impl GitSparkApp {
             }
             HistoryContextMenuAction::CopyDiff => self.copy_commit_diff(&oid, cx),
             HistoryContextMenuAction::ViewOnGitHub => self.view_commit_on_github(&oid),
+            HistoryContextMenuAction::CreateBranchFromCommit => {
+                let short = short_commit_label(&oid);
+                self.repo.new_branch_name = format!("branch-{short}");
+                self.new_branch_cursor = self.repo.new_branch_name.len();
+                self.new_branch_selection = None;
+                self.repo.new_branch_start_point = Some(oid);
+                self.nav.active_dialog = ActiveDialog::CreateBranch;
+                self.messages.error_message.clear();
+            }
             HistoryContextMenuAction::ResetToCommit
             | HistoryContextMenuAction::ReorderCommit
-            | HistoryContextMenuAction::CreateBranchFromCommit
             | HistoryContextMenuAction::CreateTag
             | HistoryContextMenuAction::CopyTag => {}
         }
 
+        cx.notify();
+    }
+
+    pub(crate) fn select_branch_from_selector(&mut self, name: String, cx: &mut Context<Self>) {
+        if let Some(oid) = self.repo.pending_cherry_pick_oid.take() {
+            self.nav.show_branch_selector = false;
+            self.cherry_pick_commit_onto_branch(oid, name, cx);
+            return;
+        }
+
+        if !self
+            .repo
+            .snapshot
+            .as_ref()
+            .map(|s| s.repo.current_branch == name)
+            .unwrap_or(false)
+        {
+            self.repo.branch_target = name;
+            self.switch_branch(cx);
+        }
+
+        self.nav.show_branch_selector = false;
         cx.notify();
     }
 
@@ -1258,6 +1327,7 @@ impl GitSparkApp {
                 self.nav.active_dialog = ActiveDialog::DiscardChanges {
                     paths: vec![path.clone()],
                 };
+                self.messages.error_message.clear();
             }
             ChangesContextAction::IgnoreFile => {
                 self.ignore_path(&path);
@@ -1275,11 +1345,13 @@ impl GitSparkApp {
                     let full = format!("{}/{}", repo_path.display(), path);
                     cx.write_to_clipboard(ClipboardItem::new_string(full));
                     self.messages.status_message = "Copied file path.".to_string();
+                    self.messages.error_message.clear();
                 }
             }
             ChangesContextAction::CopyRelativePath => {
                 cx.write_to_clipboard(ClipboardItem::new_string(path.clone()));
                 self.messages.status_message = "Copied relative path.".to_string();
+                self.messages.error_message.clear();
             }
             ChangesContextAction::RevealInFinder => {
                 self.reveal_in_finder(&path);
@@ -1287,8 +1359,10 @@ impl GitSparkApp {
             ChangesContextAction::OpenInExternalEditor => {
                 self.open_in_external_editor(&path);
             }
+            ChangesContextAction::ViewOnGitHub => {
+                self.view_file_on_github(&path);
+            }
         }
-        self.messages.error_message.clear();
         cx.notify();
     }
 
@@ -1383,6 +1457,49 @@ impl GitSparkApp {
         });
     }
 
+    fn cherry_pick_commit_onto_branch(
+        &mut self,
+        oid: String,
+        target_branch: String,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        if self.repo.snapshot.as_ref().is_some_and(|snapshot| {
+            snapshot.repo.current_branch != target_branch && !snapshot.changes.is_empty()
+        }) {
+            self.messages.error_message =
+                "Cherry-pick target needs a clean working tree before switching branches."
+                    .to_string();
+            cx.notify();
+            return;
+        }
+
+        let short = short_commit_label(&oid).to_string();
+        let action_label = "Cherry-pick commit".to_string();
+        let success_message = format!("Cherry-picked commit {short} into '{target_branch}'.");
+        self.messages.status_message = format!("Cherry-picking {short} into '{target_branch}'...");
+        self.messages.error_message.clear();
+
+        let tx = self.event_tx.clone();
+        thread::spawn(move || {
+            let git = GitClient::new();
+            let res = git
+                .cherry_pick_commit_onto_branch(&path, &oid, &target_branch)
+                .map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::RepoOperationCompleted(
+                res,
+                action_label,
+                success_message,
+            ));
+        });
+        cx.notify();
+    }
+
     fn copy_commit_diff(&mut self, oid: &str, cx: &mut Context<Self>) {
         if self.selection.selected_commit.as_deref() == Some(oid)
             && let Some(diffs) = self.selection.commit_diffs.as_ref()
@@ -1443,6 +1560,36 @@ impl GitSparkApp {
                 self.messages.error_message = format!(
                     "Failed to resolve GitHub URL for {}: {err}",
                     short_commit_label(oid)
+                );
+            }
+        }
+    }
+
+    fn view_file_on_github(&mut self, relative_path: &str) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            return;
+        };
+
+        match self.git.github_file_url(&path, relative_path) {
+            Ok(Some(url)) => match open_url(&url) {
+                Ok(_) => {
+                    self.messages.status_message = format!("Opened '{}' on GitHub.", relative_path);
+                    self.messages.error_message.clear();
+                }
+                Err(err) => {
+                    self.messages.error_message =
+                        format!("Failed to open '{}' on GitHub: {err}", relative_path);
+                }
+            },
+            Ok(None) => {
+                self.messages.error_message =
+                    "This repository does not have a GitHub remote URL.".to_string();
+            }
+            Err(err) => {
+                self.messages.error_message = format!(
+                    "Failed to resolve GitHub URL for '{}': {err}",
+                    relative_path
                 );
             }
         }
@@ -1916,6 +2063,9 @@ impl GitSparkApp {
         .w(px(300.0))
         .on_click(cx.listener(|app, _evt, _win, cx| {
             app.nav.show_branch_selector = !app.nav.show_branch_selector;
+            if !app.nav.show_branch_selector {
+                app.repo.pending_cherry_pick_oid = None;
+            }
             app.nav.show_repo_selector = false;
             app.nav.show_network_dropdown = false;
             cx.notify();
@@ -2389,6 +2539,7 @@ impl GitSparkApp {
             }
             "escape" => {
                 self.nav.show_branch_selector = false;
+                self.repo.pending_cherry_pick_oid = None;
                 self.filters.branch_filter_text.clear();
                 self.branch_filter_cursor = 0;
                 cx.notify();
@@ -2422,6 +2573,30 @@ impl GitSparkApp {
                     }
                 }
             }
+        }
+    }
+
+    fn handle_new_branch_key(
+        &mut self,
+        event: &KeyDownEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut state = crate::ui::text_field::TextFieldState {
+            cursor: self.new_branch_cursor,
+            selection: self.new_branch_selection,
+        };
+        let handled = crate::ui::text_field::handle_text_key(
+            &mut self.repo.new_branch_name,
+            &mut state,
+            false,
+            event,
+            cx,
+        );
+        self.new_branch_cursor = state.cursor;
+        self.new_branch_selection = state.selection;
+        if handled {
+            cx.notify();
         }
     }
 
@@ -3453,6 +3628,12 @@ impl GitSparkApp {
                     .as_ref()
                     .map(|s| s.repo.current_branch.as_str())
                     .unwrap_or("main");
+                let starting_point = self
+                    .repo
+                    .new_branch_start_point
+                    .as_deref()
+                    .map(|oid| format!("Based on commit: {}", short_commit_label(oid)))
+                    .unwrap_or_else(|| format!("Based on current branch: {current}"));
 
                 v_flex()
                     .w(px(400.0))
@@ -3514,14 +3695,20 @@ impl GitSparkApp {
                                     )
                                     .child(
                                         div()
+                                            .id("new-branch-name-input")
+                                            .track_focus(&self.new_branch_focus)
+                                            .key_context("new-branch-name")
+                                            .on_key_down(cx.listener(Self::handle_new_branch_key))
                                             .w_full()
                                             .h(theme::z(28.0))
                                             .px(theme::z(8.0))
+                                            .flex()
                                             .items_center()
                                             .rounded(theme::z(theme::CORNER_RADIUS))
                                             .bg(theme::bg())
                                             .border_1()
                                             .border_color(theme::accent())
+                                            .cursor_text()
                                             .child(
                                                 div()
                                                     .text_size(theme::z(12.0))
@@ -3535,7 +3722,14 @@ impl GitSparkApp {
                                                     } else {
                                                         branch_name.clone()
                                                     }),
-                                            ),
+                                            )
+                                            .on_click(cx.listener(|app, _evt, window, cx| {
+                                                window.focus(&app.new_branch_focus);
+                                                app.new_branch_cursor =
+                                                    app.repo.new_branch_name.len();
+                                                app.new_branch_selection = None;
+                                                cx.notify();
+                                            })),
                                     ),
                             )
                             // Starting point
@@ -3543,7 +3737,7 @@ impl GitSparkApp {
                                 div()
                                     .text_size(theme::z(11.0))
                                     .text_color(theme::text_muted())
-                                    .child(format!("Based on current branch: {current}")),
+                                    .child(starting_point),
                             ),
                     )
                     // Footer
@@ -3833,6 +4027,7 @@ impl GitSparkApp {
                     .top_0()
                     .left_0()
                     .size_full()
+                    .flex()
                     .items_center()
                     .justify_center()
                     .child(dialog_content),
@@ -4210,6 +4405,7 @@ impl GitSparkApp {
             .bottom_0()
             .on_click(cx.listener(|app, _evt, _win, cx| {
                 app.nav.show_branch_selector = false;
+                app.repo.pending_cherry_pick_oid = None;
                 cx.notify();
             }));
 
@@ -4276,6 +4472,7 @@ impl GitSparkApp {
             .cursor_pointer()
             .on_click(cx.listener(|app, _evt, _win, cx| {
                 app.nav.show_branch_selector = false;
+                app.repo.pending_cherry_pick_oid = None;
                 cx.notify();
             }))
             // Branch icon
@@ -4437,7 +4634,11 @@ impl GitSparkApp {
                     .on_click(cx.listener(|app, _evt, _win, cx| {
                         // Pre-fill the new branch name from filter text
                         app.repo.new_branch_name = app.filters.branch_filter_text.clone();
+                        app.new_branch_cursor = app.repo.new_branch_name.len();
+                        app.new_branch_selection = None;
+                        app.repo.new_branch_start_point = None;
                         app.nav.active_dialog = ActiveDialog::CreateBranch;
+                        _win.focus(&app.new_branch_focus);
                         cx.notify();
                     }))
                     .child(
@@ -4564,18 +4765,7 @@ impl GitSparkApp {
                                         .on_click(move |_evt, _win, cx| {
                                             let name = name.clone();
                                             vh.update(cx, |app, cx| {
-                                                if !app
-                                                    .repo
-                                                    .snapshot
-                                                    .as_ref()
-                                                    .map(|s| s.repo.current_branch == name)
-                                                    .unwrap_or(false)
-                                                {
-                                                    app.repo.branch_target = name;
-                                                    app.switch_branch(cx);
-                                                }
-                                                app.nav.show_branch_selector = false;
-                                                cx.notify();
+                                                app.select_branch_from_selector(name, cx);
                                             });
                                         });
 
@@ -4618,7 +4808,11 @@ impl GitSparkApp {
                         div()
                             .text_size(theme::z(theme::FONT_SIZE))
                             .text_color(theme::text_muted())
-                            .child("Choose a branch to merge into"),
+                            .child(if self.repo.pending_cherry_pick_oid.is_some() {
+                                "Choose a branch to cherry-pick into"
+                            } else {
+                                "Choose a branch to merge into"
+                            }),
                     )
                     .child(
                         div()

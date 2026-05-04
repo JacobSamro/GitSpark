@@ -76,19 +76,21 @@ There is also a smoke flow that creates a temporary git repo, opens the real app
 node e2e/selector-smoke.mjs
 ```
 
-For broader local coverage, run the full suite. It creates a fresh temporary sample repo plus a local bare `origin` and local mock AI server, then exercises selectors, repo loading, refresh, tabs, filters, settings visibility and persistence, AI validation/success, change/history selection, history checkout/revert/cherry-pick, history copy-SHA/copy-diff, commit/branch GitHub URL actions through a safe URL opener, branch switching, create-branch dialog cancel/confirm, branch creation, branch merging, branch deletion, stash/restore, commit validation, commit success, undo last commit, fetch/pull/push, clipboard path copy, ignore path/extension, discard confirmation cancel/confirm, direct discard, safe external-editor dispatch, safe reveal-in-Finder dispatch, and safe default-app dispatch:
+For broader local coverage, run the full suite. It creates a fresh temporary sample repo plus a local bare `origin` and local mock AI server, then exercises selectors, repo loading, refresh, file watcher auto-sync, tabs, filters, settings visibility and persistence, AI validation/success, change/history selection, history checkout/revert/cherry-pick through branch selection, history copy-SHA/copy-diff, commit/branch/file GitHub URL actions through a safe URL opener, branch switching, create-branch dialog cancel/fill/confirm, create branch from commit, branch creation, branch merging, branch deletion, stash/restore, commit validation, commit success, undo last commit, fetch/pull/push, clipboard path copy, ignore path/extension, discard confirmation cancel/confirm, direct discard, safe external-editor dispatch, safe reveal-in-Finder dispatch, and safe default-app dispatch:
 
 ```sh
 node e2e/full-suite.mjs
 ```
+
+`e2e/full-suite.mjs` is only the runner. Maintainable coverage lives under `e2e/suites/`, with shared fixture, mock AI, assertion, and URL-log helpers under `e2e/support/`.
 
 CI runs `node --check` for all E2E scripts and runs the native full suite on `ubuntu-24.04` under `xvfb` so the real GPUI desktop app is built, launched, and driven through the automation channel.
 
 Current full-suite coverage:
 
 ```text
-Covered: automation startup, test tree, getByTestId, getByText, click, fill, repo selector visibility/filter state, settings visibility, fresh repo open, refresh, change selection, sidebar tab switching, commit validation error, commit success with body, history selection, branch switching, push, fetch, pull.
-Covered: isolated app settings persistence, repository Git config persistence, AI missing-key validation, AI success through a local OpenAI-compatible mock server, copy relative path, copy full path, copy commit SHA, copy commit diff, checkout commit, revert commit, cherry-pick commit, commit/branch GitHub URL actions using a safe URL opener, create-branch dialog cancel/confirm, branch creation, branch merge, branch deletion, stash/restore, stash-and-switch dialog cancel/confirm for conflicting branch switches, ignore extension, ignore path, discard confirmation cancel/confirm, direct discard tracked-file changes, external-editor dispatch using a safe test editor, reveal-in-Finder/default-app dispatch using safe command overrides, undo last commit.
+Covered: automation startup, test tree, getByTestId, getByText, click, fill, repo selector visibility/filter state, settings visibility, fresh repo open, refresh, file watcher auto-sync, change selection, sidebar tab switching, commit validation error, commit success with body, history selection, branch switching, push, fetch, pull.
+Covered: isolated app settings persistence, repository Git config persistence, AI missing-key validation, AI success through a local OpenAI-compatible mock server, copy relative path, copy full path, copy commit SHA, copy commit diff, checkout commit, revert commit, cherry-pick branch selector flow, commit/branch/file GitHub URL actions using a safe URL opener, create-branch dialog cancel/fill/confirm, create branch from commit, branch creation, branch merge, branch deletion, stash/restore, stash-and-switch dialog cancel/confirm for conflicting branch switches, ignore extension, ignore path, discard confirmation cancel/confirm, direct discard tracked-file changes, external-editor dispatch using a safe test editor, reveal-in-Finder/default-app dispatch using safe command overrides, undo last commit.
 Not covered yet: real external AI provider availability, actual Finder/default app GUI behavior after OS handoff, visual regression, and cross-platform OS automation permissions.
 ```
 
@@ -185,6 +187,7 @@ button-branch-selector
 button-branch-new
 input-repo-filter
 input-branch-filter
+input-new-branch-name
 status-message
 error-message
 stash-indicator
@@ -202,6 +205,7 @@ settings-git-default-branch
 settings-ai-model
 settings-ai-api-key
 settings-ai-system-prompt
+settings-openrouter-model-filter
 settings-save-git
 settings-save-ai
 changes-list
@@ -225,10 +229,12 @@ change-src-main-rs-discard
 change-src-main-rs-prompt-discard
 change-src-main-rs-open-in-editor
 change-src-main-rs-open-with-default
+change-src-main-rs-view-on-github
 commit-abc1234
 commit-abc1234-checkout
 commit-abc1234-revert
 commit-abc1234-cherry-pick
+commit-abc1234-create-branch
 commit-abc1234-copy-sha
 commit-abc1234-copy-diff
 commit-abc1234-view-on-github

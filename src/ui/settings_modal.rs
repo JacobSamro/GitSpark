@@ -284,11 +284,25 @@ fn render_header(cx: &mut Context<GitSparkApp>) -> impl IntoElement {
                 ),
         )
         .child(
-            render_secondary_button("settings-close-header", "Close", cx).on_click(cx.listener(
-                |app, _evt, _window, cx| {
+            div()
+                .id("settings-close-header")
+                .w(theme::z(32.0))
+                .h(theme::z(32.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(theme::z(theme::CORNER_RADIUS))
+                .border_1()
+                .border_color(theme::border())
+                .bg(theme::surface_bg())
+                .text_size(theme::z(20.0))
+                .text_color(theme::text_muted())
+                .cursor_pointer()
+                .hover(|s| s.bg(theme::hover_bg()).text_color(theme::text_main()))
+                .child("\u{00d7}")
+                .on_click(cx.listener(|app, _evt, _window, cx| {
                     app.handle_settings_action(SettingsAction::Close, cx);
-                },
-            )),
+                })),
         )
 }
 
@@ -738,7 +752,7 @@ fn render_openrouter_models(
                             },
                         )
                         .with_sizing_behavior(ListSizingBehavior::Infer)
-                        .h(theme::z(280.0))
+                        .h(theme::z(220.0))
                         .into_any_element()
                     })
                     .into_any_element()
