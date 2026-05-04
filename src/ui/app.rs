@@ -6558,9 +6558,11 @@ impl GitSparkApp {
 
         // Separate local branches, filtered by search text
         let filter = self.filters.branch_filter_text.to_lowercase();
+        let merge_mode = self.nav.branch_selector_mode == BranchSelectorMode::Merge;
         let local_branches: Vec<&BranchInfo> = branches
             .iter()
             .filter(|b| !b.is_remote)
+            .filter(|b| !merge_mode || !b.is_current)
             .filter(|b| filter.is_empty() || b.name.to_lowercase().contains(&filter))
             .collect();
 
@@ -6707,33 +6709,37 @@ impl GitSparkApp {
                     )
                     .child(text_child)
             })
-            .child(
-                h_flex()
-                    .id("branch-new-btn")
-                    .flex_shrink_0()
-                    .h(px(28.0))
-                    .px(px(12.0))
-                    .items_center()
-                    .justify_center()
-                    .rounded(theme::z(theme::CORNER_RADIUS))
-                    .bg(theme::surface_bg())
-                    .border_1()
-                    .border_color(theme::surface_bg_alt())
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme::toolbar_hover_bg()))
-                    .on_click(cx.listener(|app, _evt, _win, cx| {
-                        app.menu_new_branch(cx);
-                        if matches!(app.nav.active_dialog, ActiveDialog::CreateBranch) {
-                            _win.focus(&app.new_branch_focus);
-                        }
-                    }))
-                    .child(
-                        div()
-                            .text_size(theme::z(theme::FONT_SIZE))
-                            .text_color(theme::text_main())
-                            .child("New Branch"),
-                    ),
-            );
+            .children(if merge_mode {
+                None
+            } else {
+                Some(
+                    h_flex()
+                        .id("branch-new-btn")
+                        .flex_shrink_0()
+                        .h(px(28.0))
+                        .px(px(12.0))
+                        .items_center()
+                        .justify_center()
+                        .rounded(theme::z(theme::CORNER_RADIUS))
+                        .bg(theme::surface_bg())
+                        .border_1()
+                        .border_color(theme::surface_bg_alt())
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme::toolbar_hover_bg()))
+                        .on_click(cx.listener(|app, _evt, _win, cx| {
+                            app.menu_new_branch(cx);
+                            if matches!(app.nav.active_dialog, ActiveDialog::CreateBranch) {
+                                _win.focus(&app.new_branch_focus);
+                            }
+                        }))
+                        .child(
+                            div()
+                                .text_size(theme::z(theme::FONT_SIZE))
+                                .text_color(theme::text_main())
+                                .child("New Branch"),
+                        ),
+                )
+            });
 
         // --- Grouped branch list: Default Branch + Other Branches ---
         // Separate into default (current) and others

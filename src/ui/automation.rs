@@ -889,13 +889,17 @@ impl GitSparkApp {
         }
 
         if self.nav.show_branch_selector {
-            children.push(automation_node(
-                "branch-new",
-                AutomationRole::Button,
-                Some("button-branch-new"),
-                Some("New Branch"),
-                Some(AutomationNodeAction::StartCreateBranch),
-            ));
+            children.push(
+                automation_node(
+                    "branch-new",
+                    AutomationRole::Button,
+                    Some("button-branch-new"),
+                    Some("New Branch"),
+                    Some(AutomationNodeAction::StartCreateBranch),
+                )
+                .visible(self.nav.branch_selector_mode != BranchSelectorMode::Merge)
+                .enabled(self.nav.branch_selector_mode != BranchSelectorMode::Merge),
+            );
             children.extend(branch_selector_nodes(self));
         }
 
@@ -1327,6 +1331,11 @@ impl GitSparkApp {
                     snapshot
                         .branches
                         .iter()
+                        .filter(|branch| !branch.is_remote)
+                        .filter(|branch| {
+                            self.nav.branch_selector_mode != BranchSelectorMode::Merge
+                                || !branch.is_current
+                        })
                         .map(|branch| {
                             automation_node(
                                 format!("branch-{}", stable_test_slug(&branch.name)),
