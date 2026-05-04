@@ -894,6 +894,7 @@ impl GitSparkApp {
                 Some("New Branch"),
                 Some(AutomationNodeAction::StartCreateBranch),
             ));
+            children.extend(branch_selector_nodes(self));
         }
 
         if matches!(self.nav.active_dialog, ActiveDialog::CreateBranch) {
@@ -1915,6 +1916,32 @@ fn repo_selector_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
     );
 
     nodes
+}
+
+fn branch_selector_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
+    let Some(snapshot) = app.repo.snapshot.as_ref() else {
+        return Vec::new();
+    };
+
+    let filter = app.filters.branch_filter_text.to_ascii_lowercase();
+    let visible_branches = snapshot
+        .branches
+        .iter()
+        .filter(|branch| !branch.is_remote)
+        .filter(|branch| filter.is_empty() || branch.name.to_ascii_lowercase().contains(&filter))
+        .collect::<Vec<_>>();
+
+    if !visible_branches.is_empty() {
+        return Vec::new();
+    }
+
+    vec![automation_node(
+        "branch-selector-empty",
+        AutomationRole::Status,
+        Some("branch-selector-empty"),
+        Some("Sorry, I can't find that branch"),
+        None::<AutomationNodeAction>,
+    )]
 }
 
 fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {

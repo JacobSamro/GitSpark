@@ -6703,16 +6703,17 @@ impl GitSparkApp {
                     .left_0()
                     .w_full()
                     .child(
-                        div()
-                            .w_full()
-                            .py(px(20.0))
+                        v_flex()
+                            .size_full()
                             .items_center()
                             .justify_center()
+                            .px(px(16.0))
                             .child(
                                 div()
                                     .text_size(theme::z(12.0))
                                     .text_color(theme::text_muted())
-                                    .child("No branches"),
+                                    .text_align(gpui::TextAlign::Center)
+                                    .child("Sorry, I can't find that branch"),
                             ),
                     )
                     .into_any_element()
