@@ -4276,10 +4276,15 @@ impl GitSparkApp {
             let snapshot = self.repo.snapshot.as_ref();
             let ahead = snapshot.map(|s| s.repo.ahead).unwrap_or(0);
             let remote = snapshot.and_then(|s| s.repo.remote_name.as_deref());
+            let has_github_remote = snapshot.map(|s| s.repo.has_github_remote).unwrap_or(false);
             return h_resizable("workspace-panels")
                 .child(
                     resizable_panel().child(crate::ui::sidebar::render_no_changes_state(
-                        &view, ahead, remote, cx,
+                        &view,
+                        ahead,
+                        remote,
+                        has_github_remote,
+                        cx,
                     )),
                 )
                 .into_any_element();

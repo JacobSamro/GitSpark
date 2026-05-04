@@ -699,6 +699,14 @@ impl GitClient {
         let history = self.fetch_history(repo_path, 100).unwrap_or_default();
         let stash_count = self.stash_count(repo_path).unwrap_or(0);
         let remote_name = self.read_primary_remote(repo_path).unwrap_or(None);
+        let has_github_remote = remote_name
+            .as_deref()
+            .and_then(|remote| {
+                self.run_git(repo_path, &["remote", "get-url", remote])
+                    .ok()
+                    .and_then(|url| normalize_github_remote_url(url.trim()))
+            })
+            .is_some();
         let last_fetched = self.read_last_fetched(repo_path);
 
         Ok(RepoSnapshot {
@@ -708,6 +716,7 @@ impl GitClient {
                 current_branch: status.current_branch,
                 head_oid: status.head_oid,
                 remote_name,
+                has_github_remote,
                 ahead: status.ahead,
                 behind: status.behind,
                 last_fetched,

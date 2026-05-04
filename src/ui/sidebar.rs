@@ -656,8 +656,10 @@ pub fn render_no_changes_state(
     view: &Entity<GitSparkApp>,
     ahead: usize,
     remote: Option<&str>,
+    has_github_remote: bool,
     _cx: &mut Context<GitSparkApp>,
 ) -> Div {
+    let vh_publish = view.clone();
     let vh_push = view.clone();
     let vh_editor = view.clone();
     let vh_finder = view.clone();
@@ -759,6 +761,26 @@ pub fn render_no_changes_state(
         );
     }
 
+    if remote.is_none() {
+        cards = cards.child(suggestion_card(
+            "no-changes-publish",
+            "Publish your repository to GitHub",
+            "Always available in the toolbar for local repositories or",
+            &["\u{2318}", "P"],
+            "Publish repository",
+            move |_evt, _win, cx| {
+                vh_publish.update(cx, |app, cx| {
+                    app.handle_toolbar_action(
+                        crate::ui::app::ToolbarAction::RunNetworkAction(
+                            crate::ui::domain_state::NetworkAction::PublishRepository,
+                        ),
+                        cx,
+                    );
+                });
+            },
+        ));
+    }
+
     // --- Card 2: Open in External Editor ---
     cards = cards.child(suggestion_card(
         "no-changes-editor",
@@ -792,21 +814,20 @@ pub fn render_no_changes_state(
     ));
 
     // --- Card 4: View on GitHub ---
-    cards = cards.child(suggestion_card(
-        "no-changes-github",
-        "Open the repository page on GitHub in your browser",
-        "Repository menu or",
-        &["\u{2318}", "\u{21E7}", "G"],
-        "View on GitHub",
-        move |_evt, _win, cx| {
-            vh_github.update(cx, |app, _cx| {
-                if let Some(snapshot) = &app.repo.snapshot {
-                    let name = &snapshot.repo.name;
-                    let _ = open::that_detached(format!("https://github.com/{name}"));
-                }
-            });
-        },
-    ));
+    if has_github_remote {
+        cards = cards.child(suggestion_card(
+            "no-changes-github",
+            "Open the repository page on GitHub in your browser",
+            "Repository menu or",
+            &["\u{2318}", "\u{21E7}", "G"],
+            "View on GitHub",
+            move |_evt, _win, cx| {
+                vh_github.update(cx, |app, cx| {
+                    app.menu_view_on_github(cx);
+                });
+            },
+        ));
+    }
 
     // Outer wrapper: full-size, scrollable, cards centered at max 600px
     div().size_full().child(

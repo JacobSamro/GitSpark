@@ -9,6 +9,8 @@ pub struct RepoSummary {
     pub current_branch: String,
     pub head_oid: Option<String>,
     pub remote_name: Option<String>,
+    #[serde(default)]
+    pub has_github_remote: bool,
     pub ahead: usize,
     pub behind: usize,
     pub last_fetched: Option<String>,
