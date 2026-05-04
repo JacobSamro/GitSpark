@@ -126,5 +126,8 @@ jobs:
         with:
           node-version: 24
 
+      - name: Build native app for E2E
+        run: cargo build --locked
+
       - name: Run native full-suite E2E
         run: xvfb-run -a node e2e/full-suite.mjs

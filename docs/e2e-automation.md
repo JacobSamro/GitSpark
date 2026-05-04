@@ -26,6 +26,12 @@ GITSPARK_AUTOMATION_READY_FILE=/tmp/gitspark-automation.addr \
 cargo run
 ```
 
+The Node launcher waits up to five minutes for the automation ready file by default. Override this for slower or faster environments:
+
+```sh
+GITSPARK_E2E_LAUNCH_TIMEOUT_MS=600000 node e2e/full-suite.mjs
+```
+
 Use an isolated settings file or config directory for tests:
 
 ```sh
@@ -76,7 +82,7 @@ For broader local coverage, run the full suite. It creates a fresh temporary sam
 node e2e/full-suite.mjs
 ```
 
-CI runs `node --check` for all E2E scripts and runs the native full suite on `ubuntu-24.04` under `xvfb` so the real GPUI desktop app is launched and driven through the automation channel.
+CI runs `node --check` for all E2E scripts and runs the native full suite on `ubuntu-24.04` under `xvfb` so the real GPUI desktop app is built, launched, and driven through the automation channel.
 
 Current full-suite coverage:
 

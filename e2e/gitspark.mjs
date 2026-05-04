@@ -6,6 +6,9 @@ import os from "node:os";
 import path from "node:path";
 
 const DEFAULT_ADDR = "127.0.0.1:7878";
+const DEFAULT_LAUNCH_TIMEOUT_MS = Number(
+  process.env.GITSPARK_E2E_LAUNCH_TIMEOUT_MS || 300_000,
+);
 
 export class GitSparkAutomation {
   constructor({ addr = DEFAULT_ADDR, child = null } = {}) {
@@ -20,9 +23,9 @@ export class GitSparkAutomation {
   static async launch({
     cwd = process.cwd(),
     command = "cargo",
-    args = ["run"],
+    args = ["run", "--locked"],
     env = {},
-    timeoutMs = 90_000,
+    timeoutMs = DEFAULT_LAUNCH_TIMEOUT_MS,
   } = {}) {
     const readyFile = path.join(
       os.tmpdir(),
