@@ -1632,21 +1632,8 @@ impl GitSparkApp {
     ) {
         match action {
             BranchContextAction::Delete => {
-                let Some(path) = self.repo_path().map(PathBuf::from) else {
-                    return;
-                };
-                self.messages.status_message = format!("Deleting branch '{branch_name}'...");
+                self.nav.active_dialog = ActiveDialog::DeleteBranch { branch_name };
                 self.messages.error_message.clear();
-                let tx = self.event_tx.clone();
-                let git = GitClient::new();
-                let name = branch_name.clone();
-                thread::spawn(move || {
-                    let res = git.delete_branch(&path, &name).map_err(|e| e.to_string());
-                    tx.send(AppEvent::NetworkActionCompleted(
-                        res,
-                        format!("Deleted branch '{name}'"),
-                    ));
-                });
             }
             BranchContextAction::ViewOnGitHub => {
                 let Some(path) = self.repo_path().map(PathBuf::from) else {
@@ -1686,6 +1673,28 @@ impl GitSparkApp {
                 };
             }
         }
+        cx.notify();
+    }
+
+    pub(crate) fn confirm_delete_branch(&mut self, branch_name: String, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            return;
+        };
+
+        self.nav.active_dialog = ActiveDialog::None;
+        self.messages.status_message = format!("Deleting branch '{branch_name}'...");
+        self.messages.error_message.clear();
+        let tx = self.event_tx.clone();
+        let git = GitClient::new();
+        let name = branch_name.clone();
+        thread::spawn(move || {
+            let res = git.delete_branch(&path, &name).map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::NetworkActionCompleted(
+                res,
+                format!("Deleted branch '{name}'"),
+            ));
+        });
         cx.notify();
     }
 
@@ -4601,6 +4610,7 @@ impl GitSparkApp {
         let (dialog_width, dialog_height) = match &self.nav.active_dialog {
             ActiveDialog::CreateBranch => (400.0, 230.0),
             ActiveDialog::RenameBranch { .. } => (400.0, 230.0),
+            ActiveDialog::DeleteBranch { .. } => (440.0, 220.0),
             ActiveDialog::CreateTag { .. } => (400.0, 230.0),
             ActiveDialog::ResetToCommit { .. } => (500.0, 240.0),
             ActiveDialog::DiscardChanges { .. } => (420.0, 230.0),
@@ -4948,6 +4958,9 @@ impl GitSparkApp {
                                     })),
                             ),
                     )
+            }
+            ActiveDialog::DeleteBranch { branch_name } => {
+                crate::ui::delete_branch_dialog::render_delete_branch_dialog(branch_name, cx)
             }
             ActiveDialog::CreateTag { target_oid } => {
                 let tag_name = &self.repo.new_branch_name;

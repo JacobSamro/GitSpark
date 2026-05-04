@@ -2,6 +2,7 @@ pub mod app;
 pub mod automation;
 pub mod branch_context_menu;
 pub mod changes_context_menu;
+pub mod delete_branch_dialog;
 pub mod domain_state;
 pub mod history_context_menu;
 pub mod labels;

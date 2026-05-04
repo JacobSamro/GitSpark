@@ -447,6 +447,7 @@ enum AutomationNodeAction {
     SetBranchSwitchMode(bool),
     ConfirmCreateBranch,
     ConfirmRenameBranch,
+    ConfirmDeleteBranch,
     ConfirmCreateTag,
     ConfirmResetToCommit,
     ConfirmStashAndSwitch,
@@ -982,6 +983,25 @@ impl GitSparkApp {
             ]);
         }
 
+        if matches!(self.nav.active_dialog, ActiveDialog::DeleteBranch { .. }) {
+            children.extend([
+                automation_node(
+                    "delete-branch-cancel",
+                    AutomationRole::Button,
+                    Some("delete-branch-cancel"),
+                    Some("Cancel"),
+                    Some(AutomationNodeAction::CancelDialog),
+                ),
+                automation_node(
+                    "delete-branch-confirm",
+                    AutomationRole::Button,
+                    Some("delete-branch-confirm"),
+                    Some("Delete"),
+                    Some(AutomationNodeAction::ConfirmDeleteBranch),
+                ),
+            ]);
+        }
+
         if matches!(self.nav.active_dialog, ActiveDialog::CreateTag { .. }) {
             children.extend([
                 automation_node(
@@ -1341,6 +1361,13 @@ impl GitSparkApp {
                     _ => return AutomationResponse::failure("rename branch dialog is not active"),
                 };
                 self.rename_branch(old_name, cx);
+            }
+            AutomationNodeAction::ConfirmDeleteBranch => {
+                let branch_name = match &self.nav.active_dialog {
+                    ActiveDialog::DeleteBranch { branch_name } => branch_name.clone(),
+                    _ => return AutomationResponse::failure("delete branch dialog is not active"),
+                };
+                self.confirm_delete_branch(branch_name, cx);
             }
             AutomationNodeAction::ConfirmCreateTag => {
                 let target_oid = match &self.nav.active_dialog {
@@ -2187,6 +2214,7 @@ fn active_dialog_name(dialog: &ActiveDialog) -> &'static str {
         ActiveDialog::DiscardChanges { .. } => "discard_changes",
         ActiveDialog::StashAndSwitch { .. } => "stash_and_switch",
         ActiveDialog::RenameBranch { .. } => "rename_branch",
+        ActiveDialog::DeleteBranch { .. } => "delete_branch",
         ActiveDialog::CreateTag { .. } => "create_tag",
         ActiveDialog::ResetToCommit { .. } => "reset_to_commit",
         ActiveDialog::RestoreStash => "restore_stash",
