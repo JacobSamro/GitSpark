@@ -866,6 +866,100 @@ pub fn render_no_changes_state(
     )
 }
 
+pub fn render_no_repository_state(
+    view: &Entity<GitSparkApp>,
+    _cx: &mut Context<GitSparkApp>,
+) -> Div {
+    let vh_choose = view.clone();
+    let vh_add = view.clone();
+
+    div().size_full().child(
+        div()
+            .id("no-repository-state")
+            .size_full()
+            .min_h_0()
+            .overflow_y_scrollbar()
+            .child(
+                h_flex()
+                    .w_full()
+                    .justify_center()
+                    .child(
+                        v_flex()
+                            .w(px(560.0))
+                            .p(z(20.0))
+                            .gap(z(16.0))
+                            .child(
+                                v_flex()
+                                    .gap(z(6.0))
+                                    .child(
+                                        div()
+                                            .text_size(z(28.0))
+                                            .text_color(theme::text_main())
+                                            .font_weight(FontWeight::BOLD)
+                                            .child("No repository selected"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(z(14.0))
+                                            .text_color(theme::text_muted())
+                                            .child("Choose a recent repository or add a local repository to get started."),
+                                    ),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap(z(10.0))
+                                    .child(
+                                        div()
+                                            .id("no-repository-choose")
+                                            .px(z(12.0))
+                                            .py(z(7.0))
+                                            .rounded(z(theme::CORNER_RADIUS))
+                                            .bg(theme::commit_button_bg())
+                                            .text_color(theme::commit_button_text())
+                                            .cursor_pointer()
+                                            .hover(|s| s.bg(theme::commit_button_hover_bg()))
+                                            .child(
+                                                div()
+                                                    .text_size(z(13.0))
+                                                    .font_weight(FontWeight::SEMIBOLD)
+                                                    .child("Show Repository List"),
+                                            )
+                                            .on_click(move |_evt, _win, cx| {
+                                                vh_choose.update(cx, |app, cx| {
+                                                    app.menu_show_repository_list(cx);
+                                                });
+                                            }),
+                                    )
+                                    .child(
+                                        div()
+                                            .id("no-repository-add-local")
+                                            .px(z(12.0))
+                                            .py(z(7.0))
+                                            .rounded(z(theme::CORNER_RADIUS))
+                                            .border_1()
+                                            .border_color(theme::surface_bg_alt())
+                                            .bg(theme::surface_bg())
+                                            .text_color(theme::text_main())
+                                            .cursor_pointer()
+                                            .hover(|s| s.bg(theme::toolbar_hover_bg()))
+                                            .child(
+                                                div()
+                                                    .text_size(z(13.0))
+                                                    .font_weight(FontWeight::SEMIBOLD)
+                                                    .child("Add Local Repository..."),
+                                            )
+                                            .on_click(move |_evt, _win, cx| {
+                                                vh_add.update(cx, |app, cx| {
+                                                    app.menu_open_repository(cx);
+                                                });
+                                            }),
+                                    ),
+                            ),
+                    ),
+            ),
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Suggestion card — bordered card with title, subtitle, shortcut, action btn
 // ---------------------------------------------------------------------------

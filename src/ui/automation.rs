@@ -767,7 +767,7 @@ impl GitSparkApp {
                 self.missing_identity_message(),
                 None,
             )
-            .visible(self.missing_identity_message().is_some()),
+            .visible(self.repo.snapshot.is_some() && self.missing_identity_message().is_some()),
             automation_node(
                 "undo-last-commit",
                 AutomationRole::Button,
@@ -846,6 +846,25 @@ impl GitSparkApp {
                 Some(self.messages.error_message.as_str()),
                 None,
             ));
+        }
+
+        if self.repo.snapshot.is_none() {
+            children.extend([
+                automation_node(
+                    "no-repository-state",
+                    AutomationRole::Status,
+                    Some("no-repository-state"),
+                    Some("No repository selected"),
+                    None,
+                ),
+                automation_node(
+                    "no-repository-choose",
+                    AutomationRole::Button,
+                    Some("no-repository-choose"),
+                    Some("Show Repository List"),
+                    Some(AutomationNodeAction::ShowRepoSelector(true)),
+                ),
+            ]);
         }
 
         if self.nav.show_branch_selector {

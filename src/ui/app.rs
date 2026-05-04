@@ -4422,55 +4422,60 @@ impl GitSparkApp {
         };
 
         let can_commit = self.can_commit();
-        let identity_warning = self.missing_identity_message().map(|message| {
-            h_flex()
-                .id("commit-identity-warning")
-                .w_full()
-                .gap(px(8.0))
-                .items_center()
-                .px(px(8.0))
-                .py(px(7.0))
-                .rounded(theme::z(theme::CORNER_RADIUS))
-                .bg(theme::surface_bg())
-                .border_1()
-                .border_color(theme::warning())
-                .child(
-                    Icon::new(IconName::TriangleAlert)
-                        .size(px(13.0))
-                        .text_color(theme::warning()),
-                )
-                .child(
-                    div()
-                        .min_w_0()
-                        .flex_1()
-                        .text_size(px(12.0))
-                        .text_color(theme::text_main())
-                        .child(message),
-                )
-                .child(
-                    div()
-                        .id("commit-identity-settings")
-                        .px(px(8.0))
-                        .py(px(4.0))
-                        .rounded(px(3.0))
-                        .bg(theme::surface_bg_alt())
-                        .cursor_pointer()
-                        .hover(|s| s.bg(theme::toolbar_hover_bg()))
-                        .child(
-                            div()
-                                .text_size(px(12.0))
-                                .text_color(theme::text_main())
-                                .child("Git Settings"),
-                        )
-                        .on_click(cx.listener(|app, _evt, window, cx| {
-                            app.open_settings_modal(
-                                Some(crate::ui::ui_state::SettingsSection::Git),
-                                cx,
-                            );
-                            app.activate_settings_field(SettingsField::GitUserName, window, cx);
-                        })),
-                )
-        });
+        let identity_warning = self
+            .repo
+            .snapshot
+            .as_ref()
+            .and_then(|_| self.missing_identity_message())
+            .map(|message| {
+                h_flex()
+                    .id("commit-identity-warning")
+                    .w_full()
+                    .gap(px(8.0))
+                    .items_center()
+                    .px(px(8.0))
+                    .py(px(7.0))
+                    .rounded(theme::z(theme::CORNER_RADIUS))
+                    .bg(theme::surface_bg())
+                    .border_1()
+                    .border_color(theme::warning())
+                    .child(
+                        Icon::new(IconName::TriangleAlert)
+                            .size(px(13.0))
+                            .text_color(theme::warning()),
+                    )
+                    .child(
+                        div()
+                            .min_w_0()
+                            .flex_1()
+                            .text_size(px(12.0))
+                            .text_color(theme::text_main())
+                            .child(message),
+                    )
+                    .child(
+                        div()
+                            .id("commit-identity-settings")
+                            .px(px(8.0))
+                            .py(px(4.0))
+                            .rounded(px(3.0))
+                            .bg(theme::surface_bg_alt())
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme::toolbar_hover_bg()))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(theme::text_main())
+                                    .child("Git Settings"),
+                            )
+                            .on_click(cx.listener(|app, _evt, window, cx| {
+                                app.open_settings_modal(
+                                    Some(crate::ui::ui_state::SettingsSection::Git),
+                                    cx,
+                                );
+                                app.activate_settings_field(SettingsField::GitUserName, window, cx);
+                            })),
+                    )
+            });
 
         // Summary length hint (> 50 chars)
         let summary_hint = if self.commit.summary.len() > 50 {
@@ -4533,6 +4538,15 @@ impl GitSparkApp {
 
     fn render_workspace(&self, view: Entity<Self>, cx: &mut Context<Self>) -> AnyElement {
         let sidebar_tab = self.nav.sidebar_tab;
+
+        if self.repo.snapshot.is_none() {
+            return h_resizable("workspace-panels")
+                .child(
+                    resizable_panel()
+                        .child(crate::ui::sidebar::render_no_repository_state(&view, cx)),
+                )
+                .into_any_element();
+        }
 
         // Determine the active file list and selected file based on tab.
         let (diffs, selected_file): (&[DiffEntry], Option<&str>) = match sidebar_tab {
