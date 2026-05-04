@@ -789,7 +789,11 @@ impl GitSparkApp {
                 Some("Generate AI commit"),
                 Some(AutomationNodeAction::GenerateAiCommit),
             )
-            .enabled(!self.commit.ai_in_flight),
+            .enabled(
+                self.repo.snapshot.is_some()
+                    && self.commit_file_count() > 0
+                    && !self.commit.ai_in_flight,
+            ),
             automation_node(
                 "repo-selector-toggle",
                 AutomationRole::Button,

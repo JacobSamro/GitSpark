@@ -4380,6 +4380,10 @@ impl GitSparkApp {
         description_focused: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let file_count = self.commit_file_count();
+        let can_generate_ai =
+            self.repo.snapshot.is_some() && file_count > 0 && !self.commit.ai_in_flight;
+
         // Action bar buttons (below description, matching GitHub Desktop layout)
         let action_bar_btn = |id: &str, icon: IconName| -> Stateful<Div> {
             div()
@@ -4402,13 +4406,15 @@ impl GitSparkApp {
         let sparkle_button = div()
             .id("ai-generate-btn")
             .flex_shrink_0()
-            .cursor_pointer()
-            .hover(|s| s.bg(theme::hover_bg()))
             .rounded(px(3.0))
             .w(px(18.0))
             .h(px(17.0))
             .items_center()
             .justify_center()
+            .when(!can_generate_ai, |s| s.opacity(0.45))
+            .when(can_generate_ai, |s| {
+                s.cursor_pointer().hover(|s| s.bg(theme::hover_bg()))
+            })
             .child(
                 svg()
                     .path("icons/sparkles.svg")
@@ -4416,6 +4422,12 @@ impl GitSparkApp {
                     .text_color(theme::text_muted()),
             )
             .on_click(cx.listener(|app, _evt, _win, cx| {
+                if app.repo.snapshot.is_none()
+                    || app.commit_file_count() == 0
+                    || app.commit.ai_in_flight
+                {
+                    return;
+                }
                 app.generate_ai_commit(cx);
             }));
 
@@ -4490,9 +4502,6 @@ impl GitSparkApp {
 
         // Description + action bar grouped together (shared border)
         let description_group = v_flex().w_full().child(description_field).child(action_bar);
-
-        // Commit button label with file count
-        let file_count = self.commit_file_count();
 
         let commit_label = if self.commit.ai_in_flight {
             "Generating commit details\u{2026}".to_string()
