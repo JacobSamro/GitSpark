@@ -11,6 +11,7 @@ pub mod publish_dialog;
 pub mod reset_dialog;
 pub mod settings_modal;
 pub mod sidebar;
+pub mod stash_changes_dialog;
 pub mod stash_file_list;
 pub mod status_bar;
 pub mod text_field;

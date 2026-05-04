@@ -1018,6 +1018,46 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub(crate) fn show_stash_changes_dialog(&mut self, cx: &mut Context<Self>) {
+        let Some(snapshot) = self.repo.snapshot.as_ref() else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        if snapshot.changes.is_empty() {
+            self.messages.error_message = "There are no local changes to stash.".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.nav.active_dialog = ActiveDialog::StashChanges;
+        self.messages.error_message.clear();
+        cx.notify();
+    }
+
+    pub(crate) fn stash_changes(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        self.nav.active_dialog = ActiveDialog::None;
+        self.messages.status_message = "Stashing changes...".to_string();
+        self.messages.error_message.clear();
+        let tx = self.event_tx.clone();
+        let git = GitClient::new();
+        thread::spawn(move || {
+            let res = git.stash_all(&path).map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::NetworkActionCompleted(
+                res,
+                "Stashed changes".to_string(),
+            ));
+        });
+        cx.notify();
+    }
+
     pub(crate) fn restore_stash(&mut self, cx: &mut Context<Self>) {
         let Some(path) = self.repo_path().map(PathBuf::from) else {
             self.messages.error_message = "No repository selected.".to_string();
@@ -2725,6 +2765,10 @@ impl GitSparkApp {
         self.messages.status_message =
             "Choose a branch to merge into the current branch.".to_string();
         cx.notify();
+    }
+
+    pub fn menu_stash_changes(&mut self, cx: &mut Context<Self>) {
+        self.show_stash_changes_dialog(cx);
     }
 
     pub fn menu_zoom_in(&mut self, cx: &mut Context<Self>) {
@@ -4803,6 +4847,7 @@ impl GitSparkApp {
             ActiveDialog::ResetToCommit { .. } => (500.0, 240.0),
             ActiveDialog::DiscardChanges { .. } => (420.0, 230.0),
             ActiveDialog::StashAndSwitch { .. } => (576.0, 360.0),
+            ActiveDialog::StashChanges => (500.0, 360.0),
             ActiveDialog::RestoreStash => (500.0, 360.0),
             ActiveDialog::DiscardStash => (500.0, 400.0),
             ActiveDialog::PublishRepository => (
@@ -5150,6 +5195,15 @@ impl GitSparkApp {
             }
             ActiveDialog::DeleteBranch { branch_name } => {
                 crate::ui::delete_branch_dialog::render_delete_branch_dialog(branch_name, cx)
+            }
+            ActiveDialog::StashChanges => {
+                let files = self
+                    .repo
+                    .snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.changes.clone())
+                    .unwrap_or_default();
+                crate::ui::stash_changes_dialog::render_stash_changes_dialog(Arc::new(files), cx)
             }
             ActiveDialog::DiscardStash => {
                 crate::ui::discard_stash_dialog::render_discard_stash_dialog(

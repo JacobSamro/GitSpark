@@ -452,6 +452,7 @@ enum AutomationNodeAction {
     ConfirmDeleteBranch,
     ConfirmCreateTag,
     ConfirmResetToCommit,
+    ConfirmStashChanges,
     ConfirmStashAndSwitch,
     ShowRestoreStash,
     RestoreStash,
@@ -547,7 +548,7 @@ impl GitSparkApp {
                 AutomationResponse::success(self.automation_snapshot())
             }
             AutomationCommand::StashAll => {
-                self.perform_stash_action(true, cx);
+                self.show_stash_changes_dialog(cx);
                 AutomationResponse::success(self.automation_snapshot())
             }
             AutomationCommand::StashPop => {
@@ -949,6 +950,44 @@ impl GitSparkApp {
                     Some("stash-switch"),
                     Some("Switch Branch"),
                     Some(AutomationNodeAction::ConfirmStashAndSwitch),
+                ),
+            ]);
+        }
+
+        if matches!(self.nav.active_dialog, ActiveDialog::StashChanges) {
+            children.push(automation_node(
+                "stash-changes-file-list",
+                AutomationRole::List,
+                Some("stash-changes-file-list"),
+                Some("Files to stash"),
+                None,
+            ));
+            if let Some(snapshot) = &self.repo.snapshot {
+                children.extend(snapshot.changes.iter().map(|file| {
+                    let id = format!("stash-changes-file-{}", stable_test_slug(&file.path));
+                    automation_node(
+                        id.clone(),
+                        AutomationRole::ListItem,
+                        Some(id),
+                        Some(file.path.as_str()),
+                        None,
+                    )
+                }));
+            }
+            children.extend([
+                automation_node(
+                    "stash-changes-cancel",
+                    AutomationRole::Button,
+                    Some("stash-changes-cancel"),
+                    Some("Cancel"),
+                    Some(AutomationNodeAction::CancelDialog),
+                ),
+                automation_node(
+                    "stash-changes-confirm",
+                    AutomationRole::Button,
+                    Some("stash-changes-confirm"),
+                    Some("Stash Changes"),
+                    Some(AutomationNodeAction::ConfirmStashChanges),
                 ),
             ]);
         }
@@ -1474,6 +1513,12 @@ impl GitSparkApp {
                 } else {
                     self.stash_and_switch_branch(target_branch, cx);
                 }
+            }
+            AutomationNodeAction::ConfirmStashChanges => {
+                if !matches!(self.nav.active_dialog, ActiveDialog::StashChanges) {
+                    return AutomationResponse::failure("stash changes dialog is not active");
+                }
+                self.stash_changes(cx);
             }
             AutomationNodeAction::ShowRestoreStash => {
                 self.show_restore_stash_dialog(cx);
@@ -2311,6 +2356,7 @@ fn active_dialog_name(dialog: &ActiveDialog) -> &'static str {
         ActiveDialog::CreateBranch => "create_branch",
         ActiveDialog::DiscardChanges { .. } => "discard_changes",
         ActiveDialog::StashAndSwitch { .. } => "stash_and_switch",
+        ActiveDialog::StashChanges => "stash_changes",
         ActiveDialog::RenameBranch { .. } => "rename_branch",
         ActiveDialog::DeleteBranch { .. } => "delete_branch",
         ActiveDialog::CreateTag { .. } => "create_tag",

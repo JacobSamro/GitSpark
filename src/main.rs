@@ -31,6 +31,7 @@ actions!(
         MenuRepositorySettings,
         MenuNewBranch,
         MenuMergeBranch,
+        MenuStashChanges,
         MenuZoomIn,
         MenuZoomOut,
         MenuZoomReset,
@@ -152,6 +153,12 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
     }
     {
         let view = view.clone();
+        cx.on_action(move |_: &MenuStashChanges, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_stash_changes(cx));
+        });
+    }
+    {
+        let view = view.clone();
         cx.on_action(move |_: &MenuZoomIn, cx| {
             let _ = view.update(cx, |app, cx| app.menu_zoom_in(cx));
         });
@@ -177,6 +184,7 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         KeyBinding::new("cmd-shift-f", MenuShowInFinder, None),
         KeyBinding::new("cmd-shift-g", MenuViewOnGitHub, None),
         KeyBinding::new("cmd-shift-n", MenuNewBranch, None),
+        KeyBinding::new("cmd-shift-s", MenuStashChanges, None),
         KeyBinding::new("cmd-+", MenuZoomIn, None),
         KeyBinding::new("cmd--", MenuZoomOut, None),
         KeyBinding::new("cmd-0", MenuZoomReset, None),
@@ -242,6 +250,8 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
             items: vec![
                 MenuItem::action("New Branch...", MenuNewBranch),
                 MenuItem::action("Merge into Current Branch...", MenuMergeBranch),
+                MenuItem::separator(),
+                MenuItem::action("Stash All Changes...", MenuStashChanges),
             ],
         },
     ]);

@@ -340,6 +340,16 @@ export async function testStashFlows(app, fixture) {
   await app.command({ command: "stash_all" });
   await app.waitForSnapshot(
     (snapshot) =>
+      snapshot.active_dialog === "stash_changes" &&
+      snapshot.repo?.changes.some((change) => change.path === "README.md"),
+    { timeoutMs: 10_000 },
+  );
+  await expect(app.getByTestId("stash-changes-file-readme-md")).toBeVisible({
+    timeoutMs: 10_000,
+  });
+  await app.getByTestId("stash-changes-confirm").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
       snapshot.status_message === "Stashed changes complete." &&
       snapshot.repo?.stash_count === 1 &&
       !snapshot.repo?.changes.some((change) => change.path === "README.md"),

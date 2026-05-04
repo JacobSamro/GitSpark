@@ -51,6 +51,7 @@ pub enum ActiveDialog {
     ResetToCommit {
         target_oid: String,
     },
+    StashChanges,
     RestoreStash,
     DiscardStash,
     PublishRepository,
