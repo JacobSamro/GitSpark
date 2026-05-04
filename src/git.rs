@@ -413,6 +413,19 @@ impl GitClient {
             .map(|base| format!("{base}/tree/{branch_name}")))
     }
 
+    pub fn github_repository_url(&self, repo_path: &Path) -> Result<Option<String>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let Some(remote_name) = self.read_primary_remote(&repo_path)? else {
+            return Ok(None);
+        };
+
+        let remote_url = self
+            .run_git(&repo_path, &["remote", "get-url", &remote_name])
+            .with_context(|| format!("failed to read remote URL for '{remote_name}'"))?;
+
+        Ok(normalize_github_remote_url(remote_url.trim()))
+    }
+
     pub fn github_file_url(&self, repo_path: &Path, relative_path: &str) -> Result<Option<String>> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let relative_path = relative_path.trim();

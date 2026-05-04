@@ -60,6 +60,7 @@ pub struct RepoState {
     pub new_branch_name: String,
     pub new_branch_start_point: Option<String>,
     pub pending_cherry_pick_oid: Option<String>,
+    pub switch_branch_bring_changes: bool,
     pub has_stash: bool,
 }
 
@@ -73,6 +74,7 @@ impl Default for RepoState {
             new_branch_name: String::new(),
             new_branch_start_point: None,
             pending_cherry_pick_oid: None,
+            switch_branch_bring_changes: false,
             has_stash: false,
         }
     }

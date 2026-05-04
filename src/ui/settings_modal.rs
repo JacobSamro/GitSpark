@@ -90,8 +90,8 @@ pub(crate) fn render_settings_modal(
     let bounds = window.bounds();
     let window_width = bounds.size.width / px(1.0);
     let window_height = bounds.size.height / px(1.0);
-    let panel_width = (window_width - 32.0).clamp(560.0, 780.0);
-    let panel_height = (window_height - 64.0).clamp(460.0, 640.0);
+    let panel_width = (window_width - 32.0).clamp(720.0, 940.0);
+    let panel_height = (window_height - 32.0).clamp(540.0, 720.0);
     let panel_left = ((window_width - panel_width) / 2.0).max(16.0);
     let panel_top = ((window_height - panel_height) / 2.0).max(16.0);
 
@@ -144,7 +144,7 @@ pub(crate) fn render_settings_modal(
         .w_full()
         .items_center()
         .p(theme::z(24.0))
-        .child(div().w_full().max_w(theme::z(560.0)).child(content));
+        .child(div().w_full().max_w(theme::z(680.0)).child(content));
 
     let content_scroll: AnyElement = {
         let base = div()
@@ -783,25 +783,25 @@ fn render_provider_group(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> im
         .gap(theme::z(10.0))
         .child(render_field_label("Provider", None))
         .child(
-            v_flex()
+            h_flex()
                 .w_full()
-                .gap(theme::z(8.0))
-                .child(render_provider_radio(
+                .gap(theme::z(10.0))
+                .child(div().flex_1().min_w_0().child(render_provider_radio(
                     app,
                     "settings-provider-openrouter",
                     AiProvider::OpenRouter,
                     "OpenRouter",
                     "Browse hosted models and keep the endpoint managed automatically.",
                     cx,
-                ))
-                .child(render_provider_radio(
+                )))
+                .child(div().flex_1().min_w_0().child(render_provider_radio(
                     app,
                     "settings-provider-openai-compatible",
                     AiProvider::OpenAICompatible,
                     "OpenAI Compatible",
                     "Use a direct OpenAI-compatible endpoint with a manual model name.",
                     cx,
-                )),
+                ))),
         )
 }
 
@@ -830,7 +830,7 @@ fn render_provider_radio(
             );
         }))
         .w_full()
-        .min_h(theme::z(72.0))
+        .min_h(theme::z(66.0))
         .p(theme::z(12.0))
         .rounded(theme::z(theme::CORNER_RADIUS))
         .border_1()

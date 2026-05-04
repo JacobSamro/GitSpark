@@ -13,6 +13,29 @@ use gpui::*;
 use crate::storage::load_settings;
 use crate::ui::GitSparkApp;
 
+actions!(
+    gitspark_menu,
+    [
+        MenuOpenRepository,
+        MenuShowSettings,
+        MenuShowChanges,
+        MenuShowHistory,
+        MenuFetch,
+        MenuPull,
+        MenuPush,
+        MenuPublishRepository,
+        MenuOpenExternalEditor,
+        MenuShowInFinder,
+        MenuViewOnGitHub,
+        MenuNewBranch,
+        MenuMergeBranch,
+        MenuZoomIn,
+        MenuZoomOut,
+        MenuZoomReset,
+        MenuQuit
+    ]
+);
+
 fn platform_titlebar_options() -> TitlebarOptions {
     #[cfg(target_os = "macos")]
     {
@@ -33,6 +56,179 @@ fn platform_titlebar_options() -> TitlebarOptions {
     }
 }
 
+fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
+    cx.on_action(|_: &MenuQuit, cx| cx.quit());
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuOpenRepository, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_open_repository(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuShowSettings, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_show_settings(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuShowChanges, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_show_changes(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuShowHistory, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_show_history(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuFetch, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_fetch(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuPull, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_pull(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuPush, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_push(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuPublishRepository, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_publish_repository(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuOpenExternalEditor, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_open_external_editor(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuShowInFinder, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_show_in_finder(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuViewOnGitHub, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_view_on_github(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuNewBranch, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_new_branch(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuMergeBranch, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_merge_branch(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuZoomIn, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_zoom_in(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuZoomOut, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_zoom_out(cx));
+        });
+    }
+    cx.on_action(move |_: &MenuZoomReset, cx| {
+        let _ = view.update(cx, |app, cx| app.menu_zoom_reset(cx));
+    });
+    cx.bind_keys([
+        KeyBinding::new("cmd-o", MenuOpenRepository, None),
+        KeyBinding::new("cmd-,", MenuShowSettings, None),
+        KeyBinding::new("cmd-1", MenuShowChanges, None),
+        KeyBinding::new("cmd-2", MenuShowHistory, None),
+        KeyBinding::new("cmd-r", MenuFetch, None),
+        KeyBinding::new("cmd-shift-p", MenuPush, None),
+        KeyBinding::new("cmd-shift-a", MenuOpenExternalEditor, None),
+        KeyBinding::new("cmd-shift-f", MenuShowInFinder, None),
+        KeyBinding::new("cmd-shift-g", MenuViewOnGitHub, None),
+        KeyBinding::new("cmd-shift-n", MenuNewBranch, None),
+        KeyBinding::new("cmd-+", MenuZoomIn, None),
+        KeyBinding::new("cmd--", MenuZoomOut, None),
+        KeyBinding::new("cmd-0", MenuZoomReset, None),
+        KeyBinding::new("cmd-q", MenuQuit, None),
+    ]);
+
+    cx.set_menus(vec![
+        Menu {
+            name: "GitSpark".into(),
+            items: vec![
+                MenuItem::action("Settings...", MenuShowSettings),
+                MenuItem::separator(),
+                MenuItem::os_submenu("Services", SystemMenuType::Services),
+                MenuItem::separator(),
+                MenuItem::action("Quit GitSpark", MenuQuit),
+            ],
+        },
+        Menu {
+            name: "File".into(),
+            items: vec![MenuItem::action("Open Repository...", MenuOpenRepository)],
+        },
+        Menu {
+            name: "Edit".into(),
+            items: vec![
+                MenuItem::os_action("Undo", NoAction {}, OsAction::Undo),
+                MenuItem::os_action("Redo", NoAction {}, OsAction::Redo),
+                MenuItem::separator(),
+                MenuItem::os_action("Cut", NoAction {}, OsAction::Cut),
+                MenuItem::os_action("Copy", NoAction {}, OsAction::Copy),
+                MenuItem::os_action("Paste", NoAction {}, OsAction::Paste),
+                MenuItem::os_action("Select All", NoAction {}, OsAction::SelectAll),
+            ],
+        },
+        Menu {
+            name: "View".into(),
+            items: vec![
+                MenuItem::action("Changes", MenuShowChanges),
+                MenuItem::action("History", MenuShowHistory),
+                MenuItem::separator(),
+                MenuItem::action("Zoom In", MenuZoomIn),
+                MenuItem::action("Zoom Out", MenuZoomOut),
+                MenuItem::action("Actual Size", MenuZoomReset),
+            ],
+        },
+        Menu {
+            name: "Repository".into(),
+            items: vec![
+                MenuItem::action("Fetch", MenuFetch),
+                MenuItem::action("Pull", MenuPull),
+                MenuItem::action("Push", MenuPush),
+                MenuItem::action("Publish Repository", MenuPublishRepository),
+                MenuItem::separator(),
+                MenuItem::action("Open in External Editor", MenuOpenExternalEditor),
+                MenuItem::action("Show in Finder", MenuShowInFinder),
+                MenuItem::action("View on GitHub", MenuViewOnGitHub),
+            ],
+        },
+        Menu {
+            name: "Branch".into(),
+            items: vec![
+                MenuItem::action("New Branch...", MenuNewBranch),
+                MenuItem::action("Merge into Current Branch...", MenuMergeBranch),
+            ],
+        },
+    ]);
+}
+
 fn main() {
     let settings = match load_settings() {
         Ok(s) => s,
@@ -44,6 +240,8 @@ fn main() {
         gpui_component::init(cx);
         // Force dark theme on gpui-component to match our GitHub Dark theme
         gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
+        let app_view = cx.new(|cx| GitSparkApp::new(settings.clone(), cx));
+        configure_native_menus(cx, app_view.clone());
 
         // Use saved window size, or derive from primary display:
         //   60% of display width/height, capped to 16:9, min 960×600
@@ -104,7 +302,7 @@ fn main() {
                 window_min_size: Some(size(px(720.0), px(480.0))),
                 ..Default::default()
             },
-            |_window, cx| cx.new(|cx| GitSparkApp::new(settings.clone(), cx)),
+            move |_window, _cx| app_view.clone(),
         )
         .unwrap();
     });

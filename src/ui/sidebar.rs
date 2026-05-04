@@ -101,7 +101,7 @@ fn render_stash_row(view: Entity<GitSparkApp>) -> AnyElement {
         )
         .on_click(move |_evt, _win, cx| {
             view.update(cx, |app, cx| {
-                app.restore_stash(cx);
+                app.show_restore_stash_dialog(cx);
             });
         })
         .into_any_element()

@@ -439,8 +439,10 @@ enum AutomationNodeAction {
     SwitchBranch(String),
     StartCreateBranch,
     SetNewBranchName,
+    SetBranchSwitchMode(bool),
     ConfirmCreateBranch,
     ConfirmStashAndSwitch,
+    ShowRestoreStash,
     RestoreStash,
     SaveGitSettings,
     SaveAiSettings,
@@ -879,6 +881,20 @@ impl GitSparkApp {
         if matches!(self.nav.active_dialog, ActiveDialog::StashAndSwitch { .. }) {
             children.extend([
                 automation_node(
+                    "branch-switch-stash-option",
+                    AutomationRole::Button,
+                    Some("branch-switch-stash-option"),
+                    Some("Leave my changes on current branch"),
+                    Some(AutomationNodeAction::SetBranchSwitchMode(false)),
+                ),
+                automation_node(
+                    "branch-switch-bring-option",
+                    AutomationRole::Button,
+                    Some("branch-switch-bring-option"),
+                    Some("Bring my changes to target branch"),
+                    Some(AutomationNodeAction::SetBranchSwitchMode(true)),
+                ),
+                automation_node(
                     "stash-cancel",
                     AutomationRole::Button,
                     Some("stash-cancel"),
@@ -889,13 +905,33 @@ impl GitSparkApp {
                     "stash-switch",
                     AutomationRole::Button,
                     Some("stash-switch"),
-                    Some("Stash & Switch"),
+                    Some("Switch Branch"),
                     Some(AutomationNodeAction::ConfirmStashAndSwitch),
                 ),
             ]);
         }
 
+        if matches!(self.nav.active_dialog, ActiveDialog::RestoreStash) {
+            children.extend([
+                automation_node(
+                    "restore-stash-cancel",
+                    AutomationRole::Button,
+                    Some("restore-stash-cancel"),
+                    Some("Cancel"),
+                    Some(AutomationNodeAction::CancelDialog),
+                ),
+                automation_node(
+                    "restore-stash-confirm",
+                    AutomationRole::Button,
+                    Some("restore-stash-confirm"),
+                    Some("Restore Stash"),
+                    Some(AutomationNodeAction::RestoreStash),
+                ),
+            ]);
+        }
+
         if let Some(snapshot) = &self.repo.snapshot {
+            let has_github_remote = self.repo_has_github_remote();
             children.push(
                 automation_node(
                     "changes-list",
@@ -926,7 +962,7 @@ impl GitSparkApp {
             );
 
             for change in &snapshot.changes {
-                children.extend(change_action_nodes(change.path.as_str()));
+                children.extend(change_action_nodes(change.path.as_str(), has_github_remote));
             }
 
             children.push(
@@ -971,7 +1007,7 @@ impl GitSparkApp {
                     AutomationRole::Button,
                     Some("stash-indicator"),
                     Some("Stashed Changes"),
-                    Some(AutomationNodeAction::RestoreStash),
+                    Some(AutomationNodeAction::ShowRestoreStash),
                 ));
             }
 
@@ -1192,6 +1228,10 @@ impl GitSparkApp {
                 self.new_branch_selection = None;
                 cx.notify();
             }
+            AutomationNodeAction::SetBranchSwitchMode(bring_changes) => {
+                self.repo.switch_branch_bring_changes = bring_changes;
+                cx.notify();
+            }
             AutomationNodeAction::ConfirmCreateBranch => {
                 self.nav.active_dialog = ActiveDialog::None;
                 self.create_branch(cx);
@@ -1205,9 +1245,17 @@ impl GitSparkApp {
                         );
                     }
                 };
-                self.stash_and_switch_branch(target_branch, cx);
+                if self.repo.switch_branch_bring_changes {
+                    self.switch_branch_with_changes(target_branch, cx);
+                } else {
+                    self.stash_and_switch_branch(target_branch, cx);
+                }
+            }
+            AutomationNodeAction::ShowRestoreStash => {
+                self.show_restore_stash_dialog(cx);
             }
             AutomationNodeAction::RestoreStash => {
+                self.nav.active_dialog = ActiveDialog::None;
                 self.restore_stash(cx);
             }
             AutomationNodeAction::SaveGitSettings => {
@@ -1631,13 +1679,13 @@ fn settings_field_node(
     )])
 }
 
-fn change_action_nodes(path: &str) -> Vec<AutomationNode> {
+fn change_action_nodes(path: &str, has_github_remote: bool) -> Vec<AutomationNode> {
     let slug = stable_test_slug(path);
     let extension = std::path::Path::new(path)
         .extension()
         .map(|ext| ext.to_string_lossy().to_string())
         .unwrap_or_default();
-    vec![
+    let mut actions = vec![
         (
             "discard",
             crate::ui::labels::discard_changes_menu().to_string(),
@@ -1687,23 +1735,28 @@ fn change_action_nodes(path: &str) -> Vec<AutomationNode> {
             crate::ui::labels::open_with_default_program_menu().to_string(),
             AutomationChangeAction::OpenWithDefault,
         ),
-        (
+    ];
+
+    if has_github_remote {
+        actions.push((
             "view-on-github",
             "View on GitHub".to_string(),
             AutomationChangeAction::ViewOnGithub,
-        ),
-    ]
-    .into_iter()
-    .map(|(suffix, label, action)| {
-        automation_node(
-            format!("change-{slug}-{suffix}"),
-            AutomationRole::Button,
-            Some(format!("change-{slug}-{suffix}")),
-            Some(label.as_str()),
-            Some(AutomationNodeAction::ChangeFile(path.to_string(), action)),
-        )
-    })
-    .collect()
+        ));
+    }
+
+    actions
+        .into_iter()
+        .map(|(suffix, label, action)| {
+            automation_node(
+                format!("change-{slug}-{suffix}"),
+                AutomationRole::Button,
+                Some(format!("change-{slug}-{suffix}")),
+                Some(label.as_str()),
+                Some(AutomationNodeAction::ChangeFile(path.to_string(), action)),
+            )
+        })
+        .collect()
 }
 
 fn history_action_nodes(short_oid: &str, oid: &str) -> Vec<AutomationNode> {
@@ -1959,6 +2012,7 @@ fn active_dialog_name(dialog: &ActiveDialog) -> &'static str {
         ActiveDialog::CreateBranch => "create_branch",
         ActiveDialog::DiscardChanges { .. } => "discard_changes",
         ActiveDialog::StashAndSwitch { .. } => "stash_and_switch",
+        ActiveDialog::RestoreStash => "restore_stash",
         ActiveDialog::PublishRepository => "publish_repository",
     }
 }

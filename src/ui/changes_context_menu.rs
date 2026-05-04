@@ -22,11 +22,12 @@ pub(crate) fn build_changes_context_menu(
     view: Entity<GitSparkApp>,
     path: String,
     _window: &mut Window,
-    _cx: &mut Context<PopupMenu>,
+    cx: &mut Context<PopupMenu>,
 ) -> PopupMenu {
     let ext = std::path::Path::new(&path)
         .extension()
         .map(|e| e.to_string_lossy().to_string());
+    let show_view_on_github = view.read(cx).repo_has_github_remote();
 
     let mut m = menu
         .min_w(px(220.0))
@@ -57,7 +58,8 @@ pub(crate) fn build_changes_context_menu(
         ));
     }
 
-    m.separator()
+    m = m
+        .separator()
         .item(changes_menu_item(
             labels::copy_file_path_menu(),
             true,
@@ -93,15 +95,19 @@ pub(crate) fn build_changes_context_menu(
             view.clone(),
             path.clone(),
             ChangesContextAction::OpenWithDefault,
-        ))
-        .separator()
-        .item(changes_menu_item(
+        ));
+
+    if show_view_on_github {
+        m = m.separator().item(changes_menu_item(
             "View on GitHub",
             true,
             view,
             path,
             ChangesContextAction::ViewOnGitHub,
-        ))
+        ));
+    }
+
+    m
 }
 
 fn changes_menu_item(
