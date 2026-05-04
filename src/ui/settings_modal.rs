@@ -129,10 +129,6 @@ pub(crate) fn render_settings_modal(
         SettingsSection::Integrations => render_integrations_section().into_any_element(),
     };
 
-    let lock_content_scroll = app.nav.settings_section == SettingsSection::Ai
-        && app.settings.ai.provider == AiProvider::OpenRouter
-        && app.settings_modal.show_model_picker;
-
     let content_body = v_flex()
         .w_full()
         .items_center()
@@ -140,21 +136,12 @@ pub(crate) fn render_settings_modal(
         .py(theme::z(14.0))
         .child(div().w_full().max_w(theme::z(680.0)).child(content));
 
-    let content_scroll: AnyElement = {
-        let base = div()
-            .id("settings-content-scroll")
-            .size_full()
-            .bg(theme::panel_bg());
-        if lock_content_scroll {
-            base.overflow_hidden()
-                .child(content_body)
-                .into_any_element()
-        } else {
-            base.overflow_y_scrollbar()
-                .child(content_body)
-                .into_any_element()
-        }
-    };
+    let content_scroll = div()
+        .id("settings-content-scroll")
+        .size_full()
+        .bg(theme::panel_bg())
+        .overflow_y_scrollbar()
+        .child(content_body);
 
     let panel = v_flex()
         .id("settings-modal-panel")
@@ -1056,7 +1043,7 @@ fn render_openrouter_models(
                             },
                         )
                         .with_sizing_behavior(ListSizingBehavior::Infer)
-                        .h(theme::z(220.0))
+                        .h(theme::z(176.0))
                         .into_any_element()
                     })
                     .into_any_element()
