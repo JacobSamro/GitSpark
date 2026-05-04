@@ -2621,6 +2621,7 @@ impl Render for GitSparkApp {
             .on_action(cx.listener(Self::handle_menu_repository_settings))
             .on_action(cx.listener(Self::handle_menu_new_branch))
             .on_action(cx.listener(Self::handle_menu_merge_branch))
+            .on_action(cx.listener(Self::handle_menu_discard_all_changes))
             .on_action(cx.listener(Self::handle_menu_zoom_in))
             .on_action(cx.listener(Self::handle_menu_zoom_out))
             .on_action(cx.listener(Self::handle_menu_zoom_reset));
@@ -2905,6 +2906,29 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub fn menu_discard_all_changes(&mut self, cx: &mut Context<Self>) {
+        let Some(snapshot) = self.repo.snapshot.as_ref() else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        let paths: Vec<String> = snapshot
+            .changes
+            .iter()
+            .map(|change| change.path.clone())
+            .collect();
+        if paths.is_empty() {
+            self.messages.error_message = "There are no local changes to discard.".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.nav.active_dialog = ActiveDialog::DiscardChanges { paths };
+        self.messages.error_message.clear();
+        cx.notify();
+    }
+
     pub fn menu_stash_changes(&mut self, cx: &mut Context<Self>) {
         self.show_stash_changes_dialog(cx);
     }
@@ -3070,6 +3094,15 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         self.menu_merge_branch(cx);
+    }
+
+    fn handle_menu_discard_all_changes(
+        &mut self,
+        _: &crate::MenuDiscardAllChanges,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_discard_all_changes(cx);
     }
 
     fn handle_menu_zoom_in(
