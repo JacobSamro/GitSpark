@@ -1247,6 +1247,13 @@ impl GitSparkApp {
                 ));
             }
 
+            if snapshot.changes.is_empty() {
+                children.extend(no_changes_action_nodes(
+                    has_github_remote,
+                    snapshot.repo.remote_name.is_some(),
+                ));
+            }
+
             children.push(
                 automation_node(
                     "history-list",
@@ -1834,6 +1841,51 @@ fn automation_node(
         action,
         children: Vec::new(),
     }
+}
+
+fn no_changes_action_nodes(has_github_remote: bool, has_remote: bool) -> Vec<AutomationNode> {
+    let mut nodes = Vec::new();
+
+    if !has_remote {
+        nodes.push(automation_node(
+            "no-changes-publish",
+            AutomationRole::Button,
+            Some("no-changes-publish"),
+            Some("Publish repository"),
+            Some(AutomationNodeAction::Network(
+                NetworkAction::PublishRepository,
+            )),
+        ));
+    }
+
+    nodes.extend([
+        automation_node(
+            "no-changes-editor",
+            AutomationRole::Button,
+            Some("no-changes-editor"),
+            Some("Open in External Editor"),
+            None::<AutomationNodeAction>,
+        ),
+        automation_node(
+            "no-changes-finder",
+            AutomationRole::Button,
+            Some("no-changes-finder"),
+            Some("Show in Finder"),
+            None::<AutomationNodeAction>,
+        ),
+    ]);
+
+    if has_github_remote {
+        nodes.push(automation_node(
+            "no-changes-github",
+            AutomationRole::Button,
+            Some("no-changes-github"),
+            Some("View on GitHub"),
+            None::<AutomationNodeAction>,
+        ));
+    }
+
+    nodes
 }
 
 fn repo_selector_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
