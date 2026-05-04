@@ -256,8 +256,8 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         Menu {
             name: "View".into(),
             items: vec![
-                MenuItem::action("Changes", MenuShowChanges),
-                MenuItem::action("History", MenuShowHistory),
+                MenuItem::action("Show Changes", MenuShowChanges),
+                MenuItem::action("Show History", MenuShowHistory),
                 MenuItem::action("Show Repository List", MenuShowRepositoryList),
                 MenuItem::action("Show Branches List", MenuShowBranchesList),
                 MenuItem::separator(),
