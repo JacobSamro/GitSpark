@@ -1079,10 +1079,12 @@ impl GitSparkApp {
             return;
         };
 
-        let Some(summary) = self.effective_commit_summary() else {
+        let summary = self.commit.summary.trim();
+        if summary.is_empty() {
             self.messages.error_message = "Commit summary cannot be empty.".to_string();
             return;
-        };
+        }
+        let summary = summary.to_string();
 
         let message = if self.commit.body.trim().is_empty() {
             summary.clone()
@@ -1986,17 +1988,8 @@ impl GitSparkApp {
         Some(default_commit_summary_for_change(changes[0]))
     }
 
-    fn effective_commit_summary(&self) -> Option<String> {
-        let summary = self.commit.summary.trim();
-        if !summary.is_empty() {
-            Some(summary.to_string())
-        } else {
-            self.default_commit_summary()
-        }
-    }
-
     pub(crate) fn can_commit(&self) -> bool {
-        self.effective_commit_summary().is_some()
+        !self.commit.summary.trim().is_empty()
             && self.commit_file_count() > 0
             && !self.commit.ai_in_flight
     }
