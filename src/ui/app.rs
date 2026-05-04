@@ -321,8 +321,7 @@ impl GitSparkApp {
                 match ks.key.as_str() {
                     // Cmd+Shift+N = New Branch
                     "n" => {
-                        app.nav.active_dialog = ActiveDialog::CreateBranch;
-                        cx.notify();
+                        app.menu_new_branch(cx);
                     }
                     _ => {}
                 }
@@ -2650,6 +2649,12 @@ impl GitSparkApp {
     }
 
     pub fn menu_show_branches_list(&mut self, cx: &mut Context<Self>) {
+        if self.repo.snapshot.is_none() {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        }
+
         self.nav.show_branch_selector = true;
         self.nav.branch_selector_mode = BranchSelectorMode::Switch;
         self.nav.show_repo_selector = false;
@@ -2843,6 +2848,12 @@ impl GitSparkApp {
     }
 
     pub fn menu_new_branch(&mut self, cx: &mut Context<Self>) {
+        if self.repo.snapshot.is_none() {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        }
+
         self.repo.new_branch_name = self.filters.branch_filter_text.clone();
         self.new_branch_cursor = self.repo.new_branch_name.len();
         self.new_branch_selection = None;
@@ -2870,6 +2881,12 @@ impl GitSparkApp {
     }
 
     pub fn menu_merge_branch(&mut self, cx: &mut Context<Self>) {
+        if self.repo.snapshot.is_none() {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        }
+
         self.nav.show_branch_selector = true;
         self.nav.branch_selector_mode = BranchSelectorMode::Merge;
         self.repo.pending_cherry_pick_oid = None;
@@ -3030,13 +3047,10 @@ impl GitSparkApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.repo.new_branch_name = self.filters.branch_filter_text.clone();
-        self.new_branch_cursor = self.repo.new_branch_name.len();
-        self.new_branch_selection = None;
-        self.repo.new_branch_start_point = None;
-        self.nav.active_dialog = ActiveDialog::CreateBranch;
-        window.focus(&self.new_branch_focus);
-        cx.notify();
+        self.menu_new_branch(cx);
+        if matches!(self.nav.active_dialog, ActiveDialog::CreateBranch) {
+            window.focus(&self.new_branch_focus);
+        }
     }
 
     fn handle_menu_merge_branch(
@@ -3045,12 +3059,7 @@ impl GitSparkApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.nav.show_branch_selector = true;
-        self.nav.branch_selector_mode = BranchSelectorMode::Merge;
-        self.repo.pending_cherry_pick_oid = None;
-        self.messages.status_message =
-            "Choose a branch to merge into the current branch.".to_string();
-        cx.notify();
+        self.menu_merge_branch(cx);
     }
 
     fn handle_menu_zoom_in(
@@ -6529,14 +6538,10 @@ impl GitSparkApp {
                     .cursor_pointer()
                     .hover(|s| s.bg(theme::toolbar_hover_bg()))
                     .on_click(cx.listener(|app, _evt, _win, cx| {
-                        // Pre-fill the new branch name from filter text
-                        app.repo.new_branch_name = app.filters.branch_filter_text.clone();
-                        app.new_branch_cursor = app.repo.new_branch_name.len();
-                        app.new_branch_selection = None;
-                        app.repo.new_branch_start_point = None;
-                        app.nav.active_dialog = ActiveDialog::CreateBranch;
-                        _win.focus(&app.new_branch_focus);
-                        cx.notify();
+                        app.menu_new_branch(cx);
+                        if matches!(app.nav.active_dialog, ActiveDialog::CreateBranch) {
+                            _win.focus(&app.new_branch_focus);
+                        }
                     }))
                     .child(
                         div()
