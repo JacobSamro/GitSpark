@@ -129,6 +129,7 @@ cargo run --example automation_client -- '{"command":"snapshot"}'
 {"command":"set_branch_filter","text":"main"}
 {"command":"set_settings_section","section":"git"}
 {"command":"set_settings_field","field":"ai_model","text":"gpt-4.1-mini"}
+{"command":"set_settings_field","field":"ai_endpoint","text":"https://api.openai.com/v1/chat/completions"}
 {"command":"save_settings","section":"ai"}
 {"command":"change_ai_provider","provider":"openai_compatible"}
 {"command":"generate_ai_commit"}
@@ -203,6 +204,7 @@ settings-git-user-name
 settings-git-user-email
 settings-git-default-branch
 settings-ai-model
+settings-ai-endpoint
 settings-ai-api-key
 settings-ai-system-prompt
 settings-openrouter-model-filter

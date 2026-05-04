@@ -220,6 +220,7 @@ pub(crate) enum AutomationSettingsField {
     GitUserEmail,
     GitDefaultBranch,
     AiModel,
+    AiEndpoint,
     AiApiKey,
     AiSystemPrompt,
     OpenRouterModelFilter,
@@ -232,6 +233,7 @@ impl From<AutomationSettingsField> for SettingsField {
             AutomationSettingsField::GitUserEmail => Self::GitUserEmail,
             AutomationSettingsField::GitDefaultBranch => Self::GitDefaultBranch,
             AutomationSettingsField::AiModel => Self::AiModel,
+            AutomationSettingsField::AiEndpoint => Self::AiEndpoint,
             AutomationSettingsField::AiApiKey => Self::AiApiKey,
             AutomationSettingsField::AiSystemPrompt => Self::AiSystemPrompt,
             AutomationSettingsField::OpenRouterModelFilter => Self::OpenRouterModelFilter,
@@ -1291,6 +1293,10 @@ impl GitSparkApp {
                 self.settings.ai.model = text;
                 self.settings_modal.ai_model_selection = None;
             }
+            SettingsField::AiEndpoint => {
+                self.settings.ai.endpoint = text;
+                self.settings_modal.ai_endpoint_selection = None;
+            }
             SettingsField::AiApiKey => {
                 self.settings.ai.api_key = text;
                 self.settings_modal.ai_api_key_selection = None;
@@ -1317,6 +1323,7 @@ impl GitSparkApp {
                 self.settings_modal.git_default_branch_cursor = cursor;
             }
             SettingsField::AiModel => self.settings_modal.ai_model_cursor = cursor,
+            SettingsField::AiEndpoint => self.settings_modal.ai_endpoint_cursor = cursor,
             SettingsField::AiApiKey => self.settings_modal.ai_api_key_cursor = cursor,
             SettingsField::AiSystemPrompt => self.settings_modal.ai_system_prompt_cursor = cursor,
             SettingsField::OpenRouterModelFilter => {
@@ -1559,6 +1566,22 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
                     SettingsField::AiModel,
                     app.settings.ai.model.as_str(),
                 ),
+                if app.settings.ai.provider == AiProvider::OpenRouter {
+                    automation_node(
+                        "settings-ai-endpoint",
+                        AutomationRole::Status,
+                        Some("settings-ai-endpoint"),
+                        Some(app.settings.ai.endpoint.as_str()),
+                        None,
+                    )
+                } else {
+                    settings_field_node(
+                        "settings-ai-endpoint",
+                        "Endpoint",
+                        SettingsField::AiEndpoint,
+                        app.settings.ai.endpoint.as_str(),
+                    )
+                },
                 settings_field_node(
                     "settings-ai-api-key",
                     "API Key",
@@ -1997,17 +2020,30 @@ mod tests {
 
     #[test]
     fn parses_settings_field_command() {
-        let command: AutomationCommand = serde_json::from_str(
+        let model_command: AutomationCommand = serde_json::from_str(
             r#"{"command":"set_settings_field","field":"ai_model","text":"gpt-test"}"#,
         )
         .expect("settings field command parses");
 
-        match command {
+        match model_command {
             AutomationCommand::SetSettingsField {
                 field: AutomationSettingsField::AiModel,
                 text,
             } => assert_eq!(text, "gpt-test"),
             _ => panic!("expected set_settings_field command"),
+        }
+
+        let endpoint_command: AutomationCommand = serde_json::from_str(
+            r#"{"command":"set_settings_field","field":"ai_endpoint","text":"http://localhost/v1/chat/completions"}"#,
+        )
+        .expect("endpoint settings field command parses");
+
+        match endpoint_command {
+            AutomationCommand::SetSettingsField {
+                field: AutomationSettingsField::AiEndpoint,
+                text,
+            } => assert_eq!(text, "http://localhost/v1/chat/completions"),
+            _ => panic!("expected set_settings_field endpoint command"),
         }
     }
 

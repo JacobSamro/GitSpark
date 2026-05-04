@@ -43,6 +43,9 @@ export async function testSettingsPersistence(app, fixture) {
   await app.getByTestId("settings-tab-ai").click();
   await app.getByTestId("settings-provider-openai-compatible").click();
   await app.getByTestId("settings-ai-model").fill("gpt-e2e-precise");
+  await app
+    .getByTestId("settings-ai-endpoint")
+    .fill("http://127.0.0.1:9123/v1/chat/completions");
   await app.getByTestId("settings-ai-api-key").fill("sk-e2e-test-key");
   await app
     .getByTestId("settings-ai-system-prompt")
@@ -59,6 +62,12 @@ export async function testSettingsPersistence(app, fixture) {
   assert(
     settingsToml.includes('model = "gpt-e2e-precise"'),
     "AI model persisted to isolated settings file",
+  );
+  assert(
+    settingsToml.includes(
+      'endpoint = "http://127.0.0.1:9123/v1/chat/completions"',
+    ),
+    "AI endpoint persisted to isolated settings file",
   );
   assert(
     settingsToml.includes('api_key = "sk-e2e-test-key"'),

@@ -613,8 +613,17 @@ impl GitSparkApp {
         match action {
             SettingsAction::SaveGitConfig => self.save_git_config(),
             SettingsAction::SaveAiSettings => {
-                self.settings.ai.endpoint =
-                    self.settings.ai.provider.default_endpoint().to_string();
+                if self.settings.ai.provider == AiProvider::OpenRouter {
+                    self.settings.ai.endpoint =
+                        self.settings.ai.provider.default_endpoint().to_string();
+                } else if self.settings.ai.endpoint.trim().is_empty() {
+                    self.settings.ai.endpoint =
+                        self.settings.ai.provider.default_endpoint().to_string();
+                    self.settings_modal.ai_endpoint_cursor = self.settings.ai.endpoint.len();
+                } else {
+                    self.settings.ai.endpoint = self.settings.ai.endpoint.trim().to_string();
+                    self.settings_modal.ai_endpoint_cursor = self.settings.ai.endpoint.len();
+                }
                 self.persist_settings();
                 if self.messages.error_message.is_empty() {
                     self.messages.status_message = "AI settings saved.".to_string();
@@ -622,8 +631,14 @@ impl GitSparkApp {
             }
             SettingsAction::ChangeProvider(provider) => {
                 self.settings.ai.provider = provider;
-                self.settings.ai.endpoint =
-                    self.settings.ai.provider.default_endpoint().to_string();
+                if self.settings.ai.provider == AiProvider::OpenRouter
+                    || self.settings.ai.endpoint.trim().is_empty()
+                {
+                    self.settings.ai.endpoint =
+                        self.settings.ai.provider.default_endpoint().to_string();
+                    self.settings_modal.ai_endpoint_cursor = self.settings.ai.endpoint.len();
+                    self.settings_modal.ai_endpoint_selection = None;
+                }
                 self.filters.openrouter_model_filter.clear();
                 self.settings_modal.openrouter_model_filter_cursor = 0;
                 if self.settings.ai.provider == AiProvider::OpenRouter {
@@ -2771,6 +2786,7 @@ impl GitSparkApp {
                 self.repo.identity.default_branch.as_deref().unwrap_or("")
             }
             SettingsField::AiModel => self.settings.ai.model.as_str(),
+            SettingsField::AiEndpoint => self.settings.ai.endpoint.as_str(),
             SettingsField::AiApiKey => self.settings.ai.api_key.as_str(),
             SettingsField::AiSystemPrompt => self.settings.ai.system_prompt.as_str(),
             SettingsField::OpenRouterModelFilter => self.filters.openrouter_model_filter.as_str(),
@@ -2783,6 +2799,7 @@ impl GitSparkApp {
             SettingsField::GitUserEmail => self.settings_modal.git_user_email_cursor,
             SettingsField::GitDefaultBranch => self.settings_modal.git_default_branch_cursor,
             SettingsField::AiModel => self.settings_modal.ai_model_cursor,
+            SettingsField::AiEndpoint => self.settings_modal.ai_endpoint_cursor,
             SettingsField::AiApiKey => self.settings_modal.ai_api_key_cursor,
             SettingsField::AiSystemPrompt => self.settings_modal.ai_system_prompt_cursor,
             SettingsField::OpenRouterModelFilter => {
@@ -2797,6 +2814,7 @@ impl GitSparkApp {
             SettingsField::GitUserEmail => self.settings_modal.git_user_email_selection,
             SettingsField::GitDefaultBranch => self.settings_modal.git_default_branch_selection,
             SettingsField::AiModel => self.settings_modal.ai_model_selection,
+            SettingsField::AiEndpoint => self.settings_modal.ai_endpoint_selection,
             SettingsField::AiApiKey => self.settings_modal.ai_api_key_selection,
             SettingsField::AiSystemPrompt => self.settings_modal.ai_system_prompt_selection,
             SettingsField::OpenRouterModelFilter => {
@@ -2907,6 +2925,22 @@ impl GitSparkApp {
                 self.settings_modal.ai_model_selection = state.selection;
                 h
             }
+            SettingsField::AiEndpoint => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.settings_modal.ai_endpoint_cursor,
+                    selection: self.settings_modal.ai_endpoint_selection,
+                };
+                let h = crate::ui::text_field::handle_text_key(
+                    &mut self.settings.ai.endpoint,
+                    &mut state,
+                    multiline,
+                    event,
+                    cx,
+                );
+                self.settings_modal.ai_endpoint_cursor = state.cursor;
+                self.settings_modal.ai_endpoint_selection = state.selection;
+                h
+            }
             SettingsField::AiApiKey => {
                 let mut state = crate::ui::text_field::TextFieldState {
                     cursor: self.settings_modal.ai_api_key_cursor,
@@ -2969,6 +3003,7 @@ impl GitSparkApp {
                 self.settings_modal.git_default_branch_cursor = cursor
             }
             SettingsField::AiModel => self.settings_modal.ai_model_cursor = cursor,
+            SettingsField::AiEndpoint => self.settings_modal.ai_endpoint_cursor = cursor,
             SettingsField::AiApiKey => self.settings_modal.ai_api_key_cursor = cursor,
             SettingsField::AiSystemPrompt => self.settings_modal.ai_system_prompt_cursor = cursor,
             SettingsField::OpenRouterModelFilter => {

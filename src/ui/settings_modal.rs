@@ -19,6 +19,7 @@ pub(crate) enum SettingsField {
     GitUserEmail,
     GitDefaultBranch,
     AiModel,
+    AiEndpoint,
     AiApiKey,
     AiSystemPrompt,
     OpenRouterModelFilter,
@@ -31,6 +32,7 @@ pub(crate) struct SettingsModalState {
     pub git_user_email_cursor: usize,
     pub git_default_branch_cursor: usize,
     pub ai_model_cursor: usize,
+    pub ai_endpoint_cursor: usize,
     pub ai_api_key_cursor: usize,
     pub ai_system_prompt_cursor: usize,
     pub openrouter_model_filter_cursor: usize,
@@ -40,6 +42,7 @@ pub(crate) struct SettingsModalState {
     pub git_user_email_selection: Option<usize>,
     pub git_default_branch_selection: Option<usize>,
     pub ai_model_selection: Option<usize>,
+    pub ai_endpoint_selection: Option<usize>,
     pub ai_api_key_selection: Option<usize>,
     pub ai_system_prompt_selection: Option<usize>,
     pub openrouter_model_filter_selection: Option<usize>,
@@ -54,6 +57,7 @@ impl SettingsModalState {
             git_user_email_cursor: 0,
             git_default_branch_cursor: 0,
             ai_model_cursor: 0,
+            ai_endpoint_cursor: 0,
             ai_api_key_cursor: 0,
             ai_system_prompt_cursor: 0,
             openrouter_model_filter_cursor: 0,
@@ -62,6 +66,7 @@ impl SettingsModalState {
             git_user_email_selection: None,
             git_default_branch_selection: None,
             ai_model_selection: None,
+            ai_endpoint_selection: None,
             ai_api_key_selection: None,
             ai_system_prompt_selection: None,
             openrouter_model_filter_selection: None,
@@ -471,7 +476,7 @@ fn render_ai_section(
         ))
         .child(render_provider_group(app, cx))
         .child(render_model_group(app, window, cx))
-        .child(render_endpoint_group(app))
+        .child(render_endpoint_group(app, window, cx))
         .child(render_text_input(
             app,
             window,
@@ -869,27 +874,52 @@ fn render_model_option(
         )
 }
 
-fn render_endpoint_group(app: &GitSparkApp) -> impl IntoElement {
-    v_flex()
-        .w_full()
-        .gap(theme::z(8.0))
-        .child(render_field_label("Endpoint", None))
-        .child(
-            div()
-                .w_full()
-                .p(theme::z(12.0))
-                .rounded(theme::z(theme::CORNER_RADIUS))
-                .border_1()
-                .border_color(theme::border())
-                .bg(theme::surface_bg_muted())
-                .child(
-                    div()
-                        .text_size(theme::z(12.0))
-                        .text_color(theme::text_main())
-                        .truncate()
-                        .child(app.settings.ai.provider.default_endpoint()),
-                ),
+fn render_endpoint_group(
+    app: &GitSparkApp,
+    window: &Window,
+    cx: &mut Context<GitSparkApp>,
+) -> impl IntoElement {
+    if app.settings.ai.provider == AiProvider::OpenRouter {
+        v_flex()
+            .w_full()
+            .gap(theme::z(8.0))
+            .child(render_field_label(
+                "Endpoint",
+                Some("Managed automatically for OpenRouter."),
+            ))
+            .child(
+                div()
+                    .id("settings-ai-endpoint")
+                    .w_full()
+                    .p(theme::z(12.0))
+                    .rounded(theme::z(theme::CORNER_RADIUS))
+                    .border_1()
+                    .border_color(theme::border())
+                    .bg(theme::surface_bg_muted())
+                    .child(
+                        div()
+                            .text_size(theme::z(12.0))
+                            .text_color(theme::text_main())
+                            .truncate()
+                            .child(app.settings.ai.provider.default_endpoint()),
+                    ),
+            )
+            .into_any_element()
+    } else {
+        render_text_input(
+            app,
+            window,
+            cx,
+            "settings-ai-endpoint",
+            SettingsField::AiEndpoint,
+            "Endpoint",
+            AiProvider::OpenAICompatible.default_endpoint(),
+            false,
+            false,
+            Some("Use any OpenAI-compatible chat completions endpoint."),
         )
+        .into_any_element()
+    }
 }
 
 fn render_section_header(eyebrow: &str, title: &str, description: &str) -> impl IntoElement {
