@@ -13,7 +13,6 @@ use gpui::Context;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::git::GitClient;
 use crate::models::AiProvider;
 use crate::ui::app::SettingsAction;
 use crate::ui::app::{AppEvent, GitSparkApp, NotifySender, SidebarAction, ToolbarAction};
@@ -552,7 +551,7 @@ impl GitSparkApp {
                 AutomationResponse::success(self.automation_snapshot())
             }
             AutomationCommand::StashPop => {
-                self.perform_stash_action(false, cx);
+                self.show_restore_stash_dialog(cx);
                 AutomationResponse::success(self.automation_snapshot())
             }
             AutomationCommand::ShowSettings { show } => {
@@ -1032,6 +1031,13 @@ impl GitSparkApp {
                 )
             }));
             children.extend([
+                automation_node(
+                    "restore-stash-close",
+                    AutomationRole::Button,
+                    Some("restore-stash-close"),
+                    Some("Close"),
+                    Some(AutomationNodeAction::CancelDialog),
+                ),
                 automation_node(
                     "restore-stash-cancel",
                     AutomationRole::Button,
@@ -1755,40 +1761,6 @@ impl GitSparkApp {
             AutomationBranchAction::ViewOnGithub => BranchContextAction::ViewOnGitHub,
         };
         self.handle_branch_context_action(name, action, cx);
-    }
-
-    fn perform_stash_action(&mut self, stash_all: bool, cx: &mut Context<Self>) {
-        let Some(path) = self.repo_path().map(PathBuf::from) else {
-            self.messages.error_message = "No repository selected.".to_string();
-            cx.notify();
-            return;
-        };
-
-        self.messages.status_message = if stash_all {
-            "Stashing changes...".to_string()
-        } else {
-            "Restoring stash...".to_string()
-        };
-        self.messages.error_message.clear();
-
-        let tx = self.event_tx.clone();
-        thread::spawn(move || {
-            let git = GitClient::new();
-            let res = if stash_all {
-                git.stash_all(&path)
-            } else {
-                git.stash_pop(&path)
-            }
-            .map_err(|e| e.to_string());
-            let label = if stash_all {
-                "Stashed changes"
-            } else {
-                "Restored stash"
-            };
-            let _ = tx.send(AppEvent::NetworkActionCompleted(res, label.to_string()));
-        });
-
-        cx.notify();
     }
 }
 

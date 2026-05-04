@@ -9,6 +9,7 @@ pub mod history_context_menu;
 pub mod labels;
 pub mod publish_dialog;
 pub mod reset_dialog;
+pub mod restore_stash_dialog;
 pub mod settings_modal;
 pub mod sidebar;
 pub mod stash_changes_dialog;
