@@ -690,12 +690,20 @@ impl GitClient {
     pub fn read_identity(&self, repo_path: &Path) -> Result<GitIdentity> {
         let repo_path = self.resolve_repo_root(repo_path)?;
 
-        Ok(GitIdentity {
+        let mut identity = GitIdentity {
             user_name: self.read_optional_config(&repo_path, "user.name")?,
             user_email: self.read_optional_config(&repo_path, "user.email")?,
             pull_rebase: self.read_optional_bool_config(&repo_path, "pull.rebase")?,
             default_branch: non_empty(self.read_optional_config(&repo_path, "init.defaultBranch")?),
-        })
+        };
+
+        if (identity.user_name.trim().is_empty() || identity.user_email.trim().is_empty())
+            && let Some((name, email)) = self.read_effective_author_identity(&repo_path)?
+        {
+            fill_missing_author_identity(&mut identity, name, email);
+        }
+
+        Ok(identity)
     }
 
     pub fn read_local_identity(&self, repo_path: &Path) -> Result<GitIdentity> {
@@ -1375,6 +1383,13 @@ impl GitClient {
         let output = run_git_command(repo_path, args)?;
         Ok(output.stdout)
     }
+
+    fn read_effective_author_identity(&self, repo_path: &Path) -> Result<Option<(String, String)>> {
+        match self.run_git(repo_path, &["var", "GIT_AUTHOR_IDENT"]) {
+            Ok(output) => parse_author_ident(output.trim()).map(Some),
+            Err(_) => Ok(None),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -1585,7 +1600,10 @@ mod tests {
 
     use crate::models::GitIdentity;
 
-    use super::{GitClient, encode_github_path, normalize_github_remote_url};
+    use super::{
+        GitClient, encode_github_path, fill_missing_author_identity, normalize_github_remote_url,
+        parse_author_ident,
+    };
 
     #[test]
     fn normalizes_github_remotes_with_owner_and_repo() {
@@ -1713,6 +1731,33 @@ mod tests {
         let _ = fs::remove_dir_all(repo);
     }
 
+    #[test]
+    fn parses_effective_git_author_identity() {
+        let (name, email) =
+            parse_author_ident("Jane Q. Developer <jane@example.com> 1710000000 +0530").unwrap();
+        assert_eq!(name, "Jane Q. Developer");
+        assert_eq!(email, "jane@example.com");
+    }
+
+    #[test]
+    fn effective_author_identity_only_fills_missing_config_values() {
+        let mut identity = GitIdentity {
+            user_name: "Configured Name".to_string(),
+            user_email: String::new(),
+            pull_rebase: None,
+            default_branch: None,
+        };
+
+        fill_missing_author_identity(
+            &mut identity,
+            "Effective Name".to_string(),
+            "effective@example.test".to_string(),
+        );
+
+        assert_eq!(identity.user_name, "Configured Name");
+        assert_eq!(identity.user_email, "effective@example.test");
+    }
+
     fn temp_repo(name: &str) -> std::path::PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1746,6 +1791,33 @@ fn non_empty(value: String) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+fn fill_missing_author_identity(identity: &mut GitIdentity, name: String, email: String) {
+    if identity.user_name.trim().is_empty() {
+        identity.user_name = name;
+    }
+    if identity.user_email.trim().is_empty() {
+        identity.user_email = email;
+    }
+}
+
+fn parse_author_ident(value: &str) -> Result<(String, String)> {
+    let Some(email_end) = value.rfind('>') else {
+        bail!("git author identity did not contain an email address");
+    };
+    let before_email = &value[..email_end];
+    let Some(email_start) = before_email.rfind(" <") else {
+        bail!("git author identity did not contain a name/email separator");
+    };
+
+    let name = before_email[..email_start].trim();
+    let email = before_email[email_start + 2..].trim();
+    if name.is_empty() || email.is_empty() {
+        bail!("git author identity was missing a name or email");
+    }
+
+    Ok((name.to_string(), email.to_string()))
 }
 
 fn parse_name_status_line(line: &str) -> Option<ChangeEntry> {
