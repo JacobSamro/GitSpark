@@ -55,7 +55,9 @@ impl NetworkAction {
 pub struct RepoState {
     pub snapshot: Option<RepoSnapshot>,
     pub identity: GitIdentity,
+    pub local_identity: GitIdentity,
     pub global_identity: GitIdentity,
+    pub use_local_identity: bool,
     pub branch_target: String,
     pub merge_target: String,
     pub new_branch_name: String,
@@ -71,7 +73,9 @@ impl Default for RepoState {
         Self {
             snapshot: None,
             identity: GitIdentity::default(),
+            local_identity: GitIdentity::default(),
             global_identity: GitIdentity::default(),
+            use_local_identity: false,
             branch_target: String::new(),
             merge_target: String::new(),
             new_branch_name: String::new(),

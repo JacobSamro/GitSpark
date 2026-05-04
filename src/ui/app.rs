@@ -126,6 +126,7 @@ pub enum SidebarAction {
 pub enum SettingsAction {
     SaveGitConfig,
     SaveAiSettings,
+    SetGitConfigScope(bool),
     ChangeProvider(AiProvider),
     SelectOpenRouterModel(String),
     RetryOpenRouterModels,
@@ -654,6 +655,24 @@ impl GitSparkApp {
                 if self.messages.error_message.is_empty() {
                     self.messages.status_message = "AI settings saved.".to_string();
                 }
+            }
+            SettingsAction::SetGitConfigScope(use_local) => {
+                self.repo.use_local_identity = use_local;
+                if use_local
+                    && self.repo.local_identity.user_name.trim().is_empty()
+                    && self.repo.local_identity.user_email.trim().is_empty()
+                {
+                    self.repo.local_identity.user_name = self.repo.identity.user_name.clone();
+                    self.repo.local_identity.user_email = self.repo.identity.user_email.clone();
+                }
+                let (name_len, email_len) = {
+                    let identity = self.active_git_settings_identity();
+                    (identity.user_name.len(), identity.user_email.len())
+                };
+                self.settings_modal.git_user_name_cursor = name_len;
+                self.settings_modal.git_user_email_cursor = email_len;
+                self.settings_modal.git_user_name_selection = None;
+                self.settings_modal.git_user_email_selection = None;
             }
             SettingsAction::ChangeProvider(provider) => {
                 self.settings.ai.provider = provider;
@@ -1435,7 +1454,15 @@ impl GitSparkApp {
         }
 
         if let Some(path) = self.repo_path().map(PathBuf::from) {
-            match self.git.write_identity(&path, &self.repo.identity) {
+            let write_result = if self.repo.use_local_identity {
+                self.git.write_identity(&path, &self.repo.local_identity)
+            } else {
+                self.git
+                    .write_global_identity(&self.repo.global_identity)
+                    .and_then(|_| self.git.clear_local_author_identity(&path))
+            };
+
+            match write_result {
                 Ok(()) => {
                     if let Err(err) = self
                         .git
@@ -1447,7 +1474,8 @@ impl GitSparkApp {
                         return;
                     }
 
-                    self.settings.default_branch = self.repo.identity.default_branch.clone();
+                    self.settings.default_branch =
+                        self.active_git_settings_identity().default_branch.clone();
                     self.persist_settings();
                     self.load_identity(&path);
                     self.messages.status_message = "Git config saved.".to_string();
@@ -1488,6 +1516,22 @@ impl GitSparkApp {
             Err(err) => {
                 self.repo.identity = GitIdentity::default();
                 self.messages.error_message = format!("Could not load git config: {err}");
+            }
+        }
+
+        match self.git.read_local_identity(path) {
+            Ok(mut identity) => {
+                if identity.default_branch.is_none() {
+                    identity.default_branch = self.settings.default_branch.clone();
+                }
+                self.repo.use_local_identity =
+                    !identity.user_name.trim().is_empty() || !identity.user_email.trim().is_empty();
+                self.repo.local_identity = identity;
+            }
+            Err(err) => {
+                self.repo.use_local_identity = false;
+                self.repo.local_identity = GitIdentity::default();
+                self.messages.error_message = format!("Could not load local Git config: {err}");
             }
         }
     }
@@ -4042,7 +4086,11 @@ impl GitSparkApp {
 
     pub(crate) fn active_git_settings_identity(&self) -> &GitIdentity {
         if self.repo.snapshot.is_some() {
-            &self.repo.identity
+            if self.repo.use_local_identity {
+                &self.repo.local_identity
+            } else {
+                &self.repo.global_identity
+            }
         } else {
             &self.repo.global_identity
         }
@@ -4050,7 +4098,11 @@ impl GitSparkApp {
 
     pub(crate) fn active_git_settings_identity_mut(&mut self) -> &mut GitIdentity {
         if self.repo.snapshot.is_some() {
-            &mut self.repo.identity
+            if self.repo.use_local_identity {
+                &mut self.repo.local_identity
+            } else {
+                &mut self.repo.global_identity
+            }
         } else {
             &mut self.repo.global_identity
         }

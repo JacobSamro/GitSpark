@@ -398,6 +398,11 @@ fn render_git_section(
             "Git configuration",
             &description,
         ))
+        .children(if has_repo {
+            Some(render_git_config_scope(app, cx).into_any_element())
+        } else {
+            None
+        })
         .child(
             h_flex()
                 .w_full()
@@ -484,6 +489,84 @@ fn render_git_section(
                             "Open a repository to configure pull behavior for that repository."
                         }),
                 ),
+        )
+}
+
+fn render_git_config_scope(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElement {
+    v_flex()
+        .w_full()
+        .gap(theme::z(8.0))
+        .child(render_field_label("For this repository", None))
+        .child(
+            h_flex()
+                .w_full()
+                .gap(theme::z(10.0))
+                .child(div().flex_1().min_w_0().child(render_git_scope_radio(
+                    app,
+                    "settings-git-scope-global",
+                    false,
+                    "Use my global Git config",
+                    "Clear local author overrides and use your global name and email.",
+                    cx,
+                )))
+                .child(div().flex_1().min_w_0().child(render_git_scope_radio(
+                    app,
+                    "settings-git-scope-local",
+                    true,
+                    "Use a local Git config",
+                    "Store a name and email only for this repository.",
+                    cx,
+                ))),
+        )
+}
+
+fn render_git_scope_radio(
+    app: &GitSparkApp,
+    id: &'static str,
+    use_local: bool,
+    title: &'static str,
+    description: &'static str,
+    cx: &mut Context<GitSparkApp>,
+) -> impl IntoElement {
+    let selected = app.repo.use_local_identity == use_local;
+    let radio_id = if use_local {
+        "settings-git-scope-local-radio"
+    } else {
+        "settings-git-scope-global-radio"
+    };
+    let radio = Radio::new(radio_id)
+        .checked(selected)
+        .label(title)
+        .on_click(cx.listener(move |app, _checked: &bool, window, cx| {
+            app.handle_settings_action(SettingsAction::SetGitConfigScope(use_local), cx);
+            app.activate_settings_field(SettingsField::GitUserName, window, cx);
+        }));
+
+    div()
+        .id(id)
+        .w_full()
+        .p(theme::z(12.0))
+        .rounded(theme::z(theme::CORNER_RADIUS))
+        .border_1()
+        .border_color(if selected {
+            theme::accent()
+        } else {
+            theme::border()
+        })
+        .bg(if selected {
+            theme::surface_bg()
+        } else {
+            theme::bg()
+        })
+        .cursor_pointer()
+        .hover(|style| style.bg(theme::hover_bg()))
+        .child(
+            v_flex().gap(theme::z(4.0)).child(radio).child(
+                div()
+                    .text_size(theme::z(11.0))
+                    .text_color(theme::text_muted())
+                    .child(description),
+            ),
         )
 }
 

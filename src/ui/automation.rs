@@ -460,6 +460,7 @@ enum AutomationNodeAction {
     ConfirmDiscardStash,
     SaveGitSettings,
     SaveAiSettings,
+    SetGitConfigScope(bool),
     ChangeAiProvider(AiProvider),
     SelectOpenRouterModel(String),
     GenerateAiCommit,
@@ -1696,6 +1697,9 @@ impl GitSparkApp {
             AutomationNodeAction::SaveAiSettings => {
                 self.handle_settings_action(SettingsAction::SaveAiSettings, cx);
             }
+            AutomationNodeAction::SetGitConfigScope(use_local) => {
+                self.handle_settings_action(SettingsAction::SetGitConfigScope(use_local), cx);
+            }
             AutomationNodeAction::ChangeAiProvider(provider) => {
                 self.handle_settings_action(SettingsAction::ChangeProvider(provider), cx);
             }
@@ -2140,6 +2144,24 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
     match app.nav.settings_section {
         SettingsSection::Git => {
             nodes.extend([
+                automation_node(
+                    "settings-git-scope-global",
+                    AutomationRole::Button,
+                    Some("settings-git-scope-global"),
+                    Some("Use my global Git config"),
+                    Some(AutomationNodeAction::SetGitConfigScope(false)),
+                )
+                .visible(app.repo.snapshot.is_some())
+                .selected(!app.repo.use_local_identity),
+                automation_node(
+                    "settings-git-scope-local",
+                    AutomationRole::Button,
+                    Some("settings-git-scope-local"),
+                    Some("Use a local Git config"),
+                    Some(AutomationNodeAction::SetGitConfigScope(true)),
+                )
+                .visible(app.repo.snapshot.is_some())
+                .selected(app.repo.use_local_identity),
                 settings_field_node(
                     "settings-git-user-name",
                     "User Name",

@@ -698,6 +698,19 @@ impl GitClient {
         })
     }
 
+    pub fn read_local_identity(&self, repo_path: &Path) -> Result<GitIdentity> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+
+        Ok(GitIdentity {
+            user_name: self.read_optional_local_config(&repo_path, "user.name")?,
+            user_email: self.read_optional_local_config(&repo_path, "user.email")?,
+            pull_rebase: self.read_optional_local_bool_config(&repo_path, "pull.rebase")?,
+            default_branch: non_empty(
+                self.read_optional_local_config(&repo_path, "init.defaultBranch")?,
+            ),
+        })
+    }
+
     pub fn read_global_identity(&self) -> Result<GitIdentity> {
         Ok(GitIdentity {
             user_name: self.read_optional_global_config("user.name")?,
@@ -736,6 +749,13 @@ impl GitClient {
             identity.default_branch.as_deref(),
         )?;
 
+        Ok(())
+    }
+
+    pub fn clear_local_author_identity(&self, repo_path: &Path) -> Result<()> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        self.write_optional_string_config(&repo_path, "user.name", None)?;
+        self.write_optional_string_config(&repo_path, "user.email", None)?;
         Ok(())
     }
 
@@ -1228,6 +1248,16 @@ impl GitClient {
         }
     }
 
+    fn read_optional_local_config(&self, repo_path: &Path, key: &str) -> Result<String> {
+        match self.run_git(repo_path, &["config", "--local", "--get", key]) {
+            Ok(value) => Ok(value.trim().to_string()),
+            Err(error) if is_config_missing(&error) => Ok(String::new()),
+            Err(error) => {
+                Err(error).with_context(|| format!("failed reading local config '{key}'"))
+            }
+        }
+    }
+
     fn read_optional_global_config(&self, key: &str) -> Result<String> {
         match run_git_global(&["config", "--global", "--get", key]) {
             Ok(value) => Ok(value.trim().to_string()),
@@ -1247,6 +1277,17 @@ impl GitClient {
         parse_git_bool(&value)
             .map(Some)
             .with_context(|| format!("invalid boolean value for '{key}': '{value}'"))
+    }
+
+    fn read_optional_local_bool_config(&self, repo_path: &Path, key: &str) -> Result<Option<bool>> {
+        let value = self.read_optional_local_config(repo_path, key)?;
+        if value.is_empty() {
+            return Ok(None);
+        }
+
+        parse_git_bool(&value)
+            .map(Some)
+            .with_context(|| format!("invalid local boolean value for '{key}': '{value}'"))
     }
 
     fn read_optional_global_bool_config(&self, key: &str) -> Result<Option<bool>> {
@@ -1542,6 +1583,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
     use std::{fs, path::Path};
 
+    use crate::models::GitIdentity;
+
     use super::{GitClient, encode_github_path, normalize_github_remote_url};
 
     #[test]
@@ -1628,6 +1671,44 @@ mod tests {
                 .any(|branch| branch.name == "feature/delete-current"),
             "deleted branch should be absent from snapshot"
         );
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn reads_and_clears_local_author_identity_without_touching_other_config() {
+        let repo = temp_repo("local-identity");
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "Local Name"]);
+        run_git(&repo, &["config", "user.email", "local@example.test"]);
+        run_git(&repo, &["config", "init.defaultBranch", "trunk"]);
+
+        let git = GitClient::new();
+        let local = git.read_local_identity(&repo).unwrap();
+        assert_eq!(local.user_name, "Local Name");
+        assert_eq!(local.user_email, "local@example.test");
+
+        git.clear_local_author_identity(&repo).unwrap();
+        let cleared = git.read_local_identity(&repo).unwrap();
+        assert_eq!(cleared.user_name, "");
+        assert_eq!(cleared.user_email, "");
+        assert_eq!(cleared.default_branch.as_deref(), Some("trunk"));
+
+        git.write_identity(
+            &repo,
+            &GitIdentity {
+                user_name: "Repo Name".to_string(),
+                user_email: "repo@example.test".to_string(),
+                pull_rebase: None,
+                default_branch: Some("main".to_string()),
+            },
+        )
+        .unwrap();
+
+        let local = git.read_local_identity(&repo).unwrap();
+        assert_eq!(local.user_name, "Repo Name");
+        assert_eq!(local.user_email, "repo@example.test");
+        assert_eq!(local.default_branch.as_deref(), Some("main"));
 
         let _ = fs::remove_dir_all(repo);
     }
