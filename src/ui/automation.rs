@@ -1959,6 +1959,7 @@ fn active_dialog_name(dialog: &ActiveDialog) -> &'static str {
         ActiveDialog::CreateBranch => "create_branch",
         ActiveDialog::DiscardChanges { .. } => "discard_changes",
         ActiveDialog::StashAndSwitch { .. } => "stash_and_switch",
+        ActiveDialog::PublishRepository => "publish_repository",
     }
 }
 

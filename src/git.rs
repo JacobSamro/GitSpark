@@ -163,6 +163,64 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn publish_repository(
+        &self,
+        repo_path: &Path,
+        name: &str,
+        description: &str,
+        private: bool,
+    ) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        if name.trim().is_empty() {
+            bail!("repository name is required");
+        }
+        if self.read_primary_remote(&repo_path)?.is_some() {
+            bail!("repository already has a remote configured");
+        }
+
+        let mut command = Command::new("gh");
+        command
+            .arg("repo")
+            .arg("create")
+            .arg(name.trim())
+            .arg("--source")
+            .arg(&repo_path)
+            .arg("--remote")
+            .arg("origin")
+            .arg("--push")
+            .arg(if private { "--private" } else { "--public" })
+            .current_dir(&repo_path);
+        if !description.trim().is_empty() {
+            command.arg("--description").arg(description.trim());
+        }
+
+        #[cfg(windows)]
+        {
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        let output = command.output().with_context(|| {
+            format!(
+                "failed to launch gh while publishing '{}'",
+                repo_path.display()
+            )
+        })?;
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let message = if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                format!("gh exited with status {}", output.status)
+            };
+            bail!("gh repo create failed: {message}");
+        }
+
+        self.snapshot(&repo_path)
+    }
+
     pub fn stash_all(&self, repo_path: &Path) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         self.run_git(

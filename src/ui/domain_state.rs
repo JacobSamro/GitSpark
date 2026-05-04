@@ -104,12 +104,18 @@ impl Default for CommitState {
 
 pub struct NetworkState {
     pub active_action: Option<NetworkAction>,
+    pub publish_name: String,
+    pub publish_description: String,
+    pub publish_private: bool,
 }
 
 impl Default for NetworkState {
     fn default() -> Self {
         Self {
             active_action: None,
+            publish_name: String::new(),
+            publish_description: String::new(),
+            publish_private: true,
         }
     }
 }

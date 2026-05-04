@@ -126,6 +126,12 @@ pub enum SettingsAction {
     Close,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PublishField {
+    Name,
+    Description,
+}
+
 // ---------------------------------------------------------------------------
 // App state
 // ---------------------------------------------------------------------------
@@ -187,6 +193,12 @@ pub struct GitSparkApp {
     new_branch_focus: FocusHandle,
     pub(crate) new_branch_cursor: usize,
     pub(crate) new_branch_selection: Option<usize>,
+    pub(crate) publish_focus: FocusHandle,
+    pub(crate) publish_active_field: Option<PublishField>,
+    pub(crate) publish_name_cursor: usize,
+    pub(crate) publish_name_selection: Option<usize>,
+    pub(crate) publish_description_cursor: usize,
+    pub(crate) publish_description_selection: Option<usize>,
     pub(crate) settings_modal: SettingsModalState,
     // Zoom
     rem_size: f32,
@@ -234,6 +246,12 @@ impl GitSparkApp {
             new_branch_focus: cx.focus_handle(),
             new_branch_cursor: 0,
             new_branch_selection: None,
+            publish_focus: cx.focus_handle(),
+            publish_active_field: Some(PublishField::Name),
+            publish_name_cursor: 0,
+            publish_name_selection: None,
+            publish_description_cursor: 0,
+            publish_description_selection: None,
             settings_modal: SettingsModalState::new(cx),
             rem_size: DEFAULT_REM_SIZE,
             render_count: 0,
@@ -789,6 +807,13 @@ impl GitSparkApp {
             return;
         }
 
+        if action == NetworkAction::PublishRepository {
+            self.prepare_publish_dialog();
+            self.nav.active_dialog = ActiveDialog::PublishRepository;
+            cx.notify();
+            return;
+        }
+
         let Some(path) = self.repo_path().map(PathBuf::from) else {
             self.messages.error_message = "No repository selected.".to_string();
             return;
@@ -815,15 +840,76 @@ impl GitSparkApp {
                 NetworkAction::Fetch => git.fetch_origin(&path),
                 NetworkAction::Pull => git.pull_origin(&path),
                 NetworkAction::Push | NetworkAction::PublishBranch => git.push_origin(&path),
-                NetworkAction::PublishRepository => {
-                    Err(anyhow::anyhow!("Publish repository is not yet implemented"))
-                }
+                NetworkAction::PublishRepository => unreachable!("handled before background run"),
             }
             .map_err(|e| e.to_string());
 
             let _ = tx.send(AppEvent::NetworkActionCompleted(
                 res,
                 action_label_for_event,
+            ));
+        });
+        cx.notify();
+    }
+
+    fn open_publish_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.prepare_publish_dialog();
+        self.nav.active_dialog = ActiveDialog::PublishRepository;
+        self.nav.show_network_dropdown = false;
+        self.publish_active_field = Some(PublishField::Name);
+        self.publish_name_cursor = self.network.publish_name.len();
+        self.publish_name_selection = None;
+        window.focus(&self.publish_focus);
+        cx.notify();
+    }
+
+    fn prepare_publish_dialog(&mut self) {
+        if self.network.publish_name.trim().is_empty() {
+            if let Some(snapshot) = &self.repo.snapshot {
+                self.network.publish_name = snapshot.repo.name.clone();
+            }
+        }
+        self.publish_name_cursor = self
+            .publish_name_cursor
+            .min(self.network.publish_name.len());
+        self.publish_description_cursor = self
+            .publish_description_cursor
+            .min(self.network.publish_description.len());
+    }
+
+    pub(crate) fn publish_repository(&mut self, cx: &mut Context<Self>) {
+        if self.network.active_action.is_some() {
+            return;
+        }
+
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            return;
+        };
+
+        let name = self.network.publish_name.trim().to_string();
+        if name.is_empty() {
+            self.messages.error_message = "Repository name is required.".to_string();
+            return;
+        }
+
+        let description = self.network.publish_description.trim().to_string();
+        let private = self.network.publish_private;
+
+        self.nav.active_dialog = ActiveDialog::None;
+        self.messages.status_message = "Publishing repository...".to_string();
+        self.messages.error_message.clear();
+        self.network.active_action = Some(NetworkAction::PublishRepository);
+
+        let tx = self.event_tx.clone();
+        let git = GitClient::new();
+        thread::spawn(move || {
+            let res = git
+                .publish_repository(&path, &name, &description, private)
+                .map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::NetworkActionCompleted(
+                res,
+                "Publish repository".to_string(),
             ));
         });
         cx.notify();
@@ -2208,7 +2294,11 @@ impl GitSparkApp {
         let network_main = network_main.on_click(cx.listener(move |app, _evt, _win, cx| {
             if app.network.active_action.is_none() {
                 app.nav.show_network_dropdown = false;
-                app.handle_toolbar_action(ToolbarAction::RunNetworkAction(net_action), cx);
+                if net_action == NetworkAction::PublishRepository {
+                    app.open_publish_dialog(_win, cx);
+                } else {
+                    app.handle_toolbar_action(ToolbarAction::RunNetworkAction(net_action), cx);
+                }
             }
         }));
         let network_caret = network_caret.on_click(cx.listener(|app, _evt, _win, cx| {
@@ -2719,6 +2809,55 @@ impl GitSparkApp {
         );
         self.new_branch_cursor = state.cursor;
         self.new_branch_selection = state.selection;
+        if handled {
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn handle_publish_key(
+        &mut self,
+        event: &KeyDownEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let ks = &event.keystroke;
+        if ks.key == "escape" {
+            self.nav.active_dialog = ActiveDialog::None;
+            cx.notify();
+            return;
+        }
+        if ks.key == "tab" {
+            self.publish_active_field = Some(match self.publish_active_field {
+                Some(PublishField::Name) => PublishField::Description,
+                _ => PublishField::Name,
+            });
+            cx.notify();
+            return;
+        }
+
+        let Some(field) = self.publish_active_field else {
+            return;
+        };
+
+        let (value, cursor, selection) = match field {
+            PublishField::Name => (
+                &mut self.network.publish_name,
+                &mut self.publish_name_cursor,
+                &mut self.publish_name_selection,
+            ),
+            PublishField::Description => (
+                &mut self.network.publish_description,
+                &mut self.publish_description_cursor,
+                &mut self.publish_description_selection,
+            ),
+        };
+        let mut state = crate::ui::text_field::TextFieldState {
+            cursor: *cursor,
+            selection: *selection,
+        };
+        let handled = crate::ui::text_field::handle_text_key(value, &mut state, false, event, cx);
+        *cursor = state.cursor;
+        *selection = state.selection;
         if handled {
             cx.notify();
         }
@@ -3741,6 +3880,10 @@ impl GitSparkApp {
             ActiveDialog::CreateBranch => (400.0, 230.0),
             ActiveDialog::DiscardChanges { .. } => (420.0, 230.0),
             ActiveDialog::StashAndSwitch { .. } => (400.0, 190.0),
+            ActiveDialog::PublishRepository => (
+                crate::ui::publish_dialog::PUBLISH_DIALOG_WIDTH,
+                crate::ui::publish_dialog::PUBLISH_DIALOG_HEIGHT,
+            ),
             ActiveDialog::None => (0.0, 0.0),
         };
         let bounds = window.bounds();
@@ -4138,6 +4281,9 @@ impl GitSparkApp {
                                     }))
                             }),
                     )
+            }
+            ActiveDialog::PublishRepository => {
+                crate::ui::publish_dialog::render_publish_dialog(self, window, cx)
             }
             _ => div(),
         };
