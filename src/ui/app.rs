@@ -2732,16 +2732,22 @@ impl Render for GitSparkApp {
             .on_action(cx.listener(Self::handle_menu_show_repository_list))
             .on_action(cx.listener(Self::handle_menu_show_branches_list))
             .on_action(cx.listener(Self::handle_menu_go_to_summary))
+            .on_action(cx.listener(Self::handle_menu_show_stashed_changes))
             .on_action(cx.listener(Self::handle_menu_fetch))
             .on_action(cx.listener(Self::handle_menu_pull))
             .on_action(cx.listener(Self::handle_menu_push))
             .on_action(cx.listener(Self::handle_menu_publish_repository))
+            .on_action(cx.listener(Self::handle_menu_open_external_editor))
             .on_action(cx.listener(Self::handle_menu_open_in_terminal))
+            .on_action(cx.listener(Self::handle_menu_show_in_finder))
+            .on_action(cx.listener(Self::handle_menu_view_on_github))
             .on_action(cx.listener(Self::handle_menu_repository_settings))
             .on_action(cx.listener(Self::handle_menu_new_branch))
+            .on_action(cx.listener(Self::handle_menu_rename_branch))
             .on_action(cx.listener(Self::handle_menu_delete_branch))
             .on_action(cx.listener(Self::handle_menu_merge_branch))
             .on_action(cx.listener(Self::handle_menu_discard_all_changes))
+            .on_action(cx.listener(Self::handle_menu_stash_changes))
             .on_action(cx.listener(Self::handle_menu_zoom_in))
             .on_action(cx.listener(Self::handle_menu_zoom_out))
             .on_action(cx.listener(Self::handle_menu_zoom_reset));
@@ -3180,6 +3186,15 @@ impl GitSparkApp {
         window.focus(&self.summary_focus);
     }
 
+    fn handle_menu_show_stashed_changes(
+        &mut self,
+        _: &crate::MenuShowStashedChanges,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_show_stashed_changes(cx);
+    }
+
     fn handle_menu_fetch(
         &mut self,
         _: &crate::MenuFetch,
@@ -3216,6 +3231,15 @@ impl GitSparkApp {
         self.run_network_action(NetworkAction::PublishRepository, cx);
     }
 
+    fn handle_menu_open_external_editor(
+        &mut self,
+        _: &crate::MenuOpenExternalEditor,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_open_external_editor(cx);
+    }
+
     fn handle_menu_open_in_terminal(
         &mut self,
         _: &crate::MenuOpenInTerminal,
@@ -3223,6 +3247,24 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         self.menu_open_in_terminal(cx);
+    }
+
+    fn handle_menu_show_in_finder(
+        &mut self,
+        _: &crate::MenuShowInFinder,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_show_in_finder(cx);
+    }
+
+    fn handle_menu_view_on_github(
+        &mut self,
+        _: &crate::MenuViewOnGitHub,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_view_on_github(cx);
     }
 
     fn handle_menu_repository_settings(
@@ -3245,6 +3287,15 @@ impl GitSparkApp {
         if matches!(self.nav.active_dialog, ActiveDialog::CreateBranch) {
             window.focus(&self.new_branch_focus);
         }
+    }
+
+    fn handle_menu_rename_branch(
+        &mut self,
+        _: &crate::MenuRenameBranch,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_rename_current_branch(cx);
     }
 
     fn handle_menu_delete_branch(
@@ -3272,6 +3323,15 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         self.menu_discard_all_changes(cx);
+    }
+
+    fn handle_menu_stash_changes(
+        &mut self,
+        _: &crate::MenuStashChanges,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_stash_changes(cx);
     }
 
     fn handle_menu_zoom_in(
