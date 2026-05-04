@@ -2274,26 +2274,34 @@ impl GitSparkApp {
             cx.notify();
         }));
 
+        let show_network_dropdown =
+            self.nav.show_network_dropdown && network_action != NetworkAction::PublishRepository;
         let (network_main, network_caret) = toolbar::render_network_parts(
             &network_label,
             ahead,
             behind,
             last_fetched,
             is_in_flight,
-            self.nav.show_network_dropdown,
+            show_network_dropdown,
         );
 
         let net_action = network_action;
-        let network_main = network_main.on_click(cx.listener(move |app, _evt, _win, cx| {
-            if app.network.active_action.is_none() {
-                app.nav.show_network_dropdown = false;
-                if net_action == NetworkAction::PublishRepository {
-                    app.open_publish_dialog(_win, cx);
-                } else {
-                    app.handle_toolbar_action(ToolbarAction::RunNetworkAction(net_action), cx);
-                }
-            }
-        }));
+        let network_main =
+            network_main
+                .pr(theme::z(10.0))
+                .on_click(cx.listener(move |app, _evt, _win, cx| {
+                    if app.network.active_action.is_none() {
+                        app.nav.show_network_dropdown = false;
+                        if net_action == NetworkAction::PublishRepository {
+                            app.open_publish_dialog(_win, cx);
+                        } else {
+                            app.handle_toolbar_action(
+                                ToolbarAction::RunNetworkAction(net_action),
+                                cx,
+                            );
+                        }
+                    }
+                }));
         let network_caret = network_caret.on_click(cx.listener(|app, _evt, _win, cx| {
             app.nav.show_network_dropdown = !app.nav.show_network_dropdown;
             app.nav.show_repo_selector = false;
@@ -2310,14 +2318,15 @@ impl GitSparkApp {
             .border_color(theme::toolbar_button_border())
             .child(branch_section)
             .child(toolbar::vertical_divider())
-            .child(
-                div().flex_none().w(px(231.0)).h_full().child(
-                    h_flex()
-                        .size_full()
-                        .child(network_main)
-                        .child(network_caret),
+            .child(div().flex_none().w(px(231.0)).h_full().child(
+                h_flex().size_full().child(network_main).children(
+                    if network_action == NetworkAction::PublishRepository {
+                        None
+                    } else {
+                        Some(network_caret)
+                    },
                 ),
-            );
+            ));
 
         (left, right)
     }
