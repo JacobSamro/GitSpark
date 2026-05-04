@@ -757,6 +757,14 @@ impl GitSparkApp {
             )
             .enabled(self.can_commit()),
             automation_node(
+                "commit-identity-warning",
+                AutomationRole::Status,
+                Some("commit-identity-warning"),
+                self.missing_identity_message(),
+                None,
+            )
+            .visible(self.missing_identity_message().is_some()),
+            automation_node(
                 "undo-last-commit",
                 AutomationRole::Button,
                 Some("button-undo-last-commit"),

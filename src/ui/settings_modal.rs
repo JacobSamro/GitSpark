@@ -167,7 +167,6 @@ pub(crate) fn render_settings_modal(
         .id("settings-modal-panel")
         .track_focus(&app.settings_modal.focus)
         .key_context("settings-modal")
-        .on_key_down(cx.listener(GitSparkApp::handle_settings_key))
         .occlude()
         .absolute()
         .left(px(panel_left))

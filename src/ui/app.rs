@@ -1218,6 +1218,11 @@ impl GitSparkApp {
         }
         let summary = summary.to_string();
 
+        if let Some(message) = self.missing_identity_message() {
+            self.messages.error_message = message.to_string();
+            return;
+        }
+
         let message = if self.commit.body.trim().is_empty() {
             summary.clone()
         } else {
@@ -1338,6 +1343,12 @@ impl GitSparkApp {
                         );
                         return;
                     }
+                }
+
+                if let Some(path) = self.repo_path().map(PathBuf::from) {
+                    self.load_identity(&path);
+                } else {
+                    self.load_global_identity();
                 }
 
                 // Also persist default branch in app settings.
@@ -2252,7 +2263,25 @@ impl GitSparkApp {
     pub(crate) fn can_commit(&self) -> bool {
         !self.commit.summary.trim().is_empty()
             && self.commit_file_count() > 0
+            && self.identity_is_configured()
             && !self.commit.ai_in_flight
+    }
+
+    fn identity_is_configured(&self) -> bool {
+        !self.repo.identity.user_name.trim().is_empty()
+            && !self.repo.identity.user_email.trim().is_empty()
+    }
+
+    pub(crate) fn missing_identity_message(&self) -> Option<&'static str> {
+        let missing_name = self.repo.identity.user_name.trim().is_empty();
+        let missing_email = self.repo.identity.user_email.trim().is_empty();
+
+        match (missing_name, missing_email) {
+            (true, true) => Some("Configure your Git name and email before committing."),
+            (true, false) => Some("Configure your Git name before committing."),
+            (false, true) => Some("Configure your Git email before committing."),
+            (false, false) => None,
+        }
     }
 
     #[allow(dead_code)]
@@ -4193,6 +4222,55 @@ impl GitSparkApp {
         };
 
         let can_commit = self.can_commit();
+        let identity_warning = self.missing_identity_message().map(|message| {
+            h_flex()
+                .id("commit-identity-warning")
+                .w_full()
+                .gap(px(8.0))
+                .items_center()
+                .px(px(8.0))
+                .py(px(7.0))
+                .rounded(theme::z(theme::CORNER_RADIUS))
+                .bg(theme::surface_bg())
+                .border_1()
+                .border_color(theme::warning())
+                .child(
+                    Icon::new(IconName::TriangleAlert)
+                        .size(px(13.0))
+                        .text_color(theme::warning()),
+                )
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex_1()
+                        .text_size(px(12.0))
+                        .text_color(theme::text_main())
+                        .child(message),
+                )
+                .child(
+                    div()
+                        .id("commit-identity-settings")
+                        .px(px(8.0))
+                        .py(px(4.0))
+                        .rounded(px(3.0))
+                        .bg(theme::surface_bg_alt())
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme::toolbar_hover_bg()))
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .text_color(theme::text_main())
+                                .child("Git Settings"),
+                        )
+                        .on_click(cx.listener(|app, _evt, window, cx| {
+                            app.open_settings_modal(
+                                Some(crate::ui::ui_state::SettingsSection::Git),
+                                cx,
+                            );
+                            app.activate_settings_field(SettingsField::GitUserName, window, cx);
+                        })),
+                )
+        });
 
         // Summary length hint (> 50 chars)
         let summary_hint = if self.commit.summary.len() > 50 {
@@ -4222,6 +4300,7 @@ impl GitSparkApp {
                     .child(summary_hint),
             )
             .child(description_group)
+            .when_some(identity_warning, |this, warning| this.child(warning))
             .child(
                 Button::new("commit-btn")
                     .label(commit_label)

@@ -193,6 +193,12 @@ pub fn handle_text_key(
             state.cursor += 1;
             true
         }
+        "space" => {
+            delete_selection(value, state);
+            value.insert(state.cursor, ' ');
+            state.cursor += 1;
+            true
+        }
         _ => {
             if let Some(ref ch) = ks.key_char {
                 if !ks.modifiers.control
