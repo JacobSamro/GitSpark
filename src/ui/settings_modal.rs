@@ -100,13 +100,7 @@ pub(crate) fn render_settings_modal(
         .snapshot
         .as_ref()
         .map(|snapshot| snapshot.repo.path.display().to_string());
-    let status_text = if !app.messages.error_message.is_empty() {
-        Some((app.messages.error_message.as_str(), theme::danger()))
-    } else if !app.messages.status_message.is_empty() {
-        Some((app.messages.status_message.as_str(), theme::text_muted()))
-    } else {
-        None
-    };
+    let status_text = settings_status_text(app);
 
     let section_action = match app.nav.settings_section {
         SettingsSection::Git => Some(
@@ -283,6 +277,19 @@ fn render_header(cx: &mut Context<GitSparkApp>) -> impl IntoElement {
         )
 }
 
+fn settings_status_text(app: &GitSparkApp) -> Option<(&str, Hsla)> {
+    if !app.messages.error_message.is_empty() {
+        return Some((app.messages.error_message.as_str(), theme::danger()));
+    }
+
+    match app.messages.status_message.as_str() {
+        "AI settings saved." | "Git config saved." => {
+            Some((app.messages.status_message.as_str(), theme::text_muted()))
+        }
+        _ => None,
+    }
+}
+
 fn render_nav(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElement {
     let sections = [
         (
@@ -318,7 +325,7 @@ fn render_nav(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElem
         .flex_shrink_0()
         .p(theme::z(14.0))
         .gap(theme::z(6.0))
-        .bg(theme::surface_bg_muted());
+        .bg(theme::bg());
 
     for (section, test_id, label, icon) in sections {
         let is_active = app.nav.settings_section == section;
@@ -453,7 +460,7 @@ fn render_git_section(
                 .rounded(theme::z(theme::CORNER_RADIUS))
                 .border_1()
                 .border_color(theme::border())
-                .bg(theme::surface_bg_muted())
+                .bg(theme::bg())
                 .child(
                     h_flex()
                         .gap(theme::z(10.0))
@@ -575,7 +582,7 @@ fn render_theme_option(
         .rounded(theme::z(theme::CORNER_RADIUS))
         .border_1()
         .border_color(border)
-        .bg(theme::surface_bg_muted())
+        .bg(theme::bg())
         .overflow_hidden()
         .child(
             v_flex()
@@ -853,7 +860,7 @@ fn render_provider_radio(
         .bg(if selected {
             theme::surface_bg()
         } else {
-            theme::surface_bg_muted()
+            theme::bg()
         })
         .child(
             div()
@@ -1063,7 +1070,7 @@ fn render_openrouter_models(
         .rounded(theme::z(theme::CORNER_RADIUS))
         .border_1()
         .border_color(theme::border())
-        .bg(theme::surface_bg_muted())
+        .bg(theme::bg())
         .p(theme::z(8.0))
         .child(body)
 }
@@ -1181,7 +1188,7 @@ fn render_endpoint_group(
                     .rounded(theme::z(theme::CORNER_RADIUS))
                     .border_1()
                     .border_color(theme::border())
-                    .bg(theme::surface_bg_muted())
+                    .bg(theme::bg())
                     .child(
                         div()
                             .text_size(theme::z(12.0))
