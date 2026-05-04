@@ -2,6 +2,7 @@ use gpui::{Context, Entity, Window, px};
 use gpui_component::menu::{ContextMenu, ContextMenuExt, PopupMenu, PopupMenuItem};
 
 use crate::ui::app::GitSparkApp;
+use crate::ui::labels;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HistoryContextMenuAction {
@@ -36,28 +37,28 @@ pub(crate) fn build_history_context_menu(
     menu.min_w(px(220.0))
         .max_w(px(260.0))
         .item(menu_item(
-            "Reset to Commit...",
+            labels::reset_to_commit_menu(),
             false,
             view.clone(),
             oid.clone(),
             HistoryContextMenuAction::ResetToCommit,
         ))
         .item(menu_item(
-            "Checkout Commit",
+            labels::checkout_commit_menu(),
             true,
             view.clone(),
             oid.clone(),
             HistoryContextMenuAction::CheckoutCommit,
         ))
         .item(menu_item(
-            "Reorder Commit",
+            labels::reorder_commit_menu(),
             false,
             view.clone(),
             oid.clone(),
             HistoryContextMenuAction::ReorderCommit,
         ))
         .item(menu_item(
-            "Revert Changes in Commit",
+            labels::revert_changes_in_commit_menu(),
             true,
             view.clone(),
             oid.clone(),
@@ -65,21 +66,21 @@ pub(crate) fn build_history_context_menu(
         ))
         .separator()
         .item(menu_item(
-            "Create Branch from Commit",
+            labels::create_branch_from_commit_menu(),
             true,
             view.clone(),
             oid.clone(),
             HistoryContextMenuAction::CreateBranchFromCommit,
         ))
         .item(menu_item(
-            "Create Tag...",
+            labels::create_tag_menu(),
             false,
             view.clone(),
             oid.clone(),
             HistoryContextMenuAction::CreateTag,
         ))
         .item(menu_item(
-            "Cherry-pick Commit...",
+            labels::cherry_pick_commit_menu(),
             true,
             view.clone(),
             oid.clone(),

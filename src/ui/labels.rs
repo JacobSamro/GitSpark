@@ -119,6 +119,114 @@ pub(crate) fn open_with_default_program_menu() -> &'static str {
     }
 }
 
+pub(crate) fn reset_to_commit_menu() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Reset to Commit…"
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        "Reset to commit…"
+    }
+}
+
+pub(crate) fn checkout_commit_menu() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Checkout Commit"
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        "Checkout commit"
+    }
+}
+
+pub(crate) fn reorder_commit_menu() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Reorder Commit"
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        "Reorder commit"
+    }
+}
+
+pub(crate) fn revert_changes_in_commit_menu() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Revert Changes in Commit"
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        "Revert changes in commit"
+    }
+}
+
+pub(crate) fn create_branch_from_commit_menu() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Create Branch from Commit"
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        "Create branch from commit"
+    }
+}
+
+pub(crate) fn create_tag_menu() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Create Tag…"
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        "Create tag…"
+    }
+}
+
+pub(crate) fn cherry_pick_commit_menu() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Cherry-pick Commit…"
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        "Cherry-pick commit…"
+    }
+}
+
+pub(crate) fn rename_branch_menu() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Rename Branch…"
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        "Rename branch…"
+    }
+}
+
+pub(crate) fn delete_branch_menu() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Delete Branch…"
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        "Delete branch…"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,6 +260,18 @@ mod tests {
                 open_with_default_program_menu(),
                 "Open with Default Program"
             );
+            assert_eq!(reset_to_commit_menu(), "Reset to Commit…");
+            assert_eq!(checkout_commit_menu(), "Checkout Commit");
+            assert_eq!(reorder_commit_menu(), "Reorder Commit");
+            assert_eq!(revert_changes_in_commit_menu(), "Revert Changes in Commit");
+            assert_eq!(
+                create_branch_from_commit_menu(),
+                "Create Branch from Commit"
+            );
+            assert_eq!(create_tag_menu(), "Create Tag…");
+            assert_eq!(cherry_pick_commit_menu(), "Cherry-pick Commit…");
+            assert_eq!(rename_branch_menu(), "Rename Branch…");
+            assert_eq!(delete_branch_menu(), "Delete Branch…");
         }
 
         #[cfg(target_os = "windows")]
@@ -170,6 +290,18 @@ mod tests {
                 open_with_default_program_menu(),
                 "Open with default program"
             );
+            assert_eq!(reset_to_commit_menu(), "Reset to commit…");
+            assert_eq!(checkout_commit_menu(), "Checkout commit");
+            assert_eq!(reorder_commit_menu(), "Reorder commit");
+            assert_eq!(revert_changes_in_commit_menu(), "Revert changes in commit");
+            assert_eq!(
+                create_branch_from_commit_menu(),
+                "Create branch from commit"
+            );
+            assert_eq!(create_tag_menu(), "Create tag…");
+            assert_eq!(cherry_pick_commit_menu(), "Cherry-pick commit…");
+            assert_eq!(rename_branch_menu(), "Rename branch…");
+            assert_eq!(delete_branch_menu(), "Delete branch…");
         }
 
         #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
@@ -188,6 +320,18 @@ mod tests {
                 open_with_default_program_menu(),
                 "Open with default program"
             );
+            assert_eq!(reset_to_commit_menu(), "Reset to commit…");
+            assert_eq!(checkout_commit_menu(), "Checkout commit");
+            assert_eq!(reorder_commit_menu(), "Reorder commit");
+            assert_eq!(revert_changes_in_commit_menu(), "Revert changes in commit");
+            assert_eq!(
+                create_branch_from_commit_menu(),
+                "Create branch from commit"
+            );
+            assert_eq!(create_tag_menu(), "Create tag…");
+            assert_eq!(cherry_pick_commit_menu(), "Cherry-pick commit…");
+            assert_eq!(rename_branch_menu(), "Rename branch…");
+            assert_eq!(delete_branch_menu(), "Delete branch…");
         }
     }
 }

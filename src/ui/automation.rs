@@ -1711,22 +1711,22 @@ fn history_action_nodes(short_oid: &str, oid: &str) -> Vec<AutomationNode> {
     [
         (
             "checkout",
-            "Checkout commit",
+            crate::ui::labels::checkout_commit_menu(),
             AutomationHistoryAction::CheckoutCommit,
         ),
         (
             "revert",
-            "Revert changes in commit",
+            crate::ui::labels::revert_changes_in_commit_menu(),
             AutomationHistoryAction::RevertChangesInCommit,
         ),
         (
             "cherry-pick",
-            "Cherry-pick commit",
+            crate::ui::labels::cherry_pick_commit_menu(),
             AutomationHistoryAction::CherryPickCommit,
         ),
         (
             "create-branch",
-            "Create branch from commit",
+            crate::ui::labels::create_branch_from_commit_menu(),
             AutomationHistoryAction::CreateBranchFromCommit,
         ),
         ("copy-sha", "Copy SHA", AutomationHistoryAction::CopySha),
@@ -1753,7 +1753,11 @@ fn history_action_nodes(short_oid: &str, oid: &str) -> Vec<AutomationNode> {
 fn branch_action_nodes(name: &str) -> Vec<AutomationNode> {
     let slug = stable_test_slug(name);
     [
-        ("delete", "Delete branch", AutomationBranchAction::Delete),
+        (
+            "delete",
+            crate::ui::labels::delete_branch_menu(),
+            AutomationBranchAction::Delete,
+        ),
         (
             "view-on-github",
             "View on GitHub",

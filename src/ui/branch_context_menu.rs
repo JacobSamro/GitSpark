@@ -2,6 +2,7 @@ use gpui::{Context, Entity, Window, px};
 use gpui_component::menu::{ContextMenu, ContextMenuExt, PopupMenu, PopupMenuItem};
 
 use crate::ui::app::GitSparkApp;
+use crate::ui::labels;
 
 #[derive(Clone, Debug)]
 pub(crate) enum BranchContextAction {
@@ -36,14 +37,14 @@ pub(crate) fn build_branch_context_menu(
     menu.min_w(px(180.0))
         .max_w(px(240.0))
         .item(branch_menu_item(
-            "Rename Branch...",
+            labels::rename_branch_menu(),
             false, // not implemented yet
             view.clone(),
             branch_name.clone(),
             BranchContextAction::Rename,
         ))
         .item(branch_menu_item(
-            "Delete Branch...",
+            labels::delete_branch_menu(),
             !is_current, // can't delete the current branch
             view.clone(),
             branch_name.clone(),
