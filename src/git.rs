@@ -290,6 +290,36 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn delete_branch_from_current_worktree(
+        &self,
+        repo_path: &Path,
+        branch_name: &str,
+    ) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let branch_name = branch_name.trim();
+        if branch_name.is_empty() {
+            bail!("branch name cannot be empty");
+        }
+
+        let current = self
+            .run_git(&repo_path, &["branch", "--show-current"])
+            .context("failed to read current branch")?;
+        if current.trim() == branch_name {
+            let fallback = self
+                .list_branches(&repo_path)?
+                .into_iter()
+                .find(|branch| !branch.is_remote && branch.name != branch_name)
+                .map(|branch| branch.name)
+                .with_context(|| format!("cannot delete the only local branch '{branch_name}'"))?;
+            self.run_git(&repo_path, &["switch", &fallback])
+                .with_context(|| {
+                    format!("failed to switch to '{fallback}' before deleting '{branch_name}'")
+                })?;
+        }
+
+        self.delete_branch(&repo_path, branch_name)
+    }
+
     pub fn rename_branch(
         &self,
         repo_path: &Path,

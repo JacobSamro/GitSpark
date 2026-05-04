@@ -1829,7 +1829,9 @@ impl GitSparkApp {
         let git = GitClient::new();
         let name = branch_name.clone();
         thread::spawn(move || {
-            let res = git.delete_branch(&path, &name).map_err(|e| e.to_string());
+            let res = git
+                .delete_branch_from_current_worktree(&path, &name)
+                .map_err(|e| e.to_string());
             let _ = tx.send(AppEvent::NetworkActionCompleted(
                 res,
                 format!("Deleted branch '{name}'"),
@@ -2620,6 +2622,7 @@ impl Render for GitSparkApp {
             .on_action(cx.listener(Self::handle_menu_open_in_terminal))
             .on_action(cx.listener(Self::handle_menu_repository_settings))
             .on_action(cx.listener(Self::handle_menu_new_branch))
+            .on_action(cx.listener(Self::handle_menu_delete_branch))
             .on_action(cx.listener(Self::handle_menu_merge_branch))
             .on_action(cx.listener(Self::handle_menu_discard_all_changes))
             .on_action(cx.listener(Self::handle_menu_zoom_in))
@@ -2891,6 +2894,46 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub fn menu_delete_current_branch(&mut self, cx: &mut Context<Self>) {
+        let Some(snapshot) = self.repo.snapshot.as_ref() else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        let branch_name = snapshot.repo.current_branch.clone();
+        let default_branch = self
+            .repo
+            .identity
+            .default_branch
+            .as_deref()
+            .or(self.settings.default_branch.as_deref())
+            .unwrap_or("main");
+        if branch_name == default_branch || branch_name == "main" || branch_name == "master" {
+            self.messages.error_message =
+                "Cannot delete the default branch from the Branch menu.".to_string();
+            cx.notify();
+            return;
+        }
+
+        if snapshot
+            .branches
+            .iter()
+            .filter(|branch| !branch.is_remote)
+            .count()
+            <= 1
+        {
+            self.messages.error_message =
+                "Cannot delete the only local branch in this repository.".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.nav.active_dialog = ActiveDialog::DeleteBranch { branch_name };
+        self.messages.error_message.clear();
+        cx.notify();
+    }
+
     pub fn menu_merge_branch(&mut self, cx: &mut Context<Self>) {
         if self.repo.snapshot.is_none() {
             self.messages.error_message = "No repository selected.".to_string();
@@ -3085,6 +3128,15 @@ impl GitSparkApp {
         if matches!(self.nav.active_dialog, ActiveDialog::CreateBranch) {
             window.focus(&self.new_branch_focus);
         }
+    }
+
+    fn handle_menu_delete_branch(
+        &mut self,
+        _: &crate::MenuDeleteBranch,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_delete_current_branch(cx);
     }
 
     fn handle_menu_merge_branch(
