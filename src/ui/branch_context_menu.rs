@@ -7,6 +7,7 @@ use crate::ui::labels;
 #[derive(Clone, Debug)]
 pub(crate) enum BranchContextAction {
     Rename,
+    CopyName,
     Delete,
     ViewOnGitHub,
 }
@@ -31,26 +32,34 @@ pub(crate) fn build_branch_context_menu(
     menu.min_w(px(180.0))
         .max_w(px(240.0))
         .item(branch_menu_item(
-            labels::rename_branch_menu(),
+            labels::rename_branch_context_menu(),
             true,
             view.clone(),
             branch_name.clone(),
             BranchContextAction::Rename,
         ))
         .item(branch_menu_item(
-            labels::delete_branch_menu(),
-            !is_current, // can't delete the current branch
+            labels::copy_branch_name_menu(),
+            true,
             view.clone(),
             branch_name.clone(),
-            BranchContextAction::Delete,
+            BranchContextAction::CopyName,
         ))
         .separator()
         .item(branch_menu_item(
-            "View on GitHub",
+            labels::view_branch_on_github_menu(),
             has_github_remote,
+            view.clone(),
+            branch_name.clone(),
+            BranchContextAction::ViewOnGitHub,
+        ))
+        .separator()
+        .item(branch_menu_item(
+            labels::delete_branch_context_menu(),
+            !is_current,
             view,
             branch_name,
-            BranchContextAction::ViewOnGitHub,
+            BranchContextAction::Delete,
         ))
 }
 

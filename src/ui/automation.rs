@@ -291,6 +291,7 @@ pub(crate) enum AutomationHistoryAction {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum AutomationBranchAction {
     Rename,
+    CopyName,
     Delete,
     ViewOnGithub,
 }
@@ -1598,6 +1599,7 @@ impl GitSparkApp {
         let action = match action {
             AutomationBranchAction::Delete => BranchContextAction::Delete,
             AutomationBranchAction::Rename => BranchContextAction::Rename,
+            AutomationBranchAction::CopyName => BranchContextAction::CopyName,
             AutomationBranchAction::ViewOnGithub => BranchContextAction::ViewOnGitHub,
         };
         self.handle_branch_context_action(name, action, cx);
@@ -2001,12 +2003,17 @@ fn branch_action_nodes(name: &str, has_github_remote: bool) -> Vec<AutomationNod
     let mut actions = vec![
         (
             "rename",
-            crate::ui::labels::rename_branch_menu(),
+            crate::ui::labels::rename_branch_context_menu(),
             AutomationBranchAction::Rename,
         ),
         (
+            "copy-name",
+            crate::ui::labels::copy_branch_name_menu(),
+            AutomationBranchAction::CopyName,
+        ),
+        (
             "delete",
-            crate::ui::labels::delete_branch_menu(),
+            crate::ui::labels::delete_branch_context_menu(),
             AutomationBranchAction::Delete,
         ),
     ];
@@ -2014,7 +2021,7 @@ fn branch_action_nodes(name: &str, has_github_remote: bool) -> Vec<AutomationNod
     if has_github_remote {
         actions.push((
             "view-on-github",
-            "View on GitHub",
+            crate::ui::labels::view_branch_on_github_menu(),
             AutomationBranchAction::ViewOnGithub,
         ));
     }

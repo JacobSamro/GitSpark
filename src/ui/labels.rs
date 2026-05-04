@@ -203,6 +203,7 @@ pub(crate) fn cherry_pick_commit_menu() -> &'static str {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn rename_branch_menu() -> &'static str {
     #[cfg(target_os = "macos")]
     {
@@ -215,6 +216,27 @@ pub(crate) fn rename_branch_menu() -> &'static str {
     }
 }
 
+pub(crate) fn rename_branch_context_menu() -> &'static str {
+    "Rename…"
+}
+
+pub(crate) fn copy_branch_name_menu() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Copy Branch Name"
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        "Copy branch name"
+    }
+}
+
+pub(crate) fn view_branch_on_github_menu() -> &'static str {
+    "View Branch on GitHub"
+}
+
+#[allow(dead_code)]
 pub(crate) fn delete_branch_menu() -> &'static str {
     #[cfg(target_os = "macos")]
     {
@@ -225,6 +247,10 @@ pub(crate) fn delete_branch_menu() -> &'static str {
     {
         "Delete branch…"
     }
+}
+
+pub(crate) fn delete_branch_context_menu() -> &'static str {
+    "Delete…"
 }
 
 #[cfg(test)]
@@ -271,7 +297,11 @@ mod tests {
             assert_eq!(create_tag_menu(), "Create Tag…");
             assert_eq!(cherry_pick_commit_menu(), "Cherry-pick Commit…");
             assert_eq!(rename_branch_menu(), "Rename Branch…");
+            assert_eq!(rename_branch_context_menu(), "Rename…");
+            assert_eq!(copy_branch_name_menu(), "Copy Branch Name");
+            assert_eq!(view_branch_on_github_menu(), "View Branch on GitHub");
             assert_eq!(delete_branch_menu(), "Delete Branch…");
+            assert_eq!(delete_branch_context_menu(), "Delete…");
         }
 
         #[cfg(target_os = "windows")]
@@ -301,7 +331,11 @@ mod tests {
             assert_eq!(create_tag_menu(), "Create tag…");
             assert_eq!(cherry_pick_commit_menu(), "Cherry-pick commit…");
             assert_eq!(rename_branch_menu(), "Rename branch…");
+            assert_eq!(rename_branch_context_menu(), "Rename…");
+            assert_eq!(copy_branch_name_menu(), "Copy branch name");
+            assert_eq!(view_branch_on_github_menu(), "View Branch on GitHub");
             assert_eq!(delete_branch_menu(), "Delete branch…");
+            assert_eq!(delete_branch_context_menu(), "Delete…");
         }
 
         #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
@@ -331,7 +365,11 @@ mod tests {
             assert_eq!(create_tag_menu(), "Create tag…");
             assert_eq!(cherry_pick_commit_menu(), "Cherry-pick commit…");
             assert_eq!(rename_branch_menu(), "Rename branch…");
+            assert_eq!(rename_branch_context_menu(), "Rename…");
+            assert_eq!(copy_branch_name_menu(), "Copy branch name");
+            assert_eq!(view_branch_on_github_menu(), "View Branch on GitHub");
             assert_eq!(delete_branch_menu(), "Delete branch…");
+            assert_eq!(delete_branch_context_menu(), "Delete…");
         }
     }
 }

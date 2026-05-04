@@ -1631,6 +1631,11 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         match action {
+            BranchContextAction::CopyName => {
+                cx.write_to_clipboard(ClipboardItem::new_string(branch_name.clone()));
+                self.messages.status_message = format!("Copied branch name '{branch_name}'.");
+                self.messages.error_message.clear();
+            }
             BranchContextAction::Delete => {
                 self.nav.active_dialog = ActiveDialog::DeleteBranch { branch_name };
                 self.messages.error_message.clear();
