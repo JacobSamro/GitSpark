@@ -708,9 +708,9 @@ impl GitSparkApp {
             status_message: self.messages.status_message.clone(),
             error_message: self.messages.error_message.clone(),
             settings_section: self.nav.settings_section.into(),
-            git_user_name: self.repo.global_identity.user_name.clone(),
-            git_user_email: self.repo.global_identity.user_email.clone(),
-            git_default_branch: self.repo.global_identity.default_branch.clone(),
+            git_user_name: self.active_git_settings_identity().user_name.clone(),
+            git_user_email: self.active_git_settings_identity().user_email.clone(),
+            git_default_branch: self.active_git_settings_identity().default_branch.clone(),
             git_pull_rebase: self.repo.identity.pull_rebase,
             ai_provider: ai_provider_name(&self.settings.ai.provider).to_string(),
             ai_model: self.settings.ai.model.clone(),
@@ -1632,15 +1632,15 @@ impl GitSparkApp {
     ) {
         match field {
             SettingsField::GitUserName => {
-                self.repo.global_identity.user_name = text;
+                self.active_git_settings_identity_mut().user_name = text;
                 self.settings_modal.git_user_name_selection = None;
             }
             SettingsField::GitUserEmail => {
-                self.repo.global_identity.user_email = text;
+                self.active_git_settings_identity_mut().user_email = text;
                 self.settings_modal.git_user_email_selection = None;
             }
             SettingsField::GitDefaultBranch => {
-                self.repo.global_identity.default_branch = if text.trim().is_empty() {
+                self.active_git_settings_identity_mut().default_branch = if text.trim().is_empty() {
                     None
                 } else {
                     Some(text)
@@ -1843,20 +1843,19 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
                     "settings-git-user-name",
                     "User Name",
                     SettingsField::GitUserName,
-                    app.repo.global_identity.user_name.as_str(),
+                    app.active_git_settings_identity().user_name.as_str(),
                 ),
                 settings_field_node(
                     "settings-git-user-email",
                     "User Email",
                     SettingsField::GitUserEmail,
-                    app.repo.global_identity.user_email.as_str(),
+                    app.active_git_settings_identity().user_email.as_str(),
                 ),
                 settings_field_node(
                     "settings-git-default-branch",
                     "Default Branch",
                     SettingsField::GitDefaultBranch,
-                    app.repo
-                        .global_identity
+                    app.active_git_settings_identity()
                         .default_branch
                         .as_deref()
                         .unwrap_or(""),

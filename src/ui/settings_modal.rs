@@ -390,7 +390,7 @@ fn render_git_section(
     let has_repo = repo_scope.is_some();
     let description = repo_scope
         .map(|path| {
-            format!("Author and default branch are global. Pull behavior applies to {path}.")
+            format!("Author, default branch, and pull behavior apply to this repository: {path}.")
         })
         .unwrap_or_else(|| {
             "Author and default branch are stored in global Git config.".to_string()

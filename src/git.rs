@@ -688,6 +688,27 @@ impl GitClient {
         Ok(())
     }
 
+    pub fn write_identity(&self, repo_path: &Path, identity: &GitIdentity) -> Result<()> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        self.write_optional_string_config(
+            &repo_path,
+            "user.name",
+            non_empty(identity.user_name.clone()).as_deref(),
+        )?;
+        self.write_optional_string_config(
+            &repo_path,
+            "user.email",
+            non_empty(identity.user_email.clone()).as_deref(),
+        )?;
+        self.write_optional_string_config(
+            &repo_path,
+            "init.defaultBranch",
+            identity.default_branch.as_deref(),
+        )?;
+
+        Ok(())
+    }
+
     pub fn write_pull_rebase(&self, repo_path: &Path, value: Option<bool>) -> Result<()> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         self.write_bool_config(&repo_path, "pull.rebase", value)

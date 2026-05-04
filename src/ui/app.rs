@@ -1415,34 +1415,43 @@ impl GitSparkApp {
     // ------------------------------------------------------------------
 
     fn save_git_config(&mut self) {
-        match self.git.write_global_identity(&self.repo.global_identity) {
-            Ok(()) => {
-                if let Some(path) = self.repo_path().map(PathBuf::from) {
+        if let Some(path) = self.repo_path().map(PathBuf::from) {
+            match self.git.write_identity(&path, &self.repo.identity) {
+                Ok(()) => {
                     if let Err(err) = self
                         .git
                         .write_pull_rebase(&path, self.repo.identity.pull_rebase)
                     {
                         self.messages.error_message = format!(
-                            "Saved global Git config, but failed to save repository pull behavior: {err}"
+                            "Saved repository Git identity, but failed to save repository pull behavior: {err}"
                         );
                         return;
                     }
-                }
 
-                if let Some(path) = self.repo_path().map(PathBuf::from) {
+                    self.settings.default_branch = self.repo.identity.default_branch.clone();
+                    self.persist_settings();
                     self.load_identity(&path);
-                } else {
-                    self.load_global_identity();
+                    self.messages.status_message = "Git config saved.".to_string();
+                    self.messages.error_message.clear();
                 }
-
-                // Also persist default branch in app settings.
-                self.settings.default_branch = self.repo.global_identity.default_branch.clone();
-                self.persist_settings();
-                self.messages.status_message = "Git config saved.".to_string();
-                self.messages.error_message.clear();
+                Err(err) => {
+                    self.messages.error_message =
+                        format!("Failed to save repository Git config: {err}");
+                }
             }
-            Err(err) => {
-                self.messages.error_message = format!("Failed to save global Git config: {err}");
+        } else {
+            match self.git.write_global_identity(&self.repo.global_identity) {
+                Ok(()) => {
+                    self.load_global_identity();
+                    self.settings.default_branch = self.repo.global_identity.default_branch.clone();
+                    self.persist_settings();
+                    self.messages.status_message = "Git config saved.".to_string();
+                    self.messages.error_message.clear();
+                }
+                Err(err) => {
+                    self.messages.error_message =
+                        format!("Failed to save global Git config: {err}");
+                }
             }
         }
     }
@@ -2432,23 +2441,22 @@ impl Render for GitSparkApp {
         // Clamp cursors to valid positions (e.g. after AI fill or clear)
         self.summary_cursor = self.summary_cursor.min(self.commit.summary.len());
         self.description_cursor = self.description_cursor.min(self.commit.body.len());
+        let git_identity = self.active_git_settings_identity();
+        let git_user_name_len = git_identity.user_name.len();
+        let git_user_email_len = git_identity.user_email.len();
+        let git_default_branch_len = git_identity.default_branch.as_deref().unwrap_or("").len();
         self.settings_modal.git_user_name_cursor = self
             .settings_modal
             .git_user_name_cursor
-            .min(self.repo.global_identity.user_name.len());
+            .min(git_user_name_len);
         self.settings_modal.git_user_email_cursor = self
             .settings_modal
             .git_user_email_cursor
-            .min(self.repo.global_identity.user_email.len());
-        self.settings_modal.git_default_branch_cursor =
-            self.settings_modal.git_default_branch_cursor.min(
-                self.repo
-                    .global_identity
-                    .default_branch
-                    .as_deref()
-                    .unwrap_or("")
-                    .len(),
-            );
+            .min(git_user_email_len);
+        self.settings_modal.git_default_branch_cursor = self
+            .settings_modal
+            .git_default_branch_cursor
+            .min(git_default_branch_len);
         self.settings_modal.ai_model_cursor = self
             .settings_modal
             .ai_model_cursor
@@ -3782,7 +3790,11 @@ impl GitSparkApp {
         self.close_history_context_menu();
         self.nav.show_settings = true;
         if self.nav.settings_section == crate::ui::ui_state::SettingsSection::Git {
-            self.load_global_identity();
+            if let Some(path) = self.repo_path().map(PathBuf::from) {
+                self.load_identity(&path);
+            } else {
+                self.load_global_identity();
+            }
         }
         let field = if self.nav.settings_section == crate::ui::ui_state::SettingsSection::Ai
             && self.settings.ai.provider == AiProvider::OpenRouter
@@ -3803,11 +3815,10 @@ impl GitSparkApp {
 
     pub(crate) fn settings_field_value(&self, field: SettingsField) -> &str {
         match field {
-            SettingsField::GitUserName => self.repo.global_identity.user_name.as_str(),
-            SettingsField::GitUserEmail => self.repo.global_identity.user_email.as_str(),
+            SettingsField::GitUserName => self.active_git_settings_identity().user_name.as_str(),
+            SettingsField::GitUserEmail => self.active_git_settings_identity().user_email.as_str(),
             SettingsField::GitDefaultBranch => self
-                .repo
-                .global_identity
+                .active_git_settings_identity()
                 .default_branch
                 .as_deref()
                 .unwrap_or(""),
@@ -3816,6 +3827,22 @@ impl GitSparkApp {
             SettingsField::AiApiKey => self.settings.ai.api_key.as_str(),
             SettingsField::AiSystemPrompt => self.settings.ai.system_prompt.as_str(),
             SettingsField::OpenRouterModelFilter => self.filters.openrouter_model_filter.as_str(),
+        }
+    }
+
+    pub(crate) fn active_git_settings_identity(&self) -> &GitIdentity {
+        if self.repo.snapshot.is_some() {
+            &self.repo.identity
+        } else {
+            &self.repo.global_identity
+        }
+    }
+
+    pub(crate) fn active_git_settings_identity_mut(&mut self) -> &mut GitIdentity {
+        if self.repo.snapshot.is_some() {
+            &mut self.repo.identity
+        } else {
+            &mut self.repo.global_identity
         }
     }
 
@@ -3892,13 +3919,11 @@ impl GitSparkApp {
                     cursor: self.settings_modal.git_user_name_cursor,
                     selection: self.settings_modal.git_user_name_selection,
                 };
+                let mut value = self.active_git_settings_identity().user_name.clone();
                 let h = crate::ui::text_field::handle_text_key(
-                    &mut self.repo.global_identity.user_name,
-                    &mut state,
-                    multiline,
-                    event,
-                    cx,
+                    &mut value, &mut state, multiline, event, cx,
                 );
+                self.active_git_settings_identity_mut().user_name = value;
                 self.settings_modal.git_user_name_cursor = state.cursor;
                 self.settings_modal.git_user_name_selection = state.selection;
                 h
@@ -3908,29 +3933,34 @@ impl GitSparkApp {
                     cursor: self.settings_modal.git_user_email_cursor,
                     selection: self.settings_modal.git_user_email_selection,
                 };
+                let mut value = self.active_git_settings_identity().user_email.clone();
                 let h = crate::ui::text_field::handle_text_key(
-                    &mut self.repo.global_identity.user_email,
-                    &mut state,
-                    multiline,
-                    event,
-                    cx,
+                    &mut value, &mut state, multiline, event, cx,
                 );
+                self.active_git_settings_identity_mut().user_email = value;
                 self.settings_modal.git_user_email_cursor = state.cursor;
                 self.settings_modal.git_user_email_selection = state.selection;
                 h
             }
             SettingsField::GitDefaultBranch => {
-                let value = self
-                    .repo
-                    .global_identity
+                let mut value = self
+                    .active_git_settings_identity()
                     .default_branch
-                    .get_or_insert_with(String::new);
+                    .clone()
+                    .unwrap_or_default();
                 let mut state = crate::ui::text_field::TextFieldState {
                     cursor: self.settings_modal.git_default_branch_cursor,
                     selection: self.settings_modal.git_default_branch_selection,
                 };
-                let h =
-                    crate::ui::text_field::handle_text_key(value, &mut state, multiline, event, cx);
+                let h = crate::ui::text_field::handle_text_key(
+                    &mut value, &mut state, multiline, event, cx,
+                );
+                self.active_git_settings_identity_mut().default_branch = if value.trim().is_empty()
+                {
+                    None
+                } else {
+                    Some(value)
+                };
                 self.settings_modal.git_default_branch_cursor = state.cursor;
                 self.settings_modal.git_default_branch_selection = state.selection;
                 h
