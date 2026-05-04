@@ -209,6 +209,7 @@ pub struct GitSparkApp {
     rem_size: f32,
     render_count: u32,
     was_window_active: bool,
+    pending_summary_focus: bool,
     _automation: Option<automation::AutomationHandle>,
 }
 
@@ -261,6 +262,7 @@ impl GitSparkApp {
             rem_size: DEFAULT_REM_SIZE,
             render_count: 0,
             was_window_active: false,
+            pending_summary_focus: false,
             _automation: automation,
         };
 
@@ -2474,6 +2476,11 @@ impl Render for GitSparkApp {
             .openrouter_model_filter_cursor
             .min(self.filters.openrouter_model_filter.len());
 
+        if self.pending_summary_focus {
+            self.pending_summary_focus = false;
+            window.focus(&self.summary_focus);
+        }
+
         let summary_focused = self.summary_focus.is_focused(window);
         let description_focused = self.description_focus.is_focused(window);
         let branch_filter_focused = self.branch_filter_focus.is_focused(window);
@@ -2585,6 +2592,7 @@ impl Render for GitSparkApp {
             .on_action(cx.listener(Self::handle_menu_show_history))
             .on_action(cx.listener(Self::handle_menu_show_repository_list))
             .on_action(cx.listener(Self::handle_menu_show_branches_list))
+            .on_action(cx.listener(Self::handle_menu_go_to_summary))
             .on_action(cx.listener(Self::handle_menu_fetch))
             .on_action(cx.listener(Self::handle_menu_pull))
             .on_action(cx.listener(Self::handle_menu_push))
@@ -2637,6 +2645,14 @@ impl GitSparkApp {
         self.nav.show_network_dropdown = false;
         self.repo.pending_cherry_pick_oid = None;
         self.close_history_context_menu();
+        cx.notify();
+    }
+
+    pub fn menu_go_to_summary(&mut self, cx: &mut Context<Self>) {
+        self.nav.sidebar_tab = SidebarTab::Changes;
+        self.summary_cursor = self.commit.summary.len();
+        self.summary_selection = None;
+        self.pending_summary_focus = true;
         cx.notify();
     }
 
@@ -2908,6 +2924,16 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         self.menu_show_branches_list(cx);
+    }
+
+    fn handle_menu_go_to_summary(
+        &mut self,
+        _: &crate::MenuGoToSummary,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_go_to_summary(cx);
+        window.focus(&self.summary_focus);
     }
 
     fn handle_menu_fetch(
