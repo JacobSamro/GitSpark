@@ -3050,6 +3050,7 @@ impl GitSparkApp {
             repo_name,
             self.nav.show_repo_selector,
             false,
+            false,
         )
         .on_click(cx.listener(|app, _evt, _win, cx| {
             app.handle_toolbar_action(ToolbarAction::ToggleRepoSelector, cx);
@@ -3075,10 +3076,14 @@ impl GitSparkApp {
             branch_name,
             self.nav.show_branch_selector,
             false,
+            snapshot.is_none(),
         )
         .flex_none()
         .w(px(300.0))
         .on_click(cx.listener(|app, _evt, _win, cx| {
+            if app.repo.snapshot.is_none() {
+                return;
+            }
             app.nav.show_branch_selector = !app.nav.show_branch_selector;
             if !app.nav.show_branch_selector {
                 app.repo.pending_cherry_pick_oid = None;

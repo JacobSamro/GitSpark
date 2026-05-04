@@ -38,6 +38,7 @@ pub fn render_toolbar_section(
     title: &str,
     is_open: bool,
     is_in_progress: bool,
+    disabled: bool,
 ) -> Stateful<Div> {
     let title_row = h_flex().items_center().child(title_label(title));
 
@@ -71,9 +72,7 @@ pub fn render_toolbar_section(
         .pl(z(SECTION_INNER_PADDING))
         .pr(z(SECTION_INNER_PADDING))
         .gap(z(SECTION_GAP))
-        .cursor_pointer()
         .bg(bg)
-        .hover(|style| style.bg(theme::toolbar_hover_bg()))
         .child(render_toolbar_icon(icon))
         .child(
             v_flex()
@@ -84,6 +83,12 @@ pub fn render_toolbar_section(
                 .child(title_row),
         )
         .child(caret)
+        .when(disabled, |style| style.opacity(0.55))
+        .when(!disabled, |style| {
+            style
+                .cursor_pointer()
+                .hover(|style| style.bg(theme::toolbar_hover_bg()))
+        })
 }
 
 // ---------------------------------------------------------------------------

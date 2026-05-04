@@ -808,7 +808,8 @@ impl GitSparkApp {
                 Some(AutomationNodeAction::ShowBranchSelector(
                     !self.nav.show_branch_selector,
                 )),
-            ),
+            )
+            .enabled(self.repo.snapshot.is_some()),
             automation_node(
                 "repo-filter",
                 AutomationRole::Textbox,
