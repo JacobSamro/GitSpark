@@ -225,6 +225,7 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         KeyBinding::new("cmd-shift-g", MenuViewOnGitHub, None),
         KeyBinding::new("cmd-shift-n", MenuNewBranch, None),
         KeyBinding::new("cmd-shift-r", MenuRenameBranch, None),
+        KeyBinding::new("cmd-shift-m", MenuMergeBranch, None),
         KeyBinding::new("cmd-shift-s", MenuStashChanges, None),
         KeyBinding::new("cmd-=", MenuZoomIn, None),
         KeyBinding::new("cmd-+", MenuZoomIn, None),
