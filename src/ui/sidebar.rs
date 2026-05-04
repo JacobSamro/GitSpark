@@ -946,7 +946,7 @@ pub fn render_no_repository_state(
                                                 div()
                                                     .text_size(z(13.0))
                                                     .font_weight(FontWeight::SEMIBOLD)
-                                                    .child("Add Local Repository..."),
+                                                    .child("Add Local Repository…"),
                                             )
                                             .on_click(move |_evt, _win, cx| {
                                                 vh_add.update(cx, |app, cx| {
