@@ -19,7 +19,8 @@ use crate::ai::AiClient;
 use crate::git::GitClient;
 use crate::models::{
     AiProvider, AppSettings, BranchInfo, ChangeEntry, CommitInfo, CommitSuggestion, DiffEntry,
-    GitIdentity, RemoteModelOption, RepoSnapshot,
+    GitIdentity, INVALID_GIT_AUTHOR_NAME_MESSAGE, RemoteModelOption, RepoSnapshot,
+    git_author_name_is_valid,
 };
 use crate::storage::{push_recent_repo, save_settings};
 use crate::ui::automation;
@@ -1427,6 +1428,12 @@ impl GitSparkApp {
     // ------------------------------------------------------------------
 
     fn save_git_config(&mut self) {
+        if !git_author_name_is_valid(&self.active_git_settings_identity().user_name) {
+            self.messages.error_message = INVALID_GIT_AUTHOR_NAME_MESSAGE.to_string();
+            self.messages.status_message.clear();
+            return;
+        }
+
         if let Some(path) = self.repo_path().map(PathBuf::from) {
             match self.git.write_identity(&path, &self.repo.identity) {
                 Ok(()) => {
@@ -2384,13 +2391,16 @@ impl GitSparkApp {
     }
 
     fn identity_is_configured(&self) -> bool {
-        !self.repo.identity.user_name.trim().is_empty()
-            && !self.repo.identity.user_email.trim().is_empty()
+        self.missing_identity_message().is_none()
     }
 
     pub(crate) fn missing_identity_message(&self) -> Option<&'static str> {
         let missing_name = self.repo.identity.user_name.trim().is_empty();
         let missing_email = self.repo.identity.user_email.trim().is_empty();
+
+        if !missing_name && !git_author_name_is_valid(&self.repo.identity.user_name) {
+            return Some(INVALID_GIT_AUTHOR_NAME_MESSAGE);
+        }
 
         match (missing_name, missing_email) {
             (true, true) => Some("Configure your Git name and email before committing."),

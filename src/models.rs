@@ -51,6 +51,16 @@ pub struct GitIdentity {
     pub default_branch: Option<String>,
 }
 
+pub const INVALID_GIT_AUTHOR_NAME_MESSAGE: &str =
+    "Name is invalid, it consists only of disallowed characters.";
+
+pub fn git_author_name_is_valid(name: &str) -> bool {
+    name.is_empty()
+        || !name.chars().all(|ch| {
+            ch <= '\u{20}' || matches!(ch, '.' | ',' | ':' | ';' | '<' | '>' | '"' | '\\' | '\'')
+        })
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CommitInfo {
     pub oid: String,
@@ -73,6 +83,28 @@ pub struct RepoSnapshot {
     pub history: Vec<CommitInfo>,
     #[allow(dead_code)]
     pub stash_count: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::git_author_name_is_valid;
+
+    #[test]
+    fn validates_git_author_name_like_git_ident() {
+        for value in [".", ",", ":", ";", "<", ">", "\"", "\\", "'", " ", ".;:<>"] {
+            assert!(!git_author_name_is_valid(value));
+        }
+
+        for codepoint in 0..=32 {
+            let value = char::from_u32(codepoint).unwrap().to_string();
+            assert!(!git_author_name_is_valid(&value));
+        }
+
+        assert!(git_author_name_is_valid(""));
+        assert!(git_author_name_is_valid("this is great"));
+        assert!(git_author_name_is_valid(";hi. there;\u{1f}"));
+        assert!(git_author_name_is_valid("!"));
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
