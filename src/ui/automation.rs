@@ -558,7 +558,11 @@ impl GitSparkApp {
                 AutomationResponse::success(self.automation_snapshot())
             }
             AutomationCommand::ShowSettings { show } => {
-                self.nav.show_settings = show;
+                if show {
+                    self.open_settings_modal(None, cx);
+                } else {
+                    self.close_settings_modal();
+                }
                 cx.notify();
                 AutomationResponse::success(self.automation_snapshot())
             }

@@ -305,7 +305,11 @@ impl GitSparkApp {
                     }
                     // Cmd+, = Settings
                     "," => {
-                        app.nav.show_settings = !app.nav.show_settings;
+                        if app.nav.show_settings {
+                            app.close_settings_modal();
+                        } else {
+                            app.open_settings_modal(None, cx);
+                        }
                         cx.notify();
                     }
                     // Cmd+Enter = Commit
@@ -4154,7 +4158,7 @@ impl GitSparkApp {
         self.close_history_context_menu();
     }
 
-    fn open_settings_modal(
+    pub(crate) fn open_settings_modal(
         &mut self,
         section: Option<crate::ui::ui_state::SettingsSection>,
         cx: &mut Context<Self>,
