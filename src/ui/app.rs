@@ -30,6 +30,7 @@ use crate::ui::domain_state::{
 };
 use crate::ui::history_context_menu::HistoryContextMenuAction;
 use crate::ui::settings_modal::{self, SettingsField, SettingsModalState};
+use crate::ui::stash_file_list::render_stash_file_list;
 use crate::ui::theme;
 use crate::ui::ui_state::{
     ActiveDialog, FilterState, MessageState, NavState, OpenRouterModelsState, SidebarTab,
@@ -5253,6 +5254,14 @@ impl GitSparkApp {
             ActiveDialog::StashAndSwitch { target_branch } => {
                 let target = target_branch.clone();
                 let bring_changes = self.repo.switch_branch_bring_changes;
+                let files_to_stash = Arc::new(
+                    self.repo
+                        .snapshot
+                        .as_ref()
+                        .map(|snapshot| snapshot.changes.clone())
+                        .unwrap_or_default(),
+                );
+                let file_count = files_to_stash.len();
                 let current_branch = self
                     .repo
                     .snapshot
@@ -5292,6 +5301,37 @@ impl GitSparkApp {
                                     .text_size(theme::z(12.0))
                                     .text_color(theme::text_main())
                                     .child("You have changes on this branch. What would you like to do with them?"),
+                            )
+                            .child(
+                                v_flex()
+                                    .w_full()
+                                    .gap(theme::z(6.0))
+                                    .child(
+                                        h_flex()
+                                            .w_full()
+                                            .items_center()
+                                            .justify_between()
+                                            .child(
+                                                div()
+                                                    .text_size(theme::z(12.0))
+                                                    .text_color(theme::text_main())
+                                                    .font_weight(FontWeight::SEMIBOLD)
+                                                    .child("Files affected"),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(theme::z(11.0))
+                                                    .text_color(theme::text_muted())
+                                                    .child(pluralize_files(file_count)),
+                                            ),
+                                    )
+                                    .child(render_stash_file_list(
+                                        "branch-switch-file-list",
+                                        "branch-switch-files",
+                                        "branch-switch-file",
+                                        files_to_stash.clone(),
+                                        "No file list is available for these changes.",
+                                    )),
                             )
                             .child(render_branch_switch_option(
                                 "branch-switch-stash-option",
@@ -5371,78 +5411,13 @@ impl GitSparkApp {
             ActiveDialog::RestoreStash => {
                 let stash_files = Arc::new(self.repo.stash_files.clone());
                 let stash_file_count = stash_files.len();
-                let stash_file_list = if stash_file_count == 0 {
-                    div()
-                        .id("restore-stash-file-list")
-                        .w_full()
-                        .p(theme::z(12.0))
-                        .rounded(theme::z(theme::CORNER_RADIUS))
-                        .border_1()
-                        .border_color(theme::border())
-                        .bg(theme::surface_bg_muted())
-                        .child(
-                            div()
-                                .text_size(theme::z(12.0))
-                                .text_color(theme::text_muted())
-                                .child("No file list is available for this stash."),
-                        )
-                        .into_any_element()
-                } else {
-                    div()
-                        .id("restore-stash-file-list")
-                        .h(px(128.0))
-                        .w_full()
-                        .rounded(theme::z(theme::CORNER_RADIUS))
-                        .border_1()
-                        .border_color(theme::border())
-                        .bg(theme::surface_bg_muted())
-                        .overflow_hidden()
-                        .child(
-                            uniform_list("restore-stash-files", stash_file_count, {
-                                let stash_files = stash_files.clone();
-                                move |range, _window, _cx| {
-                                    range
-                                        .map(|ix| {
-                                            let file = &stash_files[ix];
-                                            h_flex()
-                                                .id(SharedString::from(format!(
-                                                    "restore-stash-file-{}",
-                                                    stable_ui_id(&file.path)
-                                                )))
-                                                .h(px(28.0))
-                                                .w_full()
-                                                .px(theme::z(10.0))
-                                                .items_center()
-                                                .gap(theme::z(8.0))
-                                                .border_b_1()
-                                                .border_color(theme::border())
-                                                .child(
-                                                    div()
-                                                        .w(px(18.0))
-                                                        .text_size(theme::z(11.0))
-                                                        .text_color(theme::text_muted())
-                                                        .font_weight(FontWeight::SEMIBOLD)
-                                                        .child(compact_change_status(&file.status)),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .min_w_0()
-                                                        .flex_1()
-                                                        .text_size(theme::z(12.0))
-                                                        .text_color(theme::text_main())
-                                                        .truncate()
-                                                        .child(file.path.clone()),
-                                                )
-                                                .into_any_element()
-                                        })
-                                        .collect()
-                                }
-                            })
-                            .h_full()
-                            .with_sizing_behavior(ListSizingBehavior::Infer),
-                        )
-                        .into_any_element()
-                };
+                let stash_file_list = render_stash_file_list(
+                    "restore-stash-file-list",
+                    "restore-stash-files",
+                    "restore-stash-file",
+                    stash_files,
+                    "No file list is available for this stash.",
+                );
 
                 v_flex()
                     .w(px(500.0))
@@ -6544,46 +6519,11 @@ fn default_commit_summary_for_change(change: &ChangeEntry) -> String {
     format!("{verb} {filename}")
 }
 
-fn compact_change_status(status: &str) -> &'static str {
-    if status.contains('?') || status.contains('A') {
-        "A"
-    } else if status.contains('M') {
-        "M"
-    } else if status.contains('D') {
-        "D"
-    } else if status.contains('R') {
-        "R"
-    } else {
-        "?"
-    }
-}
-
 fn pluralize_files(count: usize) -> String {
     match count {
         0 => "no listed files".to_string(),
         1 => "1 file".to_string(),
         count => format!("{count} files"),
-    }
-}
-
-fn stable_ui_id(value: &str) -> String {
-    let slug: String = value
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() {
-                ch.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string();
-
-    if slug.is_empty() {
-        "item".to_string()
-    } else {
-        slug
     }
 }
 

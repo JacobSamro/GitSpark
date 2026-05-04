@@ -892,6 +892,25 @@ impl GitSparkApp {
         }
 
         if matches!(self.nav.active_dialog, ActiveDialog::StashAndSwitch { .. }) {
+            children.push(automation_node(
+                "branch-switch-file-list",
+                AutomationRole::List,
+                Some("branch-switch-file-list"),
+                Some("Files affected"),
+                None,
+            ));
+            if let Some(snapshot) = &self.repo.snapshot {
+                children.extend(snapshot.changes.iter().map(|file| {
+                    let id = format!("branch-switch-file-{}", stable_test_slug(&file.path));
+                    automation_node(
+                        id.clone(),
+                        AutomationRole::ListItem,
+                        Some(id),
+                        Some(file.path.as_str()),
+                        None,
+                    )
+                }));
+            }
             children.extend([
                 automation_node(
                     "branch-switch-stash-option",
