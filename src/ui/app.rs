@@ -354,7 +354,7 @@ impl GitSparkApp {
     // Event processing — drain the mpsc channel
     // ------------------------------------------------------------------
 
-    fn process_events(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn process_events(&mut self, cx: &mut Context<Self>) {
         self.event_tx.pending.store(false, Ordering::Release);
         let mut had_events = false;
         while let Ok(event) = self.event_rx.try_recv() {
@@ -596,22 +596,7 @@ impl GitSparkApp {
             }
             SidebarAction::RevealInFinder(path) => self.reveal_in_finder(&path),
             SidebarAction::OpenInEditor(path) => self.open_in_external_editor(&path),
-            SidebarAction::OpenWithDefault(path) => {
-                if let Some(repo_path) = self.repo_path() {
-                    let full_path = repo_path.join(&path);
-                    match open_with_default_program(&full_path) {
-                        Ok(_) => {
-                            self.messages.status_message =
-                                format!("Opened '{path}' with the default program.");
-                            self.messages.error_message.clear();
-                        }
-                        Err(err) => {
-                            self.messages.error_message =
-                                format!("Failed to open '{path}' with default program: {err}");
-                        }
-                    }
-                }
-            }
+            SidebarAction::OpenWithDefault(path) => self.open_with_default_program(&path),
             SidebarAction::SelectCommit(oid) => self.select_commit(oid, cx),
             SidebarAction::GenerateAiCommit => self.generate_ai_commit(cx),
             SidebarAction::ShowSettings => self.open_settings_modal(None, cx),
@@ -1359,6 +1344,9 @@ impl GitSparkApp {
             ChangesContextAction::OpenInExternalEditor => {
                 self.open_in_external_editor(&path);
             }
+            ChangesContextAction::OpenWithDefault => {
+                self.open_with_default_program(&path);
+            }
             ChangesContextAction::ViewOnGitHub => {
                 self.view_file_on_github(&path);
             }
@@ -1732,6 +1720,26 @@ impl GitSparkApp {
         }
     }
 
+    fn open_with_default_program(&mut self, relative_path: &str) {
+        let Some(repo_path) = self.repo_path() else {
+            self.messages.error_message = "No repository selected.".to_string();
+            return;
+        };
+
+        let full_path = repo_path.join(relative_path);
+        match open_with_default_program(&full_path) {
+            Ok(_) => {
+                self.messages.status_message =
+                    format!("Opened '{relative_path}' with the default program.");
+                self.messages.error_message.clear();
+            }
+            Err(err) => {
+                self.messages.error_message =
+                    format!("Failed to open '{relative_path}' with default program: {err}");
+            }
+        }
+    }
+
     // ------------------------------------------------------------------
     // Settings persistence
     // ------------------------------------------------------------------
@@ -1982,7 +1990,7 @@ impl Render for GitSparkApp {
 
         // Dialogs
         if self.nav.active_dialog != ActiveDialog::None {
-            root = root.child(self.render_active_dialog(cx));
+            root = root.child(self.render_active_dialog(window, cx));
         }
 
         root
@@ -3605,7 +3613,7 @@ impl GitSparkApp {
     // Repo selector overlay
     // ------------------------------------------------------------------
 
-    fn render_active_dialog(&self, cx: &mut Context<Self>) -> Div {
+    fn render_active_dialog(&self, window: &Window, cx: &mut Context<Self>) -> Div {
         // Backdrop
         let backdrop = div()
             .id("dialog-backdrop")
@@ -3618,6 +3626,18 @@ impl GitSparkApp {
                 app.nav.active_dialog = ActiveDialog::None;
                 cx.notify();
             }));
+
+        let (dialog_width, dialog_height) = match &self.nav.active_dialog {
+            ActiveDialog::CreateBranch => (400.0, 230.0),
+            ActiveDialog::DiscardChanges { .. } => (420.0, 230.0),
+            ActiveDialog::StashAndSwitch { .. } => (400.0, 190.0),
+            ActiveDialog::None => (0.0, 0.0),
+        };
+        let bounds = window.bounds();
+        let window_width = bounds.size.width / px(1.0);
+        let window_height = bounds.size.height / px(1.0);
+        let dialog_left = ((window_width - dialog_width) / 2.0).max(16.0);
+        let dialog_top = ((window_height - dialog_height) / 2.0).max(16.0);
 
         let dialog_content = match &self.nav.active_dialog {
             ActiveDialog::CreateBranch => {
@@ -4024,12 +4044,8 @@ impl GitSparkApp {
                     .id("dialog-container")
                     .on_click(|_evt, _win, cx| cx.stop_propagation())
                     .absolute()
-                    .top_0()
-                    .left_0()
-                    .size_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
+                    .left(px(dialog_left))
+                    .top(px(dialog_top))
                     .child(dialog_content),
             )
     }

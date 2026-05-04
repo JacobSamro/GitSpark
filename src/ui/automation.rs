@@ -477,6 +477,8 @@ impl GitSparkApp {
         command: AutomationCommand,
         cx: &mut Context<Self>,
     ) -> AutomationResponse {
+        self.process_events(cx);
+
         match command {
             AutomationCommand::Ping => AutomationResponse::success(json!({ "pong": true })),
             AutomationCommand::Snapshot => AutomationResponse::success(self.automation_snapshot()),

@@ -12,6 +12,7 @@ pub(crate) enum ChangesContextAction {
     CopyRelativePath,
     RevealInFinder,
     OpenInExternalEditor,
+    OpenWithDefault,
     ViewOnGitHub,
 }
 
@@ -57,14 +58,14 @@ pub(crate) fn build_changes_context_menu(
 
     m.separator()
         .item(changes_menu_item(
-            "Copy File Path",
+            "Copy file path",
             true,
             view.clone(),
             path.clone(),
             ChangesContextAction::CopyFilePath,
         ))
         .item(changes_menu_item(
-            "Copy Relative File Path",
+            "Copy relative file path",
             true,
             view.clone(),
             path.clone(),
@@ -72,18 +73,25 @@ pub(crate) fn build_changes_context_menu(
         ))
         .separator()
         .item(changes_menu_item(
-            "Reveal in Finder",
+            reveal_label(),
             true,
             view.clone(),
             path.clone(),
             ChangesContextAction::RevealInFinder,
         ))
         .item(changes_menu_item(
-            "Open in External Editor",
+            "Open in external editor",
             true,
             view.clone(),
             path.clone(),
             ChangesContextAction::OpenInExternalEditor,
+        ))
+        .item(changes_menu_item(
+            "Open with default program",
+            true,
+            view.clone(),
+            path.clone(),
+            ChangesContextAction::OpenWithDefault,
         ))
         .separator()
         .item(changes_menu_item(
@@ -111,6 +119,23 @@ fn changes_menu_item(
                 app.handle_changes_context_action(path, action, cx);
             });
         })
+}
+
+fn reveal_label() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "Show in Explorer"
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        "Show in Finder"
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        "Show in file manager"
+    }
 }
 
 pub(crate) fn bind_changes_context_click(

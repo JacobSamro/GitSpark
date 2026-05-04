@@ -163,6 +163,29 @@ pub(crate) fn render_settings_modal(
             .into_any_element(),
     };
 
+    let lock_content_scroll = app.nav.settings_section == SettingsSection::Ai
+        && app.settings.ai.provider == AiProvider::OpenRouter
+        && app.settings_modal.show_model_picker;
+
+    let content_body = v_flex()
+        .w_full()
+        .p(theme::z(24.0))
+        .gap(theme::z(18.0))
+        .child(content);
+
+    let content_scroll: AnyElement = {
+        let base = div().id("settings-content-scroll").size_full();
+        if lock_content_scroll {
+            base.overflow_hidden()
+                .child(content_body)
+                .into_any_element()
+        } else {
+            base.overflow_y_scrollbar()
+                .child(content_body)
+                .into_any_element()
+        }
+    };
+
     let panel = v_flex()
         .id("settings-modal-panel")
         .track_focus(&app.settings_modal.focus)
@@ -182,21 +205,7 @@ pub(crate) fn render_settings_modal(
         .child(render_header(cx))
         .child(render_nav(app, cx))
         .child(Divider::horizontal().color(theme::border()))
-        .child(
-            div().flex_1().overflow_hidden().child(
-                div()
-                    .id("settings-content-scroll")
-                    .size_full()
-                    .overflow_y_scrollbar()
-                    .child(
-                        v_flex()
-                            .w_full()
-                            .p(theme::z(24.0))
-                            .gap(theme::z(18.0))
-                            .child(content),
-                    ),
-            ),
-        )
+        .child(div().flex_1().overflow_hidden().child(content_scroll))
         .child(Divider::horizontal().color(theme::border()))
         .child(
             h_flex()
@@ -225,13 +234,6 @@ pub(crate) fn render_settings_modal(
                     h_flex()
                         .gap(theme::z(10.0))
                         .items_center()
-                        .child(
-                            render_secondary_button("settings-close-footer", "Close", cx).on_click(
-                                cx.listener(|app, _evt, _window, cx| {
-                                    app.handle_settings_action(SettingsAction::Close, cx);
-                                }),
-                            ),
-                        )
                         .children(section_action),
                 ),
         );
@@ -704,6 +706,10 @@ fn render_openrouter_models(
                     .id("model-picker-expanded")
                     .w_full()
                     .gap(theme::z(6.0))
+                    .on_scroll_wheel(|_event, window, cx| {
+                        window.prevent_default();
+                        cx.stop_propagation();
+                    })
                     .on_mouse_down_out(move |_evt, _win, cx| {
                         vh_close.update(cx, |app, cx| {
                             app.settings_modal.show_model_picker = false;
@@ -1015,21 +1021,6 @@ fn render_primary_button(
                 .active(theme::commit_button_hover_bg()),
         )
         .disabled(!enabled)
-}
-
-fn render_secondary_button(
-    id: &'static str,
-    label: &'static str,
-    cx: &mut Context<GitSparkApp>,
-) -> Button {
-    Button::new(id).label(label).custom(
-        ButtonCustomVariant::new(cx)
-            .color(theme::surface_bg())
-            .foreground(theme::text_main())
-            .border(theme::border())
-            .hover(theme::surface_bg_alt())
-            .active(theme::surface_bg_alt()),
-    )
 }
 
 fn mask_password(value: &str) -> String {
