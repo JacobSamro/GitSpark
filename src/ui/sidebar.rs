@@ -789,10 +789,8 @@ pub fn render_no_changes_state(
         &["\u{2318}", "\u{21E7}", "A"],
         "Open in External Editor",
         move |_evt, _win, cx| {
-            vh_editor.update(cx, |app, _cx| {
-                if let Some(path) = app.repo_path() {
-                    let _ = open::that_detached(path);
-                }
+            vh_editor.update(cx, |app, cx| {
+                app.menu_open_external_editor(cx);
             });
         },
     ));
@@ -805,10 +803,8 @@ pub fn render_no_changes_state(
         &["\u{2318}", "\u{21E7}", "F"],
         "Show in Finder",
         move |_evt, _win, cx| {
-            vh_finder.update(cx, |app, _cx| {
-                if let Some(path) = app.repo_path() {
-                    let _ = open::that_detached(path);
-                }
+            vh_finder.update(cx, |app, cx| {
+                app.menu_show_in_finder(cx);
             });
         },
     ));
