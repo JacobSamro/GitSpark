@@ -183,6 +183,25 @@ export async function testHistoryAndBranchFlows(app, fixture) {
   await app
     .getByTestId(`commit-${selectedCommit.short_oid}-create-tag`)
     .click();
+  await app
+    .getByTestId("create-tag-name-input")
+    .fill("x".repeat(246));
+  await expect(
+    app.getByText("The tag name cannot be longer than 245 characters"),
+  ).toBeVisible({ timeoutMs: 10_000 });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.active_dialog === "create_tag" &&
+      snapshot.test_tree.children.some(
+        (node) => node.id === "create-tag-confirm" && node.enabled === false,
+      ),
+    { timeoutMs: 10_000 },
+  );
+  await app.getByTestId("create-tag-cancel").click();
+
+  await app
+    .getByTestId(`commit-${selectedCommit.short_oid}-create-tag`)
+    .click();
   await app.getByTestId("create-tag-name-input").fill("e2e-tag");
   await expect(
     app.getByText("A tag named e2e-tag already exists."),

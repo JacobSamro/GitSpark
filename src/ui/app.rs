@@ -169,6 +169,7 @@ const DEFAULT_REM_SIZE: f32 = 14.0;
 const ZOOM_STEP: f32 = 1.0;
 const ZOOM_MIN: f32 = 10.0;
 const ZOOM_MAX: f32 = 24.0;
+const MAX_TAG_NAME_LENGTH: usize = 245;
 
 pub struct GitSparkApp {
     git: GitClient,
@@ -2450,6 +2451,9 @@ impl GitSparkApp {
         let tag_name = self.repo.new_branch_name.trim();
         if tag_name.is_empty() {
             return Some("Type a tag name.".to_string());
+        }
+        if let Some(message) = tag_name_length_validation_message(tag_name) {
+            return Some(message);
         }
         if self.tag_name_exists(tag_name) {
             return Some(format!("A tag named {tag_name} already exists."));
@@ -7377,6 +7381,11 @@ fn short_commit_label(oid: &str) -> &str {
     &oid[..oid.len().min(7)]
 }
 
+fn tag_name_length_validation_message(tag_name: &str) -> Option<String> {
+    (tag_name.len() > MAX_TAG_NAME_LENGTH)
+        .then(|| format!("The tag name cannot be longer than {MAX_TAG_NAME_LENGTH} characters"))
+}
+
 fn default_commit_summary_for_change(change: &ChangeEntry) -> String {
     let filename = change.path.rsplit('/').next().unwrap_or(&change.path);
     let verb = if change.status.contains('?') || change.status.contains('A') {
@@ -7531,6 +7540,20 @@ fn next_char_boundary(s: &str, pos: usize) -> usize {
         p += 1;
     }
     p
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_TAG_NAME_LENGTH, tag_name_length_validation_message};
+
+    #[test]
+    fn validates_github_desktop_tag_name_length_limit() {
+        assert!(tag_name_length_validation_message(&"x".repeat(MAX_TAG_NAME_LENGTH)).is_none());
+        assert_eq!(
+            tag_name_length_validation_message(&"x".repeat(MAX_TAG_NAME_LENGTH + 1)),
+            Some("The tag name cannot be longer than 245 characters".to_string())
+        );
+    }
 }
 
 #[allow(dead_code)]
