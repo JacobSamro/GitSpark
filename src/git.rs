@@ -1548,7 +1548,10 @@ impl GitClient {
 
     fn read_effective_author_identity(&self, repo_path: &Path) -> Result<Option<(String, String)>> {
         match self.run_git(repo_path, &["var", "GIT_AUTHOR_IDENT"]) {
-            Ok(output) => parse_author_ident(output.trim()).map(Some),
+            Ok(output) => match parse_author_ident(output.trim()) {
+                Ok(identity) => Ok(Some(identity)),
+                Err(_) => Ok(None),
+            },
             Err(_) => Ok(None),
         }
     }
@@ -2157,6 +2160,20 @@ mod tests {
 
         assert_eq!(identity.user_name, "Configured Name");
         assert_eq!(identity.user_email, "effective@example.test");
+    }
+
+    #[test]
+    fn read_identity_treats_incomplete_effective_author_as_missing_config() {
+        let repo = temp_repo("incomplete-author-ident");
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "Visual Identity"]);
+        run_git(&repo, &["config", "user.email", ""]);
+
+        let identity = GitClient::new().read_identity(&repo).unwrap();
+        assert_eq!(identity.user_name, "Visual Identity");
+        assert_eq!(identity.user_email, "");
+
+        let _ = fs::remove_dir_all(repo);
     }
 
     fn temp_repo(name: &str) -> std::path::PathBuf {
