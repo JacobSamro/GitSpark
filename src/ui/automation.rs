@@ -1282,7 +1282,6 @@ impl GitSparkApp {
         ];
 
         if self.nav.sidebar_tab == SidebarTab::Changes
-            && !self.nav.diff_options.show_side_by_side
             && let Some(diff) = self.selected_diff()
             && !diff.is_binary
             && !diff.is_image

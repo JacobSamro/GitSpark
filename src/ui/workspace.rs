@@ -1302,8 +1302,11 @@ pub fn render_workspace(
 
             let mut scroll_content = if show_side_by_side {
                 crate::ui::side_by_side_diff::render_side_by_side_diff(
+                    file_path,
                     &entry.diff,
                     hide_whitespace_changes,
+                    selected_lines,
+                    view,
                 )
             } else {
                 div().flex().flex_col().w_full()

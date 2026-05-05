@@ -55,6 +55,22 @@ export async function testDiffOptions(app) {
         before.selected_diff_visible_line_count,
     { timeoutMs: 10_000 },
   );
+  await app.getByTestId(selectableLine.test_id).click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.diff_show_side_by_side === true &&
+      snapshot.selected_diff_selected_line_count === 1 &&
+      nodeById(snapshot.test_tree, selectableLine.id)?.selected === true,
+    { timeoutMs: 10_000 },
+  );
+  await app.getByTestId(selectableLine.test_id).click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.diff_show_side_by_side === true &&
+      snapshot.selected_diff_selected_line_count === 0 &&
+      nodeById(snapshot.test_tree, selectableLine.id)?.selected === false,
+    { timeoutMs: 10_000 },
+  );
 
   await app.getByTestId("diff-option-hide-whitespace").click();
   const hidden = await app.waitForSnapshot(

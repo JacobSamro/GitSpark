@@ -1,6 +1,10 @@
+use std::collections::HashSet;
+
 use gpui::*;
 use gpui_component::{h_flex, v_flex};
 
+use crate::ui::GitSparkApp;
+use crate::ui::diff_line_selection::{DiffLineSelection, DiffLineSelectionKind};
 use crate::ui::theme;
 use crate::ui::theme::z;
 
@@ -11,6 +15,7 @@ struct RawDiffLine {
     content: String,
     old_line: Option<usize>,
     new_line: Option<usize>,
+    selection_target: Option<DiffLineSelection>,
 }
 
 #[derive(Clone)]
@@ -20,25 +25,37 @@ enum SideBySideRow {
         old_line: Option<usize>,
         old_text: Option<String>,
         old_is_deleted: bool,
+        old_target: Option<DiffLineSelection>,
         new_line: Option<usize>,
         new_text: Option<String>,
         new_is_added: bool,
+        new_target: Option<DiffLineSelection>,
     },
 }
 
-pub fn render_side_by_side_diff(diff_text: &str, hide_whitespace_changes: bool) -> Div {
-    let rows = side_by_side_rows(diff_text, hide_whitespace_changes);
+pub fn render_side_by_side_diff(
+    file_path: &str,
+    diff_text: &str,
+    hide_whitespace_changes: bool,
+    selected_lines: &HashSet<DiffLineSelection>,
+    view: Option<&Entity<GitSparkApp>>,
+) -> Div {
+    let rows = side_by_side_rows(file_path, diff_text, hide_whitespace_changes);
     let mut content = v_flex().w_full();
 
     for (ix, row) in rows.iter().enumerate() {
-        content = content.child(render_side_by_side_row(row, ix));
+        content = content.child(render_side_by_side_row(row, ix, selected_lines, view));
     }
 
     content
 }
 
-fn side_by_side_rows(diff_text: &str, hide_whitespace_changes: bool) -> Vec<SideBySideRow> {
-    let raw = parse_raw_diff(diff_text);
+fn side_by_side_rows(
+    file_path: &str,
+    diff_text: &str,
+    hide_whitespace_changes: bool,
+) -> Vec<SideBySideRow> {
+    let raw = parse_raw_diff(file_path, diff_text);
     let mut rows = Vec::new();
     let mut index = 0usize;
     let mut hunk_index = 0usize;
@@ -88,9 +105,11 @@ fn side_by_side_rows(diff_text: &str, hide_whitespace_changes: bool) -> Vec<Side
                         old_line: old.and_then(|line| line.old_line),
                         old_text: old.map(|line| line.content.clone()),
                         old_is_deleted: old.is_some(),
+                        old_target: old.and_then(|line| line.selection_target.clone()),
                         new_line: new.and_then(|line| line.new_line),
                         new_text: new.map(|line| line.content.clone()),
                         new_is_added: new.is_some(),
+                        new_target: new.and_then(|line| line.selection_target.clone()),
                     });
                 }
             }
@@ -99,9 +118,11 @@ fn side_by_side_rows(diff_text: &str, hide_whitespace_changes: bool) -> Vec<Side
                     old_line: None,
                     old_text: None,
                     old_is_deleted: false,
+                    old_target: None,
                     new_line: line.new_line,
                     new_text: Some(line.content.clone()),
                     new_is_added: true,
+                    new_target: line.selection_target.clone(),
                 });
                 index += 1;
             }
@@ -110,9 +131,11 @@ fn side_by_side_rows(diff_text: &str, hide_whitespace_changes: bool) -> Vec<Side
                     old_line: line.old_line,
                     old_text: Some(line.content.clone()),
                     old_is_deleted: false,
+                    old_target: None,
                     new_line: line.new_line,
                     new_text: Some(line.content.clone()),
                     new_is_added: false,
+                    new_target: None,
                 });
                 index += 1;
             }
@@ -122,7 +145,7 @@ fn side_by_side_rows(diff_text: &str, hide_whitespace_changes: bool) -> Vec<Side
     rows
 }
 
-fn parse_raw_diff(diff_text: &str) -> Vec<Option<RawDiffLine>> {
+fn parse_raw_diff(file_path: &str, diff_text: &str) -> Vec<Option<RawDiffLine>> {
     let mut raw = Vec::new();
     let mut old_num = 0usize;
     let mut new_num = 0usize;
@@ -147,6 +170,12 @@ fn parse_raw_diff(diff_text: &str) -> Vec<Option<RawDiffLine>> {
                 content: content.to_string(),
                 old_line: None,
                 new_line: Some(new_num),
+                selection_target: Some(DiffLineSelection {
+                    path: file_path.to_string(),
+                    old_line: None,
+                    new_line: Some(new_num),
+                    kind: DiffLineSelectionKind::Added,
+                }),
             }));
             new_num += 1;
         } else if let Some(content) = line.strip_prefix('-') {
@@ -156,6 +185,12 @@ fn parse_raw_diff(diff_text: &str) -> Vec<Option<RawDiffLine>> {
                 content: content.to_string(),
                 old_line: Some(old_num),
                 new_line: None,
+                selection_target: Some(DiffLineSelection {
+                    path: file_path.to_string(),
+                    old_line: Some(old_num),
+                    new_line: None,
+                    kind: DiffLineSelectionKind::Deleted,
+                }),
             }));
             old_num += 1;
         } else {
@@ -166,6 +201,7 @@ fn parse_raw_diff(diff_text: &str) -> Vec<Option<RawDiffLine>> {
                 content: content.to_string(),
                 old_line: Some(old_num),
                 new_line: Some(new_num),
+                selection_target: None,
             }));
             old_num += 1;
             new_num += 1;
@@ -192,7 +228,12 @@ fn parse_hunk_starts(line: &str) -> Option<(usize, usize)> {
     Some((old_start, new_start))
 }
 
-fn render_side_by_side_row(row: &SideBySideRow, index: usize) -> AnyElement {
+fn render_side_by_side_row(
+    row: &SideBySideRow,
+    index: usize,
+    selected_lines: &HashSet<DiffLineSelection>,
+    view: Option<&Entity<GitSparkApp>>,
+) -> AnyElement {
     match row {
         SideBySideRow::Hunk(text) => h_flex()
             .id(SharedString::from(format!("side-by-side-hunk-{index}")))
@@ -210,9 +251,11 @@ fn render_side_by_side_row(row: &SideBySideRow, index: usize) -> AnyElement {
             old_line,
             old_text,
             old_is_deleted,
+            old_target,
             new_line,
             new_text,
             new_is_added,
+            new_target,
         } => h_flex()
             .id(SharedString::from(format!("side-by-side-row-{index}")))
             .w_full()
@@ -223,9 +266,23 @@ fn render_side_by_side_row(row: &SideBySideRow, index: usize) -> AnyElement {
                 old_text.as_deref(),
                 *old_is_deleted,
                 false,
+                old_target.as_ref(),
+                old_target
+                    .as_ref()
+                    .is_some_and(|target| selected_lines.contains(target)),
+                view,
             ))
             .child(render_line_number(*new_line))
-            .child(render_side_cell(new_text.as_deref(), false, *new_is_added))
+            .child(render_side_cell(
+                new_text.as_deref(),
+                false,
+                *new_is_added,
+                new_target.as_ref(),
+                new_target
+                    .as_ref()
+                    .is_some_and(|target| selected_lines.contains(target)),
+                view,
+            ))
             .into_any_element(),
     }
 }
@@ -242,7 +299,14 @@ fn render_line_number(line: Option<usize>) -> Div {
         .child(line.map(|line| line.to_string()).unwrap_or_default())
 }
 
-fn render_side_cell(text: Option<&str>, deleted: bool, added: bool) -> Div {
+fn render_side_cell(
+    text: Option<&str>,
+    deleted: bool,
+    added: bool,
+    target: Option<&DiffLineSelection>,
+    selected: bool,
+    view: Option<&Entity<GitSparkApp>>,
+) -> AnyElement {
     let bg = if deleted {
         theme::diff_del_bg()
     } else if added {
@@ -258,17 +322,74 @@ fn render_side_cell(text: Option<&str>, deleted: bool, added: bool) -> Div {
         theme::text_main()
     };
 
-    div()
+    let cell = h_flex()
         .flex_1()
         .min_w_0()
         .min_h(z(theme::DIFF_ROW_HEIGHT))
-        .px(z(10.0))
+        .px(z(8.0))
         .py(z(4.0))
         .bg(bg)
         .text_size(z(12.0))
         .font_family("SF Mono, Monaco, Menlo, Consolas, monospace")
-        .text_color(fg)
-        .child(text.unwrap_or("").to_string())
+        .text_color(fg);
+
+    let text_el = div()
+        .min_w_0()
+        .flex_1()
+        .child(text.unwrap_or("").to_string());
+
+    if let Some(target) = target {
+        let mut interactive_cell = cell
+            .id(SharedString::from(target.id()))
+            .cursor_pointer()
+            .child(render_selection_mark(selected));
+
+        if let Some(vh) = view {
+            let target_for_click = target.clone();
+            let toggle_view = vh.clone();
+            interactive_cell = interactive_cell.on_click(move |_evt, _win, cx| {
+                let target = target_for_click.clone();
+                toggle_view.update(cx, |app, cx| {
+                    app.toggle_diff_line_selection(target, cx);
+                });
+            });
+        }
+
+        return interactive_cell.child(text_el).into_any_element();
+    }
+
+    cell.child(div().w(z(18.0)).flex_shrink_0())
+        .child(text_el)
+        .into_any_element()
+}
+
+fn render_selection_mark(selected: bool) -> Div {
+    div()
+        .w(z(18.0))
+        .flex_shrink_0()
+        .items_center()
+        .justify_center()
+        .child(
+            div()
+                .size(z(13.0))
+                .items_center()
+                .justify_center()
+                .rounded(z(3.0))
+                .border_1()
+                .border_color(if selected {
+                    theme::accent()
+                } else {
+                    theme::line_num_color()
+                })
+                .bg(if selected {
+                    theme::accent()
+                } else {
+                    gpui::transparent_black()
+                })
+                .text_size(z(10.0))
+                .text_color(theme::text_main())
+                .child(if selected { "✓" } else { "" }),
+        )
 }
 
 fn whitespace_normalized(value: &str) -> String {
