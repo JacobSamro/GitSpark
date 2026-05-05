@@ -89,6 +89,35 @@ export async function testDiffOptions(app) {
         false,
     { timeoutMs: 10_000 },
   );
+
+  await app.getByTestId("diff-line-code-txt-deleted-1").click();
+  await app.getByTestId("diff-line-code-txt-added-1").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.selected_diff_selected_line_count === 2 &&
+      nodeById(snapshot.test_tree, "diff-discard-selected-lines")?.visible === true,
+    { timeoutMs: 10_000 },
+  );
+
+  await app.getByTestId("diff-discard-selected-lines").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.selected_diff_selected_line_count === 0 &&
+      snapshot.selected_diff_selectable_line_count === 2 &&
+      snapshot.status_message === "Discarded 2 selected lines from 'code.txt'." &&
+      snapshot.error_message === "",
+    { timeoutMs: 10_000 },
+  );
+
+  const finalText = await fs.readFile(path.join(repo, "code.txt"), "utf8");
+  assert(
+    finalText.startsWith('    println!("hello");\n'),
+    "discard selected lines restores the selected replacement",
+  );
+  assert(
+    finalText.includes("line 12 changed\n"),
+    "discard selected lines leaves unselected changes intact",
+  );
 }
 
 async function makeDiffOptionsRepo() {

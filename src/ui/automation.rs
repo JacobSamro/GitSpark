@@ -566,6 +566,7 @@ enum AutomationNodeAction {
     OpenSelectedSubmodule,
     RevealSelectedSubmodule,
     ToggleDiffLine(DiffLineSelection),
+    DiscardSelectedDiffLines,
     ToggleSideBySideDiff,
     ToggleHideWhitespaceChanges,
     SetBranchFilter,
@@ -1308,6 +1309,24 @@ impl GitSparkApp {
                 }),
             );
         }
+
+        children.push(
+            automation_node(
+                "diff-discard-selected-lines",
+                AutomationRole::Button,
+                Some("diff-discard-selected-lines"),
+                Some("Discard selected lines"),
+                Some(AutomationNodeAction::DiscardSelectedDiffLines),
+            )
+            .visible(
+                self.nav.sidebar_tab == SidebarTab::Changes
+                    && self.selection.selected_change.is_some()
+                    && !self.selection.selected_diff_lines.is_empty()
+                    && self.selected_diff().is_some_and(|diff| {
+                        !diff.is_binary && !diff.is_image && !diff.is_submodule
+                    }),
+            ),
+        );
 
         if self.nav.show_settings {
             children.extend(settings_automation_nodes(self));
@@ -2763,6 +2782,9 @@ impl GitSparkApp {
             }
             AutomationNodeAction::ToggleDiffLine(target) => {
                 self.toggle_diff_line_selection(target, cx);
+            }
+            AutomationNodeAction::DiscardSelectedDiffLines => {
+                self.discard_selected_diff_lines(cx);
             }
             AutomationNodeAction::ToggleSideBySideDiff => {
                 self.toggle_side_by_side_diff(cx);

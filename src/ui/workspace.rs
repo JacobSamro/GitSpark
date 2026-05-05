@@ -1058,6 +1058,7 @@ fn render_diff_header(
     is_image: bool,
     hide_whitespace_changes: bool,
     show_side_by_side: bool,
+    selected_line_count: usize,
     view: Option<&Entity<GitSparkApp>>,
     diff_options_view: Option<&Entity<GitSparkApp>>,
 ) -> Div {
@@ -1110,6 +1111,19 @@ fn render_diff_header(
     }
 
     if let Some(vh) = diff_options_view {
+        if selected_line_count > 0 {
+            let discard_view = vh.clone();
+            header = header.child(diff_header_button(
+                "diff-discard-selected-lines",
+                "Discard selected lines",
+                move |_evt, _win, cx| {
+                    discard_view.update(cx, |app, cx| {
+                        app.discard_selected_diff_lines(cx);
+                    });
+                },
+            ));
+        }
+
         let vh_split = vh.clone();
         header = header.child(
             diff_header_button(
@@ -1423,6 +1437,7 @@ pub fn render_workspace(
             diff.is_some_and(|entry| entry.is_image),
             hide_whitespace_changes,
             show_side_by_side,
+            selected_lines.len(),
             view,
             diff_options_view,
         ))

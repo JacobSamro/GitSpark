@@ -1903,6 +1903,64 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub(crate) fn discard_selected_diff_lines(&mut self, cx: &mut Context<Self>) {
+        let Some(repo_path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+        let Some(diff) = self.selected_diff().cloned() else {
+            self.messages.error_message = "No file diff selected.".to_string();
+            cx.notify();
+            return;
+        };
+        if diff.is_binary || diff.is_image || diff.is_submodule {
+            self.messages.error_message =
+                "Selected line discard is only available for text diffs.".to_string();
+            cx.notify();
+            return;
+        }
+
+        let selected_lines = self.selection.selected_diff_lines.clone();
+        let file_path = repo_path.join(&diff.path);
+        let file_text = match std::fs::read_to_string(&file_path) {
+            Ok(text) => text,
+            Err(err) => {
+                self.messages.error_message = format!("Failed to read '{}': {err}", diff.path);
+                cx.notify();
+                return;
+            }
+        };
+
+        match crate::ui::diff_line_discard::discard_selected_lines_in_text(
+            &diff.path,
+            &diff.diff,
+            &file_text,
+            &selected_lines,
+        ) {
+            Ok(next_text) => {
+                if let Err(err) = std::fs::write(&file_path, next_text) {
+                    self.messages.error_message = format!("Failed to write '{}': {err}", diff.path);
+                    cx.notify();
+                    return;
+                }
+                let discarded = selected_lines.len();
+                self.selection.selected_diff_lines.clear();
+                self.messages.status_message = if discarded == 1 {
+                    format!("Discarded 1 selected line from '{}'.", diff.path)
+                } else {
+                    format!("Discarded {discarded} selected lines from '{}'.", diff.path)
+                };
+                self.messages.error_message.clear();
+                self.refresh_file_diff(diff.path);
+            }
+            Err(err) => {
+                self.messages.error_message = format!("Failed to discard selected lines: {err}");
+            }
+        }
+        cx.notify();
+    }
+
     /// Re-fetch the diff for a single file in the working directory.
     pub fn refresh_file_diff(&mut self, file_path: String) {
         let Some(path) = self.repo_path().map(PathBuf::from) else {
