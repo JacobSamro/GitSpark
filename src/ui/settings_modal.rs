@@ -908,21 +908,32 @@ fn render_ai_section(
             "Choose the provider, model, endpoint, and prompt used for AI commit suggestions.",
         ))
         .child(render_provider_group(app, cx))
-        .child(render_model_group(app, window, cx))
+        .child(
+            h_flex()
+                .w_full()
+                .gap(theme::z(14.0))
+                .items_start()
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .child(render_model_group(app, window, cx)),
+                )
+                .child(div().flex_1().min_w_0().child(render_text_input(
+                    app,
+                    window,
+                    cx,
+                    "settings-ai-api-key",
+                    SettingsField::AiApiKey,
+                    "API Key",
+                    app.settings.ai.provider.api_key_hint(),
+                    true,
+                    false,
+                    false,
+                    None,
+                ))),
+        )
         .child(render_endpoint_group(app, window, cx))
-        .child(render_text_input(
-            app,
-            window,
-            cx,
-            "settings-ai-api-key",
-            SettingsField::AiApiKey,
-            "API Key",
-            app.settings.ai.provider.api_key_hint(),
-            true,
-            false,
-            false,
-            None,
-        ))
         .child(render_text_input(
             app,
             window,
@@ -991,8 +1002,8 @@ fn render_provider_radio(
             );
         }))
         .w_full()
-        .min_h(theme::z(58.0))
-        .p(theme::z(9.0))
+        .min_h(theme::z(52.0))
+        .p(theme::z(8.0))
         .rounded(theme::z(theme::CORNER_RADIUS))
         .border_1()
         .border_color(if selected {
@@ -1482,11 +1493,8 @@ fn render_text_input(
         .key_context("text-field")
         .on_key_down(cx.listener(GitSparkApp::handle_settings_key))
         .w_full()
-        .min_h(if multiline {
-            theme::z(80.0)
-        } else {
-            theme::z(36.0)
-        })
+        .when(multiline, |el| el.h(theme::z(54.0)))
+        .when(!multiline, |el| el.min_h(theme::z(36.0)))
         .px(theme::z(12.0))
         .py(theme::z(8.0))
         .rounded(theme::z(theme::CORNER_RADIUS))
@@ -1502,6 +1510,7 @@ fn render_text_input(
         } else {
             theme::text_main()
         })
+        .when(multiline, |el| el.overflow_hidden())
         .when(!disabled, |el| el.cursor_text())
         .child(text)
         .when(!disabled, |el| {
