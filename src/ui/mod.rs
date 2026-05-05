@@ -6,6 +6,7 @@ pub mod delete_branch_dialog;
 pub mod discard_stash_dialog;
 pub mod domain_state;
 pub mod history_context_menu;
+pub mod ids;
 pub mod labels;
 pub mod publish_dialog;
 pub mod reset_dialog;

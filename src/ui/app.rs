@@ -30,6 +30,7 @@ use crate::ui::domain_state::{
     CommitState, NetworkAction, NetworkState, RepoState, SelectionState,
 };
 use crate::ui::history_context_menu::HistoryContextMenuAction;
+use crate::ui::ids::stable_id_slug;
 use crate::ui::settings_modal::{self, SettingsField, SettingsModalState};
 use crate::ui::stash_file_list::render_stash_file_list;
 use crate::ui::theme;
@@ -5346,10 +5347,11 @@ impl GitSparkApp {
                         };
 
                         let path = entry.path.clone();
+                        let id_path = stable_id_slug(&entry.path);
                         let vh = view.clone();
 
                         h_flex()
-                            .id(SharedString::from(format!("commit-file-{}", entry.path)))
+                            .id(SharedString::from(format!("commit-file-{id_path}")))
                             .w_full()
                             .h(theme::z(28.0))
                             .px(theme::z(10.0))

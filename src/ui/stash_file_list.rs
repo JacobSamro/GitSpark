@@ -4,6 +4,7 @@ use gpui::*;
 use gpui_component::h_flex;
 
 use crate::models::ChangeEntry;
+use crate::ui::ids::stable_id_slug;
 use crate::ui::theme;
 
 pub fn render_stash_file_list(
@@ -51,7 +52,7 @@ pub fn render_stash_file_list(
                             h_flex()
                                 .id(SharedString::from(format!(
                                     "{row_id_prefix}-{}",
-                                    stable_ui_id(&file.path)
+                                    stable_id_slug(&file.path)
                                 )))
                                 .h(px(28.0))
                                 .w_full()
@@ -99,26 +100,5 @@ fn compact_change_status(status: &str) -> &'static str {
         "R"
     } else {
         "?"
-    }
-}
-
-fn stable_ui_id(value: &str) -> String {
-    let slug: String = value
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() {
-                ch.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string();
-
-    if slug.is_empty() {
-        "item".to_string()
-    } else {
-        slug
     }
 }

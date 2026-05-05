@@ -3,6 +3,7 @@ use gpui::*;
 use gpui_component::{h_flex, v_flex};
 
 use crate::ui::app::GitSparkApp;
+use crate::ui::ids::stable_id_slug;
 use crate::ui::labels;
 use crate::ui::theme;
 use crate::ui::ui_state::ChangeContextMenuState;
@@ -192,7 +193,7 @@ pub(crate) fn render_changes_context_menu_overlay(
     let left = state.x.clamp(8.0, max_left);
     let top = state.y.clamp(8.0, max_top);
     let path = state.path.clone();
-    let slug = stable_context_slug(&path);
+    let slug = stable_id_slug(&path);
 
     let backdrop_view = view.clone();
     let backdrop = div()
@@ -277,16 +278,4 @@ pub(crate) fn render_changes_context_menu_overlay(
             .child(backdrop)
             .child(menu),
     )
-}
-
-fn stable_context_slug(path: &str) -> String {
-    let mut slug = String::new();
-    for ch in path.chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-        } else if !slug.ends_with('-') {
-            slug.push('-');
-        }
-    }
-    slug.trim_matches('-').to_string()
 }

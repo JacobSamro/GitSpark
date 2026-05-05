@@ -20,6 +20,7 @@ use crate::ui::branch_context_menu::BranchContextAction;
 use crate::ui::changes_context_menu::ChangesContextAction;
 use crate::ui::domain_state::NetworkAction;
 use crate::ui::history_context_menu::HistoryContextMenuAction;
+use crate::ui::ids::stable_id_slug;
 use crate::ui::settings_modal::SettingsField;
 use crate::ui::ui_state::{ActiveDialog, BranchSelectorMode, SidebarTab};
 use crate::ui::ui_state::{OpenRouterModelsState, SettingsSection};
@@ -1335,6 +1336,35 @@ impl GitSparkApp {
                     self.can_reset_to_commit(&commit.oid),
                     has_github_remote,
                 ));
+            }
+
+            if self.nav.sidebar_tab == SidebarTab::History {
+                children.push(automation_node(
+                    "commit-file-list-viewport",
+                    AutomationRole::List,
+                    Some("commit-file-list-viewport"),
+                    Some("Commit files"),
+                    None::<AutomationNodeAction>,
+                ));
+
+                if self.selection.selected_commit.as_ref().is_some()
+                    && let Some(diffs) = self.selection.commit_diffs.as_ref()
+                {
+                    children.extend(diffs.iter().map(|entry| {
+                        let id = format!("commit-file-{}", stable_test_slug(&entry.path));
+                        automation_node(
+                            id.clone(),
+                            AutomationRole::ListItem,
+                            Some(id),
+                            Some(entry.path.as_str()),
+                            None::<AutomationNodeAction>,
+                        )
+                        .selected(
+                            self.selection.selected_commit_file.as_deref()
+                                == Some(entry.path.as_str()),
+                        )
+                    }));
+                }
             }
 
             if snapshot.stash_count > 0 {
@@ -2728,28 +2758,7 @@ fn node_matches_selector(node: &AutomationNode, selector: &AutomationSelector) -
 }
 
 fn stable_test_slug(value: &str) -> String {
-    let mut slug = String::new();
-    let mut previous_dash = false;
-
-    for ch in value.chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-            previous_dash = false;
-        } else if !previous_dash && !slug.is_empty() {
-            slug.push('-');
-            previous_dash = true;
-        }
-    }
-
-    while slug.ends_with('-') {
-        slug.pop();
-    }
-
-    if slug.is_empty() {
-        "item".to_string()
-    } else {
-        slug
-    }
+    stable_id_slug(value)
 }
 
 struct AutomationConfig {
