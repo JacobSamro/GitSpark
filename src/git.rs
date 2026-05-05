@@ -150,12 +150,18 @@ impl GitClient {
             .ok_or_else(|| anyhow!("no remote configured for this repository"))?;
 
         if self.has_upstream(&repo_path) {
-            self.run_git(&repo_path, &["push", &remote_name])
+            self.run_git(&repo_path, &["push", "--follow-tags", &remote_name])
                 .with_context(|| format!("failed to push to '{remote_name}'"))?;
         } else {
             self.run_git(
                 &repo_path,
-                &["push", "--set-upstream", &remote_name, "HEAD"],
+                &[
+                    "push",
+                    "--follow-tags",
+                    "--set-upstream",
+                    &remote_name,
+                    "HEAD",
+                ],
             )
             .with_context(|| format!("failed to publish branch to '{remote_name}'"))?;
         }
@@ -1684,6 +1690,38 @@ mod tests {
         assert_eq!(peeled_target.trim(), oid);
 
         let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn pushes_annotated_tags_with_branch() {
+        let remote = temp_repo("push-tags-remote");
+        run_git(&remote, &["init", "--bare"]);
+
+        let repo = temp_repo("push-tags-work");
+        fs::write(repo.join("README.md"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(
+            &repo,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+        run_git(&repo, &["push", "--set-upstream", "origin", "main"]);
+        let oid = run_git(&repo, &["rev-parse", "HEAD"]).trim().to_string();
+
+        GitClient::new().create_tag(&repo, &oid, "v1.0.0").unwrap();
+        GitClient::new().push_origin(&repo).unwrap();
+
+        let remote_tag_type = run_git(&remote, &["cat-file", "-t", "refs/tags/v1.0.0"]);
+        assert_eq!(remote_tag_type.trim(), "tag");
+
+        let remote_tag_target = run_git(&remote, &["rev-parse", "refs/tags/v1.0.0^{}"]);
+        assert_eq!(remote_tag_target.trim(), oid);
+
+        let _ = fs::remove_dir_all(repo);
+        let _ = fs::remove_dir_all(remote);
     }
 
     #[test]
