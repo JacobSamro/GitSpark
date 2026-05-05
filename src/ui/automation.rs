@@ -136,6 +136,7 @@ pub(crate) enum AutomationCommand {
     CompareBranch {
         name: String,
     },
+    CompareCurrentBranchOnGithub,
     NetworkAction {
         action: AutomationNetworkAction,
     },
@@ -711,6 +712,10 @@ impl GitSparkApp {
             }
             AutomationCommand::CompareBranch { name } => {
                 self.compare_branch(name, cx);
+                AutomationResponse::success(self.automation_snapshot())
+            }
+            AutomationCommand::CompareCurrentBranchOnGithub => {
+                self.menu_compare_current_branch_on_github(cx);
                 AutomationResponse::success(self.automation_snapshot())
             }
             AutomationCommand::NetworkAction { action } => {
@@ -3699,6 +3704,14 @@ mod tests {
             AutomationCommand::CompareBranch { name } => assert_eq!(name, "main"),
             _ => panic!("expected compare_branch command"),
         }
+
+        let compare_on_github: AutomationCommand =
+            serde_json::from_str(r#"{"command":"compare_current_branch_on_github"}"#)
+                .expect("compare current branch on github command parses");
+        assert!(matches!(
+            compare_on_github,
+            AutomationCommand::CompareCurrentBranchOnGithub
+        ));
     }
 
     #[test]

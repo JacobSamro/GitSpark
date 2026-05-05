@@ -475,6 +475,14 @@ export async function testGithubOpenActions(app, fixture) {
       snapshot.error_message === "",
     { timeoutMs: 10_000 },
   );
+  await app.command({ command: "compare_current_branch_on_github" });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message ===
+        `Opened compare for branch '${snapshot.repo?.current_branch}' on GitHub.` &&
+      snapshot.error_message === "",
+    { timeoutMs: 10_000 },
+  );
 
   await waitForOpenUrl(
     fixture.openUrlLog,
@@ -485,6 +493,11 @@ export async function testGithubOpenActions(app, fixture) {
     fixture.openUrlLog,
     `${fixture.githubBaseUrl}/tree/main`,
     "branch GitHub action opens URL from configured remote",
+  );
+  await waitForOpenUrl(
+    fixture.openUrlLog,
+    `${fixture.githubBaseUrl}/compare/main`,
+    "compare on GitHub action opens URL from configured remote",
   );
 }
 

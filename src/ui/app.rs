@@ -3266,6 +3266,7 @@ impl Render for GitSparkApp {
             .on_action(cx.listener(Self::handle_menu_delete_branch))
             .on_action(cx.listener(Self::handle_menu_compare_branch))
             .on_action(cx.listener(Self::handle_menu_merge_branch))
+            .on_action(cx.listener(Self::handle_menu_compare_on_github))
             .on_action(cx.listener(Self::handle_menu_view_branch_on_github))
             .on_action(cx.listener(Self::handle_menu_discard_all_changes))
             .on_action(cx.listener(Self::handle_menu_stash_changes))
@@ -3659,6 +3660,44 @@ impl GitSparkApp {
         );
     }
 
+    pub fn menu_compare_current_branch_on_github(&mut self, cx: &mut Context<Self>) {
+        let Some(snapshot) = self.repo.snapshot.as_ref() else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        let branch_name = snapshot.repo.current_branch.clone();
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        match self.git.github_compare_branch_url(&path, &branch_name) {
+            Ok(Some(url)) => match open_url(&url) {
+                Ok(_) => {
+                    self.messages.status_message =
+                        format!("Opened compare for branch '{branch_name}' on GitHub.");
+                    self.messages.error_message.clear();
+                }
+                Err(err) => {
+                    self.messages.error_message = format!(
+                        "Failed to open compare for branch '{branch_name}' on GitHub: {err}"
+                    );
+                }
+            },
+            Ok(None) => {
+                self.messages.error_message =
+                    "This repository does not have a GitHub remote URL.".to_string();
+            }
+            Err(err) => {
+                self.messages.error_message = format!("Could not build GitHub compare URL: {err}");
+            }
+        }
+        cx.notify();
+    }
+
     pub fn menu_discard_all_changes(&mut self, cx: &mut Context<Self>) {
         let Some(snapshot) = self.repo.snapshot.as_ref() else {
             self.messages.error_message = "No repository selected.".to_string();
@@ -3930,6 +3969,15 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         self.menu_merge_branch(cx);
+    }
+
+    fn handle_menu_compare_on_github(
+        &mut self,
+        _: &crate::MenuCompareOnGitHub,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_compare_current_branch_on_github(cx);
     }
 
     fn handle_menu_view_branch_on_github(

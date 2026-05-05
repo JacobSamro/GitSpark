@@ -691,7 +691,33 @@ impl GitClient {
             .with_context(|| format!("failed to read remote URL for '{remote_name}'"))?;
 
         Ok(normalize_github_remote_url(remote_url.trim())
-            .map(|base| format!("{base}/tree/{branch_name}")))
+            .map(|base| format!("{base}/tree/{}", encode_github_url_component(branch_name))))
+    }
+
+    pub fn github_compare_branch_url(
+        &self,
+        repo_path: &Path,
+        branch_name: &str,
+    ) -> Result<Option<String>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let branch_name = branch_name.trim();
+        if branch_name.is_empty() {
+            bail!("branch name cannot be empty");
+        }
+        let Some(remote_name) = self.read_primary_remote(&repo_path)? else {
+            return Ok(None);
+        };
+
+        let remote_url = self
+            .run_git(&repo_path, &["remote", "get-url", &remote_name])
+            .with_context(|| format!("failed to read remote URL for '{remote_name}'"))?;
+
+        Ok(normalize_github_remote_url(remote_url.trim()).map(|base| {
+            format!(
+                "{base}/compare/{}",
+                encode_github_url_component(branch_name)
+            )
+        }))
     }
 
     pub fn github_repository_url(&self, repo_path: &Path) -> Result<Option<String>> {
@@ -1954,6 +1980,41 @@ mod tests {
             encode_github_path("dashboards/platform/page one.rs"),
             "dashboards/platform/page%20one.rs"
         );
+    }
+
+    #[test]
+    fn builds_github_branch_urls_with_encoded_branch_names() {
+        let remote = temp_repo("github-branch-url-remote");
+        run_git(&remote, &["init", "--bare"]);
+
+        let repo = temp_repo("github-branch-url");
+        fs::write(repo.join("README.md"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(
+            &repo,
+            &["remote", "add", "origin", "git@github.com:owner/repo.git"],
+        );
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+
+        let git = GitClient::new();
+        assert_eq!(
+            git.github_branch_url(&repo, "feature/test branch")
+                .unwrap()
+                .as_deref(),
+            Some("https://github.com/owner/repo/tree/feature%2Ftest%20branch")
+        );
+        assert_eq!(
+            git.github_compare_branch_url(&repo, "feature/test branch")
+                .unwrap()
+                .as_deref(),
+            Some("https://github.com/owner/repo/compare/feature%2Ftest%20branch")
+        );
+
+        let _ = fs::remove_dir_all(repo);
+        let _ = fs::remove_dir_all(remote);
     }
 
     #[test]
