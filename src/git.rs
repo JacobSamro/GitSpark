@@ -8,8 +8,8 @@ use std::{env, fs, io};
 use anyhow::{Context, Result, anyhow, bail};
 
 use crate::models::{
-    BranchComparison, BranchInfo, ChangeEntry, CommitInfo, DiffEntry, GitIdentity,
-    GitOperationKind, GitOperationState, RepoSnapshot, RepoSummary,
+    BranchComparison, BranchInfo, ChangeEntry, CommitInfo, CreateRepositoryOptions, DiffEntry,
+    GitIdentity, GitOperationKind, GitOperationState, RepoSnapshot, RepoSummary,
 };
 
 #[cfg(windows)]
@@ -37,11 +37,31 @@ impl GitClient {
         Self
     }
 
+    #[allow(dead_code)]
     pub fn create_repository(
         &self,
         parent_path: &Path,
         name: &str,
         description: &str,
+    ) -> Result<RepoSnapshot> {
+        self.create_repository_with_options(
+            parent_path,
+            CreateRepositoryOptions {
+                name: name.to_string(),
+                description: description.to_string(),
+                branch_name: String::new(),
+                initialize_readme: true,
+                gitignore_template: String::new(),
+                license_template: String::new(),
+                initial_commit: false,
+            },
+        )
+    }
+
+    pub fn create_repository_with_options(
+        &self,
+        parent_path: &Path,
+        options: CreateRepositoryOptions,
     ) -> Result<RepoSnapshot> {
         let parent_path = parent_path.to_path_buf();
         if !parent_path.exists() {
@@ -56,7 +76,7 @@ impl GitClient {
             bail!("'{}' is not a directory", parent_path.display());
         }
 
-        let name = name.trim();
+        let name = options.name.trim();
         if name.is_empty() {
             bail!("repository name is required");
         }
@@ -76,15 +96,41 @@ impl GitClient {
                 .with_context(|| format!("failed to create '{}'", repo_path.display()))?;
         }
 
-        self.run_git(&repo_path, &["init"])
-            .with_context(|| format!("failed to initialize '{}'", repo_path.display()))?;
-        let readme_path = repo_path.join("README.md");
-        if !readme_path.exists() {
+        let branch_name = safe_branch_name(options.branch_name.trim());
+        if branch_name.is_empty() {
+            self.run_git(&repo_path, &["init"])
+                .with_context(|| format!("failed to initialize '{}'", repo_path.display()))?;
+        } else {
+            self.run_git(&repo_path, &["init", "-b", &branch_name])
+                .with_context(|| format!("failed to initialize '{}'", repo_path.display()))?;
+        }
+
+        if options.initialize_readme {
+            let readme_path = repo_path.join("README.md");
             fs::write(&readme_path, format!("# {name}\n")).with_context(|| {
                 format!("failed to write README at '{}'", readme_path.display())
             })?;
         }
-        let description = description.trim();
+
+        if let Some(contents) = gitignore_template_contents(&options.gitignore_template) {
+            fs::write(repo_path.join(".gitignore"), contents).with_context(|| {
+                format!(
+                    "failed to write gitignore at '{}'",
+                    repo_path.join(".gitignore").display()
+                )
+            })?;
+        }
+
+        if let Some(contents) = license_template_contents(&options.license_template, name) {
+            fs::write(repo_path.join("LICENSE"), contents).with_context(|| {
+                format!(
+                    "failed to write license at '{}'",
+                    repo_path.join("LICENSE").display()
+                )
+            })?;
+        }
+
+        let description = options.description.trim();
         if !description.is_empty() {
             let git_description_path = repo_path.join(".git").join("description");
             fs::write(&git_description_path, format!("{description}\n")).with_context(|| {
@@ -95,9 +141,20 @@ impl GitClient {
             })?;
         }
 
+        if options.initial_commit {
+            let changed = self.run_git(&repo_path, &["status", "--porcelain"])?;
+            if !changed.trim().is_empty() {
+                self.run_git(&repo_path, &["add", "--all"])
+                    .context("failed to stage initial repository files")?;
+                self.run_git(&repo_path, &["commit", "-m", "Initial commit"])
+                    .context("failed to create initial commit")?;
+            }
+        }
+
         self.snapshot(&repo_path)
     }
 
+    #[allow(dead_code)]
     pub fn clone_repository(&self, url: &str, destination_path: &Path) -> Result<RepoSnapshot> {
         let url = url.trim();
         if url.is_empty() {
@@ -128,6 +185,55 @@ impl GitClient {
         let destination = destination_path.to_string_lossy().to_string();
         run_git_command(
             parent,
+            &["clone", "--recursive", "--", url, destination.as_str()],
+        )
+        .with_context(|| format!("failed to clone '{url}'"))?;
+
+        self.snapshot(&destination_path)
+    }
+
+    pub fn clone_repository_into(
+        &self,
+        url: &str,
+        parent_path: &Path,
+        local_name: &str,
+    ) -> Result<RepoSnapshot> {
+        let url = url.trim();
+        if url.is_empty() {
+            bail!("repository URL is required");
+        }
+        let local_name = safe_repository_directory_name(local_name);
+        if local_name.is_empty() {
+            bail!("local repository name is required");
+        }
+        let parent_path = parent_path.to_path_buf();
+        if parent_path.exists() {
+            if !parent_path.is_dir() {
+                bail!("'{}' is not a directory", parent_path.display());
+            }
+        } else {
+            fs::create_dir_all(&parent_path)
+                .with_context(|| format!("failed to create '{}'", parent_path.display()))?;
+        }
+
+        let destination_path = parent_path.join(local_name);
+        if destination_path.exists() {
+            if !destination_path.is_dir() {
+                bail!("'{}' is not a directory", destination_path.display());
+            }
+            let mut entries = fs::read_dir(&destination_path)
+                .with_context(|| format!("failed to inspect '{}'", destination_path.display()))?;
+            if entries.next().is_some() {
+                bail!(
+                    "'{}' already exists and is not empty",
+                    destination_path.display()
+                );
+            }
+        }
+
+        let destination = destination_path.to_string_lossy().to_string();
+        run_git_command(
+            &parent_path,
             &["clone", "--recursive", "--", url, destination.as_str()],
         )
         .with_context(|| format!("failed to clone '{url}'"))?;
@@ -2236,18 +2342,62 @@ pub(crate) fn safe_repository_directory_name(name: &str) -> String {
         .to_string()
 }
 
+pub(crate) fn inferred_clone_directory_name(url: &str) -> String {
+    let trimmed = url.trim().trim_end_matches('/').trim_end_matches('\\');
+    let last = trimmed
+        .rsplit(['/', '\\', ':'])
+        .next()
+        .unwrap_or(trimmed)
+        .trim_end_matches(".git");
+    safe_repository_directory_name(last)
+}
+
+fn safe_branch_name(name: &str) -> String {
+    name.trim()
+        .chars()
+        .map(|ch| if ch.is_whitespace() { '-' } else { ch })
+        .filter(|ch| !matches!(ch, '~' | '^' | ':' | '?' | '*' | '[' | '\\'))
+        .collect::<String>()
+        .trim_matches(|ch| matches!(ch, '/' | '.'))
+        .to_string()
+}
+
+fn gitignore_template_contents(template: &str) -> Option<&'static str> {
+    match template {
+        "Rust" => Some("/target/\nCargo.lock\n"),
+        "Node" => Some("node_modules/\nnpm-debug.log*\nyarn-debug.log*\nyarn-error.log*\n.env\n"),
+        "Python" => Some("__pycache__/\n*.py[cod]\n.venv/\n.env\n"),
+        _ => None,
+    }
+}
+
+fn license_template_contents(template: &str, project_name: &str) -> Option<String> {
+    match template {
+        "MIT" => Some(format!(
+            "MIT License\n\nCopyright (c) {project_name}\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n"
+        )),
+        "Apache-2.0" => Some(format!(
+            "Copyright {project_name}\n\nLicensed under the Apache License, Version 2.0 (the \"License\");\nyou may not use this file except in compliance with the License.\nYou may obtain a copy of the License at\n\n    http://www.apache.org/licenses/LICENSE-2.0\n\nUnless required by applicable law or agreed to in writing, software\ndistributed under the License is distributed on an \"AS IS\" BASIS,\nWITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\nSee the License for the specific language governing permissions and\nlimitations under the License.\n"
+        )),
+        "GPL-3.0" => Some(format!(
+            "{project_name}\n\nCopyright (C) {project_name}\n\nThis program is free software: you can redistribute it and/or modify it under\nthe terms of the GNU General Public License as published by the Free Software\nFoundation, either version 3 of the License, or (at your option) any later\nversion.\n\nThis program is distributed in the hope that it will be useful, but WITHOUT\nANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS\nFOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.\n"
+        )),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
     use std::{fs, path::Path};
 
-    use crate::models::GitIdentity;
+    use crate::models::{CreateRepositoryOptions, GitIdentity};
 
     use super::{
         GITSPARK_STASH_MESSAGE_PREFIX, GitClient, encode_github_path, fill_missing_author_identity,
-        normalize_github_remote_url, parse_author_ident, parse_ref_tags,
-        safe_repository_directory_name,
+        inferred_clone_directory_name, normalize_github_remote_url, parse_author_ident,
+        parse_ref_tags, safe_repository_directory_name,
     };
 
     #[test]
@@ -2323,6 +2473,10 @@ mod tests {
         assert_eq!(safe_repository_directory_name("My Repo"), "My Repo");
         assert_eq!(safe_repository_directory_name(" bad/repo? "), "bad-repo-");
         assert_eq!(safe_repository_directory_name("..."), "");
+        assert_eq!(
+            inferred_clone_directory_name("git@github.com:owner/project.git"),
+            "project"
+        );
     }
 
     #[test]
@@ -2350,6 +2504,44 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("already exists and is not empty"));
+
+        let _ = fs::remove_dir_all(parent);
+    }
+
+    #[test]
+    fn creates_repository_with_templates_branch_and_initial_commit() {
+        let parent = temp_repo("create-options-parent");
+        let snapshot = GitClient::new()
+            .create_repository_with_options(
+                &parent,
+                CreateRepositoryOptions {
+                    name: "Templated Repo".to_string(),
+                    description: "Repository options".to_string(),
+                    branch_name: "trunk".to_string(),
+                    initialize_readme: true,
+                    gitignore_template: "Rust".to_string(),
+                    license_template: "MIT".to_string(),
+                    initial_commit: true,
+                },
+            )
+            .unwrap();
+        let repo = parent.join("Templated Repo");
+
+        assert_eq!(snapshot.repo.current_branch, "trunk");
+        assert!(snapshot.repo.head_oid.is_some());
+        assert_eq!(
+            fs::read_to_string(repo.join(".gitignore")).unwrap(),
+            "/target/\nCargo.lock\n"
+        );
+        assert!(
+            fs::read_to_string(repo.join("LICENSE"))
+                .unwrap()
+                .contains("MIT License")
+        );
+        let committed_files = run_git(&repo, &["show", "--format=", "--name-only", "HEAD"]);
+        assert!(committed_files.contains("README.md"));
+        assert!(committed_files.contains(".gitignore"));
+        assert!(committed_files.contains("LICENSE"));
 
         let _ = fs::remove_dir_all(parent);
     }
@@ -2383,6 +2575,34 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("already exists and is not empty"));
+
+        let _ = fs::remove_dir_all(source);
+        let _ = fs::remove_dir_all(parent);
+    }
+
+    #[test]
+    fn clones_local_repository_into_named_child_of_parent_folder() {
+        let source = temp_repo("clone-parent-source");
+        fs::write(source.join("README.md"), "source\n").unwrap();
+        run_git(&source, &["init", "-b", "main"]);
+        run_git(&source, &["config", "user.name", "GitSpark Test"]);
+        run_git(&source, &["config", "user.email", "test@gitspark.local"]);
+        run_git(&source, &["add", "--all"]);
+        run_git(&source, &["commit", "-m", "initial"]);
+
+        let parent = temp_repo("clone-parent-folder");
+        fs::write(parent.join("keep.txt"), "parent can contain files\n").unwrap();
+        let snapshot = GitClient::new()
+            .clone_repository_into(&source.to_string_lossy(), &parent, "local-copy")
+            .unwrap();
+        let destination = parent.join("local-copy");
+
+        assert_eq!(snapshot.repo.path, destination);
+        assert_eq!(snapshot.repo.name, "local-copy");
+        assert_eq!(
+            fs::read_to_string(destination.join("README.md")).unwrap(),
+            "source\n"
+        );
 
         let _ = fs::remove_dir_all(source);
         let _ = fs::remove_dir_all(parent);

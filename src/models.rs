@@ -85,6 +85,17 @@ pub struct GitOperationState {
     pub message: String,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct CreateRepositoryOptions {
+    pub name: String,
+    pub description: String,
+    pub branch_name: String,
+    pub initialize_readme: bool,
+    pub gitignore_template: String,
+    pub license_template: String,
+    pub initial_commit: bool,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GitIdentity {
     pub user_name: String,

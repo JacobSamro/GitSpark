@@ -13,6 +13,7 @@ use gpui::Context;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::git::inferred_clone_directory_name;
 use crate::models::{AiProvider, GitOperationKind};
 use crate::ui::app::SettingsAction;
 use crate::ui::app::{AppEvent, GitSparkApp, NotifySender, SidebarAction, ToolbarAction};
@@ -539,8 +540,10 @@ enum AutomationNodeAction {
     SetCreateRepositoryName,
     SetCreateRepositoryDescription,
     SetCreateRepositoryPath,
+    SetCreateRepositoryBranch,
     ConfirmCreateRepository,
     SetCloneRepositoryUrl,
+    SetCloneRepositoryName,
     SetCloneRepositoryPath,
     ConfirmCloneRepository,
     SetPublishName,
@@ -1257,6 +1260,29 @@ impl GitSparkApp {
                     Some(AutomationNodeAction::SetCreateRepositoryPath),
                 ),
                 automation_node(
+                    "create-repository-branch-input",
+                    AutomationRole::Textbox,
+                    Some("create-repository-branch-input"),
+                    Some(self.repo.create_repo_branch_name.as_str()),
+                    Some(AutomationNodeAction::SetCreateRepositoryBranch),
+                ),
+                automation_node(
+                    "create-repository-readme-checkbox",
+                    AutomationRole::Button,
+                    Some("create-repository-readme-checkbox"),
+                    Some("Initialize this repository with a README"),
+                    None::<AutomationNodeAction>,
+                )
+                .selected(self.repo.create_repo_initialize_readme),
+                automation_node(
+                    "create-repository-initial-commit-checkbox",
+                    AutomationRole::Button,
+                    Some("create-repository-initial-commit-checkbox"),
+                    Some("Create initial commit"),
+                    None::<AutomationNodeAction>,
+                )
+                .selected(self.repo.create_repo_initial_commit),
+                automation_node(
                     "create-repository-cancel",
                     AutomationRole::Button,
                     Some("create-repository-cancel"),
@@ -1299,6 +1325,13 @@ impl GitSparkApp {
                     Some("clone-repository-path-input"),
                     Some(self.repo.clone_repo_path.as_str()),
                     Some(AutomationNodeAction::SetCloneRepositoryPath),
+                ),
+                automation_node(
+                    "clone-repository-name-input",
+                    AutomationRole::Textbox,
+                    Some("clone-repository-name-input"),
+                    Some(self.repo.clone_repo_name.as_str()),
+                    Some(AutomationNodeAction::SetCloneRepositoryName),
                 ),
                 automation_node(
                     "clone-repository-cancel",
@@ -2357,6 +2390,12 @@ impl GitSparkApp {
                 self.repository_create_path_selection = None;
                 cx.notify();
             }
+            AutomationNodeAction::SetCreateRepositoryBranch => {
+                self.repo.create_repo_branch_name = fill_text.unwrap_or_default();
+                self.repository_create_branch_cursor = self.repo.create_repo_branch_name.len();
+                self.repository_create_branch_selection = None;
+                cx.notify();
+            }
             AutomationNodeAction::ConfirmCreateRepository => {
                 if !matches!(self.nav.active_dialog, ActiveDialog::CreateRepository) {
                     return AutomationResponse::failure("create repository dialog is not active");
@@ -2367,9 +2406,25 @@ impl GitSparkApp {
                 self.create_repository(cx);
             }
             AutomationNodeAction::SetCloneRepositoryUrl => {
+                let previous_inferred_name =
+                    inferred_clone_directory_name(&self.repo.clone_repo_url);
+                let should_update_inferred_name = self.repo.clone_repo_name.trim().is_empty()
+                    || self.repo.clone_repo_name == previous_inferred_name;
                 self.repo.clone_repo_url = fill_text.unwrap_or_default();
                 self.repository_clone_url_cursor = self.repo.clone_repo_url.len();
                 self.repository_clone_url_selection = None;
+                if should_update_inferred_name {
+                    self.repo.clone_repo_name =
+                        inferred_clone_directory_name(&self.repo.clone_repo_url);
+                    self.repository_clone_name_cursor = self.repo.clone_repo_name.len();
+                    self.repository_clone_name_selection = None;
+                }
+                cx.notify();
+            }
+            AutomationNodeAction::SetCloneRepositoryName => {
+                self.repo.clone_repo_name = fill_text.unwrap_or_default();
+                self.repository_clone_name_cursor = self.repo.clone_repo_name.len();
+                self.repository_clone_name_selection = None;
                 cx.notify();
             }
             AutomationNodeAction::SetCloneRepositoryPath => {

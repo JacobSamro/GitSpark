@@ -16,11 +16,12 @@ use gpui_component::{Disableable, Icon, IconName, Sizable, h_flex, v_flex};
 use rfd::FileDialog;
 
 use crate::ai::AiClient;
-use crate::git::{GitClient, safe_repository_directory_name};
+use crate::git::{GitClient, inferred_clone_directory_name, safe_repository_directory_name};
 use crate::models::{
     AiProvider, AppSettings, BranchComparison, BranchInfo, ChangeEntry, CommitInfo,
-    CommitSuggestion, DiffEntry, GitIdentity, GitOperationKind, GitOperationState,
-    INVALID_GIT_AUTHOR_NAME_MESSAGE, RemoteModelOption, RepoSnapshot, git_author_name_is_valid,
+    CommitSuggestion, CreateRepositoryOptions, DiffEntry, GitIdentity, GitOperationKind,
+    GitOperationState, INVALID_GIT_AUTHOR_NAME_MESSAGE, RemoteModelOption, RepoSnapshot,
+    git_author_name_is_valid,
 };
 use crate::storage::{push_recent_repo, save_settings};
 use crate::ui::automation;
@@ -75,7 +76,9 @@ pub(crate) enum RepositoryField {
     CreateName,
     CreateDescription,
     CreatePath,
+    CreateBranchName,
     CloneUrl,
+    CloneName,
     ClonePath,
 }
 
@@ -228,8 +231,12 @@ pub struct GitSparkApp {
     pub(crate) repository_create_description_selection: Option<usize>,
     pub(crate) repository_create_path_cursor: usize,
     pub(crate) repository_create_path_selection: Option<usize>,
+    pub(crate) repository_create_branch_cursor: usize,
+    pub(crate) repository_create_branch_selection: Option<usize>,
     pub(crate) repository_clone_url_cursor: usize,
     pub(crate) repository_clone_url_selection: Option<usize>,
+    pub(crate) repository_clone_name_cursor: usize,
+    pub(crate) repository_clone_name_selection: Option<usize>,
     pub(crate) repository_clone_path_cursor: usize,
     pub(crate) repository_clone_path_selection: Option<usize>,
     pub(crate) settings_modal: SettingsModalState,
@@ -294,8 +301,12 @@ impl GitSparkApp {
             repository_create_description_selection: None,
             repository_create_path_cursor: 0,
             repository_create_path_selection: None,
+            repository_create_branch_cursor: 0,
+            repository_create_branch_selection: None,
             repository_clone_url_cursor: 0,
             repository_clone_url_selection: None,
+            repository_clone_name_cursor: 0,
+            repository_clone_name_selection: None,
             repository_clone_path_cursor: 0,
             repository_clone_path_selection: None,
             settings_modal: SettingsModalState::new(cx),
@@ -842,6 +853,9 @@ impl GitSparkApp {
         if self.repo.create_repo_path.trim().is_empty() {
             self.repo.create_repo_path = self.default_repository_parent_path();
         }
+        if self.repo.create_repo_branch_name.trim().is_empty() {
+            self.repo.create_repo_branch_name = "main".to_string();
+        }
         self.repository_active_field = Some(RepositoryField::CreateName);
         self.repository_create_name_cursor = self.repo.create_repo_name.len();
         self.repository_create_name_selection = None;
@@ -854,6 +868,14 @@ impl GitSparkApp {
     }
 
     fn open_clone_repository_dialog(&mut self, cx: &mut Context<Self>) {
+        if self.repo.clone_repo_path.trim().is_empty() {
+            self.repo.clone_repo_path = self.default_repository_parent_path();
+            self.repository_clone_path_cursor = self.repo.clone_repo_path.len();
+        }
+        if self.repo.clone_repo_name.trim().is_empty() {
+            self.repo.clone_repo_name = inferred_clone_directory_name(&self.repo.clone_repo_url);
+            self.repository_clone_name_cursor = self.repo.clone_repo_name.len();
+        }
         self.repository_active_field = Some(RepositoryField::CloneUrl);
         self.repository_clone_url_cursor = self.repo.clone_repo_url.len();
         self.repository_clone_url_selection = None;
@@ -877,6 +899,9 @@ impl GitSparkApp {
         }
         if self.repo.create_repo_path.trim().is_empty() {
             return Some("Choose a local path.".to_string());
+        }
+        if self.repo.create_repo_branch_name.trim().is_empty() {
+            return Some("Type an initial branch name.".to_string());
         }
         let destination = PathBuf::from(self.repo.create_repo_path.trim())
             .join(safe_repository_directory_name(&self.repo.create_repo_name));
@@ -904,7 +929,11 @@ impl GitSparkApp {
         if self.repo.clone_repo_path.trim().is_empty() {
             return Some("Choose a local path.".to_string());
         }
-        let destination = PathBuf::from(self.repo.clone_repo_path.trim());
+        let local_name = self.clone_repository_local_name();
+        if local_name.is_empty() {
+            return Some("Type a local repository name.".to_string());
+        }
+        let destination = PathBuf::from(self.repo.clone_repo_path.trim()).join(&local_name);
         if destination.exists() {
             if !destination.is_dir() {
                 return Some(format!("{} is not a directory.", destination.display()));
@@ -929,8 +958,16 @@ impl GitSparkApp {
             return;
         }
         let parent_path = PathBuf::from(self.repo.create_repo_path.trim());
-        let name = self.repo.create_repo_name.trim().to_string();
-        let description = self.repo.create_repo_description.trim().to_string();
+        let options = CreateRepositoryOptions {
+            name: self.repo.create_repo_name.trim().to_string(),
+            description: self.repo.create_repo_description.trim().to_string(),
+            branch_name: self.repo.create_repo_branch_name.trim().to_string(),
+            initialize_readme: self.repo.create_repo_initialize_readme,
+            gitignore_template: self.repo.create_repo_gitignore_template.clone(),
+            license_template: self.repo.create_repo_license_template.clone(),
+            initial_commit: self.repo.create_repo_initial_commit,
+        };
+        let name = options.name.clone();
 
         self.nav.active_dialog = ActiveDialog::None;
         self.messages.status_message = format!("Creating repository '{name}'...");
@@ -940,7 +977,7 @@ impl GitSparkApp {
         let git = GitClient::new();
         thread::spawn(move || {
             let res = git
-                .create_repository(&parent_path, &name, &description)
+                .create_repository_with_options(&parent_path, options)
                 .map_err(|e| e.to_string());
             let _ = tx.send(AppEvent::RepoOperationCompleted(
                 res,
@@ -958,7 +995,8 @@ impl GitSparkApp {
             return;
         }
         let url = self.repo.clone_repo_url.trim().to_string();
-        let destination = PathBuf::from(self.repo.clone_repo_path.trim());
+        let parent_path = PathBuf::from(self.repo.clone_repo_path.trim());
+        let local_name = self.clone_repository_local_name();
 
         self.nav.active_dialog = ActiveDialog::None;
         self.messages.status_message = format!("Cloning '{url}'...");
@@ -968,7 +1006,7 @@ impl GitSparkApp {
         let git = GitClient::new();
         thread::spawn(move || {
             let res = git
-                .clone_repository(&url, &destination)
+                .clone_repository_into(&url, &parent_path, &local_name)
                 .map_err(|e| e.to_string());
             let _ = tx.send(AppEvent::RepoOperationCompleted(
                 res,
@@ -977,6 +1015,15 @@ impl GitSparkApp {
             ));
         });
         cx.notify();
+    }
+
+    pub(crate) fn clone_repository_local_name(&self) -> String {
+        let explicit = safe_repository_directory_name(&self.repo.clone_repo_name);
+        if explicit.is_empty() {
+            inferred_clone_directory_name(&self.repo.clone_repo_url)
+        } else {
+            explicit
+        }
     }
 
     pub fn refresh_repo(&mut self, cx: &mut Context<Self>) {
@@ -1059,15 +1106,15 @@ impl GitSparkApp {
     // Network operations
     // ------------------------------------------------------------------
 
-    fn fetch_origin(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn fetch_origin(&mut self, cx: &mut Context<Self>) {
         self.run_network_action(NetworkAction::Fetch, cx);
     }
 
-    fn pull_origin(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn pull_origin(&mut self, cx: &mut Context<Self>) {
         self.run_network_action(NetworkAction::Pull, cx);
     }
 
-    fn push_origin(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn push_origin(&mut self, cx: &mut Context<Self>) {
         if self
             .repo
             .snapshot
@@ -1082,7 +1129,7 @@ impl GitSparkApp {
         self.run_network_action(NetworkAction::Push, cx);
     }
 
-    fn run_network_action(&mut self, action: NetworkAction, cx: &mut Context<Self>) {
+    pub(crate) fn run_network_action(&mut self, action: NetworkAction, cx: &mut Context<Self>) {
         if self.network.active_action.is_some() {
             return;
         }
@@ -3536,11 +3583,90 @@ impl Render for GitSparkApp {
             .on_action(cx.listener(Self::handle_menu_zoom_out))
             .on_action(cx.listener(Self::handle_menu_zoom_reset));
 
+        crate::install_native_menus(cx, self.native_menu_availability());
+
         root
     }
 }
 
 impl GitSparkApp {
+    fn native_menu_availability(&self) -> crate::MenuAvailability {
+        crate::MenuAvailability {
+            has_repository: self.menu_has_repository(),
+            fetch: self.menu_can_fetch(),
+            pull: self.menu_can_pull(),
+            push: self.menu_can_push(),
+            publish_repository: self.menu_can_publish_repository(),
+            view_repository_on_github: self.menu_can_view_repository_on_github(),
+            create_branch: self.menu_can_create_branch(),
+            modify_current_branch: self.menu_can_modify_current_branch(),
+            compare_on_github: self.menu_can_compare_on_github(),
+            change_worktree: self.menu_can_change_worktree(),
+        }
+    }
+
+    fn menu_has_repository(&self) -> bool {
+        self.repo.snapshot.is_some()
+    }
+
+    fn menu_has_named_branch(&self) -> bool {
+        self.repo.snapshot.as_ref().is_some_and(|snapshot| {
+            snapshot.repo.head_oid.is_some() && snapshot.repo.current_branch != "detached HEAD"
+        })
+    }
+
+    fn menu_no_active_operation(&self) -> bool {
+        self.repo.operation.is_none()
+    }
+
+    fn menu_has_remote(&self) -> bool {
+        self.repo
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.repo.remote_name.is_some())
+    }
+
+    fn menu_can_fetch(&self) -> bool {
+        self.menu_has_repository() && self.menu_has_remote() && self.menu_no_active_operation()
+    }
+
+    fn menu_can_pull(&self) -> bool {
+        self.menu_can_fetch() && self.menu_has_named_branch()
+    }
+
+    fn menu_can_push(&self) -> bool {
+        self.menu_can_fetch() && self.menu_has_named_branch()
+    }
+
+    fn menu_can_publish_repository(&self) -> bool {
+        self.repo.snapshot.as_ref().is_some_and(|snapshot| {
+            snapshot.repo.remote_name.is_none() && self.menu_no_active_operation()
+        })
+    }
+
+    fn menu_can_view_repository_on_github(&self) -> bool {
+        self.menu_has_repository() && self.repo_has_github_remote()
+    }
+
+    fn menu_can_create_branch(&self) -> bool {
+        self.menu_has_repository() && self.menu_no_active_operation()
+    }
+
+    fn menu_can_modify_current_branch(&self) -> bool {
+        self.menu_has_named_branch() && self.menu_no_active_operation()
+    }
+
+    fn menu_can_compare_on_github(&self) -> bool {
+        self.menu_can_modify_current_branch() && self.repo_has_github_remote()
+    }
+
+    fn menu_can_change_worktree(&self) -> bool {
+        self.repo
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| self.menu_no_active_operation() && !snapshot.changes.is_empty())
+    }
+
     pub fn menu_open_repository(&mut self, cx: &mut Context<Self>) {
         self.open_repo_dialog(cx);
     }
@@ -3624,18 +3750,46 @@ impl GitSparkApp {
     }
 
     pub fn menu_fetch(&mut self, cx: &mut Context<Self>) {
+        if !self.menu_can_fetch() {
+            self.messages.error_message =
+                "Fetch requires a selected repository with a remote.".to_string();
+            cx.notify();
+            return;
+        }
+
         self.fetch_origin(cx);
     }
 
     pub fn menu_pull(&mut self, cx: &mut Context<Self>) {
+        if !self.menu_can_pull() {
+            self.messages.error_message =
+                "Pull requires a selected branch with a remote.".to_string();
+            cx.notify();
+            return;
+        }
+
         self.pull_origin(cx);
     }
 
     pub fn menu_push(&mut self, cx: &mut Context<Self>) {
+        if !self.menu_can_push() {
+            self.messages.error_message =
+                "Push requires a selected branch with a remote.".to_string();
+            cx.notify();
+            return;
+        }
+
         self.push_origin(cx);
     }
 
     pub fn menu_publish_repository(&mut self, cx: &mut Context<Self>) {
+        if !self.menu_can_publish_repository() {
+            self.messages.error_message =
+                "Publish requires a selected repository without a remote.".to_string();
+            cx.notify();
+            return;
+        }
+
         self.run_network_action(NetworkAction::PublishRepository, cx);
     }
 
@@ -4138,7 +4292,7 @@ impl GitSparkApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.fetch_origin(cx);
+        self.menu_fetch(cx);
     }
 
     fn handle_menu_pull(
@@ -4147,7 +4301,7 @@ impl GitSparkApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.pull_origin(cx);
+        self.menu_pull(cx);
     }
 
     fn handle_menu_push(
@@ -4156,7 +4310,7 @@ impl GitSparkApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.push_origin(cx);
+        self.menu_push(cx);
     }
 
     fn handle_menu_publish_repository(
@@ -4165,7 +4319,7 @@ impl GitSparkApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.run_network_action(NetworkAction::PublishRepository, cx);
+        self.menu_publish_repository(cx);
     }
 
     fn handle_menu_open_external_editor(
@@ -5065,7 +5219,9 @@ impl GitSparkApp {
             RepositoryField::CreateName => self.repo.create_repo_name.as_str(),
             RepositoryField::CreateDescription => self.repo.create_repo_description.as_str(),
             RepositoryField::CreatePath => self.repo.create_repo_path.as_str(),
+            RepositoryField::CreateBranchName => self.repo.create_repo_branch_name.as_str(),
             RepositoryField::CloneUrl => self.repo.clone_repo_url.as_str(),
+            RepositoryField::CloneName => self.repo.clone_repo_name.as_str(),
             RepositoryField::ClonePath => self.repo.clone_repo_path.as_str(),
         }
     }
@@ -5075,7 +5231,9 @@ impl GitSparkApp {
             RepositoryField::CreateName => self.repository_create_name_cursor,
             RepositoryField::CreateDescription => self.repository_create_description_cursor,
             RepositoryField::CreatePath => self.repository_create_path_cursor,
+            RepositoryField::CreateBranchName => self.repository_create_branch_cursor,
             RepositoryField::CloneUrl => self.repository_clone_url_cursor,
+            RepositoryField::CloneName => self.repository_clone_name_cursor,
             RepositoryField::ClonePath => self.repository_clone_path_cursor,
         }
     }
@@ -5085,7 +5243,9 @@ impl GitSparkApp {
             RepositoryField::CreateName => self.repository_create_name_selection,
             RepositoryField::CreateDescription => self.repository_create_description_selection,
             RepositoryField::CreatePath => self.repository_create_path_selection,
+            RepositoryField::CreateBranchName => self.repository_create_branch_selection,
             RepositoryField::CloneUrl => self.repository_clone_url_selection,
+            RepositoryField::CloneName => self.repository_clone_name_selection,
             RepositoryField::ClonePath => self.repository_clone_path_selection,
         }
     }
@@ -5115,7 +5275,9 @@ impl GitSparkApp {
                 self.repository_create_description_cursor = cursor
             }
             RepositoryField::CreatePath => self.repository_create_path_cursor = cursor,
+            RepositoryField::CreateBranchName => self.repository_create_branch_cursor = cursor,
             RepositoryField::CloneUrl => self.repository_clone_url_cursor = cursor,
+            RepositoryField::CloneName => self.repository_clone_name_cursor = cursor,
             RepositoryField::ClonePath => self.repository_clone_path_cursor = cursor,
         }
     }
@@ -5127,7 +5289,11 @@ impl GitSparkApp {
                 self.repository_create_description_selection = selection
             }
             RepositoryField::CreatePath => self.repository_create_path_selection = selection,
+            RepositoryField::CreateBranchName => {
+                self.repository_create_branch_selection = selection
+            }
             RepositoryField::CloneUrl => self.repository_clone_url_selection = selection,
+            RepositoryField::CloneName => self.repository_clone_name_selection = selection,
             RepositoryField::ClonePath => self.repository_clone_path_selection = selection,
         }
     }
@@ -5148,10 +5314,12 @@ impl GitSparkApp {
                 ActiveDialog::CreateRepository => match self.repository_active_field {
                     Some(RepositoryField::CreateName) => RepositoryField::CreateDescription,
                     Some(RepositoryField::CreateDescription) => RepositoryField::CreatePath,
+                    Some(RepositoryField::CreatePath) => RepositoryField::CreateBranchName,
                     _ => RepositoryField::CreateName,
                 },
                 ActiveDialog::CloneRepository => match self.repository_active_field {
-                    Some(RepositoryField::CloneUrl) => RepositoryField::ClonePath,
+                    Some(RepositoryField::CloneUrl) => RepositoryField::CloneName,
+                    Some(RepositoryField::CloneName) => RepositoryField::ClonePath,
                     _ => RepositoryField::CloneUrl,
                 },
                 _ => return,
@@ -5219,7 +5387,27 @@ impl GitSparkApp {
                 self.repository_create_path_selection = state.selection;
                 handled
             }
+            RepositoryField::CreateBranchName => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.repository_create_branch_cursor,
+                    selection: self.repository_create_branch_selection,
+                };
+                let handled = crate::ui::text_field::handle_text_key(
+                    &mut self.repo.create_repo_branch_name,
+                    &mut state,
+                    false,
+                    event,
+                    cx,
+                );
+                self.repository_create_branch_cursor = state.cursor;
+                self.repository_create_branch_selection = state.selection;
+                handled
+            }
             RepositoryField::CloneUrl => {
+                let previous_inferred_name =
+                    inferred_clone_directory_name(&self.repo.clone_repo_url);
+                let should_update_inferred_name = self.repo.clone_repo_name.trim().is_empty()
+                    || self.repo.clone_repo_name == previous_inferred_name;
                 let mut state = crate::ui::text_field::TextFieldState {
                     cursor: self.repository_clone_url_cursor,
                     selection: self.repository_clone_url_selection,
@@ -5233,6 +5421,28 @@ impl GitSparkApp {
                 );
                 self.repository_clone_url_cursor = state.cursor;
                 self.repository_clone_url_selection = state.selection;
+                if handled && should_update_inferred_name {
+                    self.repo.clone_repo_name =
+                        inferred_clone_directory_name(&self.repo.clone_repo_url);
+                    self.repository_clone_name_cursor = self.repo.clone_repo_name.len();
+                    self.repository_clone_name_selection = None;
+                }
+                handled
+            }
+            RepositoryField::CloneName => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.repository_clone_name_cursor,
+                    selection: self.repository_clone_name_selection,
+                };
+                let handled = crate::ui::text_field::handle_text_key(
+                    &mut self.repo.clone_repo_name,
+                    &mut state,
+                    false,
+                    event,
+                    cx,
+                );
+                self.repository_clone_name_cursor = state.cursor;
+                self.repository_clone_name_selection = state.selection;
                 handled
             }
             RepositoryField::ClonePath => {
@@ -7041,8 +7251,8 @@ impl GitSparkApp {
             ActiveDialog::ChooseTagToDelete { .. } => (420.0, 320.0),
             ActiveDialog::DeleteTag { .. } => (420.0, 220.0),
             ActiveDialog::ResetToCommit { .. } => (500.0, 240.0),
-            ActiveDialog::CreateRepository => (560.0, 390.0),
-            ActiveDialog::CloneRepository => (560.0, 330.0),
+            ActiveDialog::CreateRepository => (560.0, 540.0),
+            ActiveDialog::CloneRepository => (560.0, 390.0),
             ActiveDialog::DiscardChanges { .. } => (420.0, 230.0),
             ActiveDialog::StashAndSwitch { .. } => (576.0, 360.0),
             ActiveDialog::StashChanges => (500.0, 360.0),

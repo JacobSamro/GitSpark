@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
+use gpui_component::scroll::ScrollableElement;
 use gpui_component::{Icon, IconName, h_flex, v_flex};
 use rfd::FileDialog;
 
@@ -39,6 +40,8 @@ pub(crate) fn render_create_repository_dialog(
             .child(
                 v_flex()
                     .w_full()
+                    .max_h(px(430.0))
+                    .overflow_y_scrollbar()
                     .p(theme::z(20.0))
                     .gap(theme::z(14.0))
                     .child(render_repository_input(
@@ -62,11 +65,60 @@ pub(crate) fn render_create_repository_dialog(
                     .child(render_path_input(
                         app,
                         "create-repository-path-input",
-                        "Local path",
+                        "Parent folder",
                         RepositoryField::CreatePath,
                         "Choose a folder",
                         "create-repository-browse",
                         window,
+                        cx,
+                    ))
+                    .child(render_repository_input(
+                        app,
+                        "create-repository-branch-input",
+                        "Initial branch",
+                        RepositoryField::CreateBranchName,
+                        "main",
+                        window,
+                        cx,
+                    ))
+                    .child(render_option_selector(
+                        "Git ignore",
+                        "create-repository-gitignore-options",
+                        &["None", "Rust", "Node", "Python"],
+                        app.repo.create_repo_gitignore_template.as_str(),
+                        |app, value| {
+                            app.repo.create_repo_gitignore_template = option_value(value);
+                        },
+                        cx,
+                    ))
+                    .child(render_option_selector(
+                        "License",
+                        "create-repository-license-options",
+                        &["None", "MIT", "Apache-2.0", "GPL-3.0"],
+                        app.repo.create_repo_license_template.as_str(),
+                        |app, value| {
+                            app.repo.create_repo_license_template = option_value(value);
+                        },
+                        cx,
+                    ))
+                    .child(render_checkbox_row(
+                        "create-repository-readme-checkbox",
+                        "Initialize this repository with a README",
+                        app.repo.create_repo_initialize_readme,
+                        |app| {
+                            app.repo.create_repo_initialize_readme =
+                                !app.repo.create_repo_initialize_readme;
+                        },
+                        cx,
+                    ))
+                    .child(render_checkbox_row(
+                        "create-repository-initial-commit-checkbox",
+                        "Create initial commit",
+                        app.repo.create_repo_initial_commit,
+                        |app| {
+                            app.repo.create_repo_initial_commit =
+                                !app.repo.create_repo_initial_commit;
+                        },
                         cx,
                     ))
                     .child(render_validation_row(
@@ -111,6 +163,8 @@ pub(crate) fn render_clone_repository_dialog(
             .child(
                 v_flex()
                     .w_full()
+                    .max_h(px(260.0))
+                    .overflow_y_scrollbar()
                     .p(theme::z(20.0))
                     .gap(theme::z(14.0))
                     .child(render_repository_input(
@@ -125,10 +179,19 @@ pub(crate) fn render_clone_repository_dialog(
                     .child(render_path_input(
                         app,
                         "clone-repository-path-input",
-                        "Local path",
+                        "Parent folder",
                         RepositoryField::ClonePath,
-                        "Choose an empty destination folder",
+                        "Choose a folder",
                         "clone-repository-browse",
+                        window,
+                        cx,
+                    ))
+                    .child(render_repository_input(
+                        app,
+                        "clone-repository-name-input",
+                        "Local name",
+                        RepositoryField::CloneName,
+                        "repository",
                         window,
                         cx,
                     ))
@@ -240,6 +303,125 @@ fn render_validation_row(id: &'static str, message: Option<&str>) -> impl IntoEl
         .text_size(theme::z(11.0))
         .text_color(theme::danger())
         .child(message.unwrap_or("").to_string())
+}
+
+fn render_option_selector(
+    label: &'static str,
+    id: &'static str,
+    options: &'static [&'static str],
+    selected: &str,
+    set_value: fn(&mut GitSparkApp, &'static str),
+    cx: &mut Context<GitSparkApp>,
+) -> impl IntoElement {
+    v_flex()
+        .w_full()
+        .gap(theme::z(6.0))
+        .child(render_label(label))
+        .child(
+            h_flex()
+                .id(id)
+                .w_full()
+                .gap(theme::z(6.0))
+                .children(options.iter().map(|option| {
+                    let value = *option;
+                    let is_selected = selected == value || (selected.is_empty() && value == "None");
+                    div()
+                        .id(SharedString::from(format!(
+                            "{}-{}",
+                            id,
+                            value.to_ascii_lowercase().replace('.', "-")
+                        )))
+                        .px(theme::z(10.0))
+                        .h(theme::z(28.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(theme::z(theme::CORNER_RADIUS))
+                        .bg(if is_selected {
+                            theme::accent_muted()
+                        } else {
+                            theme::surface_bg()
+                        })
+                        .border_1()
+                        .border_color(if is_selected {
+                            theme::accent()
+                        } else {
+                            theme::surface_bg_alt()
+                        })
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme::toolbar_hover_bg()))
+                        .child(
+                            div()
+                                .text_size(theme::z(12.0))
+                                .text_color(theme::text_main())
+                                .child(value),
+                        )
+                        .on_click(cx.listener(move |app, _evt, _win, cx| {
+                            set_value(app, value);
+                            cx.notify();
+                        }))
+                })),
+        )
+}
+
+fn render_checkbox_row(
+    id: &'static str,
+    label: &'static str,
+    checked: bool,
+    toggle: fn(&mut GitSparkApp),
+    cx: &mut Context<GitSparkApp>,
+) -> impl IntoElement {
+    h_flex()
+        .id(id)
+        .w_full()
+        .h(theme::z(24.0))
+        .items_center()
+        .gap(theme::z(8.0))
+        .cursor_pointer()
+        .child(
+            div()
+                .w(theme::z(14.0))
+                .h(theme::z(14.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(theme::z(3.0))
+                .bg(if checked {
+                    theme::checkbox_selected_bg()
+                } else {
+                    theme::surface_bg()
+                })
+                .border_1()
+                .border_color(if checked {
+                    theme::checkbox_selected_bg()
+                } else {
+                    theme::surface_bg_alt()
+                })
+                .child(
+                    div()
+                        .text_size(theme::z(10.0))
+                        .text_color(theme::checkbox_selected_fg())
+                        .child(if checked { "✓" } else { "" }),
+                ),
+        )
+        .child(
+            div()
+                .text_size(theme::z(12.0))
+                .text_color(theme::text_main())
+                .child(label),
+        )
+        .on_click(cx.listener(move |app, _evt, _win, cx| {
+            toggle(app);
+            cx.notify();
+        }))
+}
+
+fn option_value(value: &str) -> String {
+    if value == "None" {
+        String::new()
+    } else {
+        value.to_string()
+    }
 }
 
 fn render_text_box(

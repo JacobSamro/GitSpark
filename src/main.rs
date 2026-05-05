@@ -54,9 +54,24 @@ actions!(
         MenuZoomIn,
         MenuZoomOut,
         MenuZoomReset,
+        MenuDisabled,
         MenuQuit
     ]
 );
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct MenuAvailability {
+    pub has_repository: bool,
+    pub fetch: bool,
+    pub pull: bool,
+    pub push: bool,
+    pub publish_repository: bool,
+    pub view_repository_on_github: bool,
+    pub create_branch: bool,
+    pub modify_current_branch: bool,
+    pub compare_on_github: bool,
+    pub change_worktree: bool,
+}
 
 fn platform_titlebar_options() -> TitlebarOptions {
     #[cfg(target_os = "macos")]
@@ -312,6 +327,18 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         KeyBinding::new("cmd-q", MenuQuit, None),
     ]);
 
+    install_native_menus(cx, MenuAvailability::default());
+}
+
+fn menu_action(name: &'static str, enabled: bool, action: impl Action) -> MenuItem {
+    if enabled {
+        MenuItem::action(name, action)
+    } else {
+        MenuItem::action(name, MenuDisabled)
+    }
+}
+
+pub(crate) fn install_native_menus(cx: &mut App, availability: MenuAvailability) {
     cx.set_menus(vec![
         Menu {
             name: "GitSpark".into(),
@@ -350,10 +377,18 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
                 MenuItem::action("Show Changes", MenuShowChanges),
                 MenuItem::action("Show History", MenuShowHistory),
                 MenuItem::action("Show Repository List", MenuShowRepositoryList),
-                MenuItem::action("Show Branches List", MenuShowBranchesList),
+                menu_action(
+                    "Show Branches List",
+                    availability.has_repository,
+                    MenuShowBranchesList,
+                ),
                 MenuItem::separator(),
                 MenuItem::action("Go to Summary", MenuGoToSummary),
-                MenuItem::action("Show Stashed Changes", MenuShowStashedChanges),
+                menu_action(
+                    "Show Stashed Changes",
+                    availability.has_repository,
+                    MenuShowStashedChanges,
+                ),
                 MenuItem::separator(),
                 MenuItem::action("Reset Zoom", MenuZoomReset),
                 MenuItem::action("Zoom In", MenuZoomIn),
@@ -363,36 +398,100 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         Menu {
             name: "Repository".into(),
             items: vec![
-                MenuItem::action("Push", MenuPush),
-                MenuItem::action("Pull", MenuPull),
-                MenuItem::action("Fetch", MenuFetch),
-                MenuItem::action("Publish Repository", MenuPublishRepository),
+                menu_action("Push", availability.push, MenuPush),
+                menu_action("Pull", availability.pull, MenuPull),
+                menu_action("Fetch", availability.fetch, MenuFetch),
+                menu_action(
+                    "Publish Repository",
+                    availability.publish_repository,
+                    MenuPublishRepository,
+                ),
                 MenuItem::separator(),
-                MenuItem::action("View on GitHub", MenuViewOnGitHub),
-                MenuItem::action("Open in Terminal", MenuOpenInTerminal),
-                MenuItem::action("Show in Finder", MenuShowInFinder),
-                MenuItem::action("Open in External Editor", MenuOpenExternalEditor),
+                menu_action(
+                    "View on GitHub",
+                    availability.view_repository_on_github,
+                    MenuViewOnGitHub,
+                ),
+                menu_action(
+                    "Open in Terminal",
+                    availability.has_repository,
+                    MenuOpenInTerminal,
+                ),
+                menu_action(
+                    "Show in Finder",
+                    availability.has_repository,
+                    MenuShowInFinder,
+                ),
+                menu_action(
+                    "Open in External Editor",
+                    availability.has_repository,
+                    MenuOpenExternalEditor,
+                ),
                 MenuItem::separator(),
-                MenuItem::action("Repository Settings…", MenuRepositorySettings),
+                menu_action(
+                    "Repository Settings…",
+                    availability.has_repository,
+                    MenuRepositorySettings,
+                ),
             ],
         },
         Menu {
             name: "Branch".into(),
             items: vec![
-                MenuItem::action("New Branch…", MenuNewBranch),
-                MenuItem::action("Rename…", MenuRenameBranch),
-                MenuItem::action("Delete…", MenuDeleteBranch),
+                menu_action("New Branch…", availability.create_branch, MenuNewBranch),
+                menu_action(
+                    "Rename…",
+                    availability.modify_current_branch,
+                    MenuRenameBranch,
+                ),
+                menu_action(
+                    "Delete…",
+                    availability.modify_current_branch,
+                    MenuDeleteBranch,
+                ),
                 MenuItem::separator(),
-                MenuItem::action("Update from Default Branch", MenuUpdateFromDefaultBranch),
-                MenuItem::action("Compare to Branch", MenuCompareBranch),
-                MenuItem::action("Merge into Current Branch…", MenuMergeBranch),
-                MenuItem::action("Rebase Current Branch…", MenuRebaseBranch),
+                menu_action(
+                    "Update from Default Branch",
+                    availability.modify_current_branch,
+                    MenuUpdateFromDefaultBranch,
+                ),
+                menu_action(
+                    "Compare to Branch",
+                    availability.modify_current_branch,
+                    MenuCompareBranch,
+                ),
+                menu_action(
+                    "Merge into Current Branch…",
+                    availability.modify_current_branch,
+                    MenuMergeBranch,
+                ),
+                menu_action(
+                    "Rebase Current Branch…",
+                    availability.modify_current_branch,
+                    MenuRebaseBranch,
+                ),
                 MenuItem::separator(),
-                MenuItem::action("Compare on GitHub", MenuCompareOnGitHub),
-                MenuItem::action("View Branch on GitHub", MenuViewBranchOnGitHub),
+                menu_action(
+                    "Compare on GitHub",
+                    availability.compare_on_github,
+                    MenuCompareOnGitHub,
+                ),
+                menu_action(
+                    "View Branch on GitHub",
+                    availability.modify_current_branch && availability.view_repository_on_github,
+                    MenuViewBranchOnGitHub,
+                ),
                 MenuItem::separator(),
-                MenuItem::action("Discard All Changes…", MenuDiscardAllChanges),
-                MenuItem::action("Stash All Changes…", MenuStashChanges),
+                menu_action(
+                    "Discard All Changes…",
+                    availability.change_worktree,
+                    MenuDiscardAllChanges,
+                ),
+                menu_action(
+                    "Stash All Changes…",
+                    availability.change_worktree,
+                    MenuStashChanges,
+                ),
             ],
         },
     ]);
