@@ -74,6 +74,7 @@ pub struct NavState {
     pub main_tab: MainTab,
     pub sidebar_tab: SidebarTab,
     pub show_settings: bool,
+    pub settings_scope: SettingsScope,
     pub show_repo_selector: bool,
     pub show_branch_selector: bool,
     pub show_network_dropdown: bool,
@@ -92,12 +93,19 @@ pub struct ChangeContextMenuState {
     pub y: f32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SettingsScope {
+    Global,
+    Repository,
+}
+
 impl Default for NavState {
     fn default() -> Self {
         Self {
             main_tab: MainTab::Workspace,
             sidebar_tab: SidebarTab::Changes,
             show_settings: false,
+            settings_scope: SettingsScope::Global,
             show_repo_selector: false,
             show_branch_selector: false,
             show_network_dropdown: false,

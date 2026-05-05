@@ -2233,7 +2233,7 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
                     Some("Use my global Git config"),
                     Some(AutomationNodeAction::SetGitConfigScope(false)),
                 )
-                .visible(app.repo.snapshot.is_some())
+                .visible(app.settings_has_repository_scope())
                 .selected(!app.repo.use_local_identity),
                 automation_node(
                     "settings-git-scope-local",
@@ -2242,7 +2242,7 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
                     Some("Use a local Git config"),
                     Some(AutomationNodeAction::SetGitConfigScope(true)),
                 )
-                .visible(app.repo.snapshot.is_some())
+                .visible(app.settings_has_repository_scope())
                 .selected(app.repo.use_local_identity),
                 settings_field_node(
                     app,
@@ -2275,8 +2275,8 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
                     Some("Use pull.rebase"),
                     None::<AutomationNodeAction>,
                 )
-                .visible(app.repo.snapshot.is_some())
-                .enabled(app.repo.snapshot.is_some())
+                .visible(app.settings_has_repository_scope())
+                .enabled(app.settings_has_repository_scope())
                 .selected(app.repo.identity.pull_rebase.unwrap_or(false)),
                 automation_node(
                     "settings-save-git",

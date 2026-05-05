@@ -36,7 +36,7 @@ use crate::ui::stash_file_list::render_stash_file_list;
 use crate::ui::theme;
 use crate::ui::ui_state::{
     ActiveDialog, BranchSelectorMode, FilterState, MessageState, NavState, OpenRouterModelsState,
-    SidebarTab,
+    SettingsScope, SidebarTab,
 };
 
 // ---------------------------------------------------------------------------
@@ -310,7 +310,7 @@ impl GitSparkApp {
                         if app.nav.show_settings {
                             app.close_settings_modal();
                         } else {
-                            app.open_settings_modal(None, cx);
+                            app.open_global_settings_modal(None, cx);
                         }
                         cx.notify();
                     }
@@ -1487,7 +1487,9 @@ impl GitSparkApp {
     // ------------------------------------------------------------------
 
     fn save_git_config(&mut self) {
-        if let Some(path) = self.repo_path().map(PathBuf::from) {
+        if self.settings_has_repository_scope()
+            && let Some(path) = self.repo_path().map(PathBuf::from)
+        {
             let write_result = if self.repo.use_local_identity {
                 if !git_author_name_is_valid(&self.repo.local_identity.user_name) {
                     self.messages.error_message = INVALID_GIT_AUTHOR_NAME_MESSAGE.to_string();
@@ -2846,7 +2848,7 @@ impl GitSparkApp {
     }
 
     pub fn menu_show_settings(&mut self, cx: &mut Context<Self>) {
-        self.open_settings_modal(None, cx);
+        self.open_global_settings_modal(None, cx);
         cx.notify();
     }
 
@@ -3070,7 +3072,7 @@ impl GitSparkApp {
             return;
         }
 
-        self.open_settings_modal(Some(crate::ui::ui_state::SettingsSection::Git), cx);
+        self.open_repository_settings_modal(Some(crate::ui::ui_state::SettingsSection::Git), cx);
         cx.notify();
     }
 
@@ -3238,7 +3240,7 @@ impl GitSparkApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.open_settings_modal(None, cx);
+        self.open_global_settings_modal(None, cx);
         cx.notify();
     }
 
@@ -4274,14 +4276,47 @@ impl GitSparkApp {
         section: Option<crate::ui::ui_state::SettingsSection>,
         cx: &mut Context<Self>,
     ) {
+        let scope = if self.repo.snapshot.is_some() {
+            SettingsScope::Repository
+        } else {
+            SettingsScope::Global
+        };
+        self.open_settings_modal_with_scope(section, scope, cx);
+    }
+
+    pub(crate) fn open_global_settings_modal(
+        &mut self,
+        section: Option<crate::ui::ui_state::SettingsSection>,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_settings_modal_with_scope(section, SettingsScope::Global, cx);
+    }
+
+    pub(crate) fn open_repository_settings_modal(
+        &mut self,
+        section: Option<crate::ui::ui_state::SettingsSection>,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_settings_modal_with_scope(section, SettingsScope::Repository, cx);
+    }
+
+    fn open_settings_modal_with_scope(
+        &mut self,
+        section: Option<crate::ui::ui_state::SettingsSection>,
+        scope: SettingsScope,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(section) = section {
             self.nav.settings_section = section;
         }
 
         self.close_history_context_menu();
+        self.nav.settings_scope = scope;
         self.nav.show_settings = true;
         if self.nav.settings_section == crate::ui::ui_state::SettingsSection::Git {
-            if let Some(path) = self.repo_path().map(PathBuf::from) {
+            if self.settings_has_repository_scope()
+                && let Some(path) = self.repo_path().map(PathBuf::from)
+            {
                 self.load_identity(&path);
             } else {
                 self.load_global_identity();
@@ -4322,7 +4357,7 @@ impl GitSparkApp {
     }
 
     pub(crate) fn active_git_settings_identity(&self) -> &GitIdentity {
-        if self.repo.snapshot.is_some() {
+        if self.settings_has_repository_scope() {
             if self.repo.use_local_identity {
                 &self.repo.local_identity
             } else {
@@ -4334,7 +4369,7 @@ impl GitSparkApp {
     }
 
     pub(crate) fn active_git_settings_identity_mut(&mut self) -> &mut GitIdentity {
-        if self.repo.snapshot.is_some() {
+        if self.settings_has_repository_scope() {
             if self.repo.use_local_identity {
                 &mut self.repo.local_identity
             } else {
@@ -4346,12 +4381,16 @@ impl GitSparkApp {
     }
 
     pub(crate) fn settings_field_read_only(&self, field: SettingsField) -> bool {
-        self.repo.snapshot.is_some()
+        self.settings_has_repository_scope()
             && !self.repo.use_local_identity
             && matches!(
                 field,
                 SettingsField::GitUserName | SettingsField::GitUserEmail
             )
+    }
+
+    pub(crate) fn settings_has_repository_scope(&self) -> bool {
+        self.nav.settings_scope == SettingsScope::Repository && self.repo.snapshot.is_some()
     }
 
     pub(crate) fn settings_field_cursor(&self, field: SettingsField) -> usize {
@@ -5051,10 +5090,17 @@ impl GitSparkApp {
                                     .child("Git Settings"),
                             )
                             .on_click(cx.listener(|app, _evt, window, cx| {
-                                app.open_settings_modal(
-                                    Some(crate::ui::ui_state::SettingsSection::Git),
-                                    cx,
-                                );
+                                if app.repo.use_local_identity {
+                                    app.open_repository_settings_modal(
+                                        Some(crate::ui::ui_state::SettingsSection::Git),
+                                        cx,
+                                    );
+                                } else {
+                                    app.open_global_settings_modal(
+                                        Some(crate::ui::ui_state::SettingsSection::Git),
+                                        cx,
+                                    );
+                                }
                                 app.activate_settings_field(SettingsField::GitUserName, window, cx);
                             })),
                     )

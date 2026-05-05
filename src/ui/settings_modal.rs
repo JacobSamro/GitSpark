@@ -97,10 +97,14 @@ pub(crate) fn render_settings_modal(
     let panel_top = ((window_height - panel_height) / 2.0).max(16.0);
 
     let repo_scope = app
-        .repo
-        .snapshot
-        .as_ref()
-        .map(|snapshot| snapshot.repo.path.display().to_string());
+        .settings_has_repository_scope()
+        .then(|| {
+            app.repo
+                .snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.repo.path.display().to_string())
+        })
+        .flatten();
     let status_text = settings_status_text(app);
 
     let section_action = match app.nav.settings_section {
