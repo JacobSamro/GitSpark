@@ -1675,7 +1675,11 @@ impl GitSparkApp {
                 cx.notify();
             }
             AutomationNodeAction::ShowSettings(show) => {
-                self.nav.show_settings = show;
+                if show {
+                    self.open_settings_modal(None, cx);
+                } else {
+                    self.close_settings_modal();
+                }
                 cx.notify();
             }
             AutomationNodeAction::SwitchBranch(name) => {

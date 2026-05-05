@@ -1537,7 +1537,11 @@ impl GitSparkApp {
             }
             match self.git.write_global_identity(&self.repo.global_identity) {
                 Ok(()) => {
-                    self.load_global_identity();
+                    if let Some(path) = self.repo_path().map(PathBuf::from) {
+                        self.load_identity(&path);
+                    } else {
+                        self.load_global_identity();
+                    }
                     self.settings.default_branch = self.repo.global_identity.default_branch.clone();
                     self.persist_settings();
                     self.messages.status_message = "Git config saved.".to_string();
