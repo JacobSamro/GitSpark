@@ -1,5 +1,6 @@
 import { GitSparkAutomation } from "./gitspark.mjs";
 import { testAutomationContracts } from "./suites/automation-contracts.mjs";
+import { testBinaryDiffFallback } from "./suites/binary-diff.mjs";
 import { testCompareEdgeCases } from "./suites/compare-edge-cases.mjs";
 import { testConflictFlows } from "./suites/conflict-flows.mjs";
 import { testDiffOptions } from "./suites/diff-options.mjs";
@@ -78,6 +79,7 @@ try {
   await testUndoLastCommit(app, fixture);
   await testConflictFlows(app, fixture);
   await testDiffOptions(app);
+  await testBinaryDiffFallback(app);
   await testCompareEdgeCases(app);
   await testCreateCloneRepositoryWorkflows(app);
   await testGithubEnterpriseUrlBehavior(app, fixture);

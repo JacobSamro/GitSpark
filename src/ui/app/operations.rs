@@ -2522,7 +2522,7 @@ impl GitSparkApp {
         }
     }
 
-    fn open_with_default_program(&mut self, relative_path: &str) {
+    pub(crate) fn open_with_default_program(&mut self, relative_path: &str) {
         let Some(repo_path) = self.repo_path() else {
             self.messages.error_message = "No repository selected.".to_string();
             return;
