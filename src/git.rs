@@ -842,16 +842,9 @@ impl GitClient {
             }
 
             // Parse tags from %D (ref decorations like "HEAD -> main, tag: v0.3.0, origin/main")
-            let tags: Vec<String> = if chunk.len() > 7 {
-                chunk[7]
-                    .split(',')
-                    .map(|s| s.trim())
-                    .filter(|s| s.starts_with("tag: "))
-                    .map(|s| s.strip_prefix("tag: ").unwrap().to_string())
-                    .collect()
-            } else {
-                Vec::new()
-            };
+            let tags = chunk
+                .get(7)
+                .map_or_else(Vec::new, |refs| parse_ref_tags(refs));
 
             commits.push(CommitInfo {
                 oid: chunk[0].trim().to_string(),
@@ -1593,6 +1586,13 @@ fn parse_git_bool(value: &str) -> Result<bool> {
     }
 }
 
+fn parse_ref_tags(refs: &str) -> Vec<String> {
+    refs.split(", ")
+        .filter_map(|ref_name| ref_name.strip_prefix("tag: "))
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use std::process::Command;
@@ -1603,7 +1603,7 @@ mod tests {
 
     use super::{
         GitClient, encode_github_path, fill_missing_author_identity, normalize_github_remote_url,
-        parse_author_ident,
+        parse_author_ident, parse_ref_tags,
     };
 
     #[test]
@@ -1637,6 +1637,31 @@ mod tests {
             encode_github_path("dashboards/platform/page one.rs"),
             "dashboards/platform/page%20one.rs"
         );
+    }
+
+    #[test]
+    fn parses_tag_decorations_with_commas() {
+        assert_eq!(
+            parse_ref_tags("HEAD -> main, tag: release,one, tag: v1.0.0, origin/main"),
+            vec!["release,one".to_string(), "v1.0.0".to_string()]
+        );
+    }
+
+    #[test]
+    fn reads_history_tags_with_commas() {
+        let repo = temp_repo("history-tag-commas");
+        fs::write(repo.join("README.md"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+        run_git(&repo, &["tag", "release,one"]);
+
+        let snapshot = GitClient::new().open_repo(&repo).unwrap();
+        assert_eq!(snapshot.history[0].tags, vec!["release,one".to_string()]);
+
+        let _ = fs::remove_dir_all(repo);
     }
 
     #[test]
