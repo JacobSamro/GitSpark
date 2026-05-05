@@ -78,6 +78,7 @@ impl GitSparkApp {
                 }
                 AppEvent::CommitCreated(Ok(snapshot), summary) => {
                     self.adopt_snapshot(snapshot);
+                    self.selection.selected_diff_lines.clear();
                     self.commit.summary.clear();
                     self.commit.body.clear();
                     self.summary_cursor = 0;
@@ -1493,18 +1494,48 @@ impl GitSparkApp {
         };
         let summary_for_event = summary;
         let included_paths = self.included_commit_paths();
+        let selected_line_diff = if self.selection.selected_diff_lines.is_empty() {
+            None
+        } else {
+            let Some(diff) = self.selected_diff().cloned() else {
+                self.messages.error_message = "No file diff selected.".to_string();
+                return;
+            };
+            if diff.is_binary || diff.is_image || diff.is_submodule {
+                self.messages.error_message =
+                    "Line-level commits are only available for text diffs.".to_string();
+                return;
+            }
+            Some(diff)
+        };
+        let selected_lines = self.selection.selected_diff_lines.clone();
 
         self.messages.status_message = "Creating commit...".to_string();
         self.messages.error_message.clear();
         let tx = self.event_tx.clone();
         let git = GitClient::new();
         thread::spawn(move || {
-            let res = if let Some(paths) = included_paths {
+            let res = if let Some(diff) = selected_line_diff {
+                git.head_file_text(&path, &diff.path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|base_text| {
+                        crate::ui::diff_line_discard::apply_selected_lines_to_base_text(
+                            &diff.path,
+                            &diff.diff,
+                            &base_text,
+                            &selected_lines,
+                        )
+                    })
+                    .and_then(|selected_content| {
+                        git.commit_path_content(&path, &diff.path, &selected_content, &message)
+                            .map_err(|e| e.to_string())
+                    })
+            } else if let Some(paths) = included_paths {
                 git.commit_paths(&path, &paths, &message)
+                    .map_err(|e| e.to_string())
             } else {
-                git.commit_all(&path, &message)
-            }
-            .map_err(|e| e.to_string());
+                git.commit_all(&path, &message).map_err(|e| e.to_string())
+            };
             let _ = tx.send(AppEvent::CommitCreated(res, summary_for_event));
         });
         cx.notify();

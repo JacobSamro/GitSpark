@@ -98,12 +98,36 @@ export async function testDiffOptions(app) {
       nodeById(snapshot.test_tree, "diff-discard-selected-lines")?.visible === true,
     { timeoutMs: 10_000 },
   );
+  await app.getByTestId("input-commit-summary").fill("test: selected lines");
+  await app.getByTestId("button-commit-all").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Commit created." &&
+      snapshot.selected_diff_selected_line_count === 0 &&
+      snapshot.selected_diff_selectable_line_count === 2 &&
+      snapshot.repo?.changes.some((change) => change.path === "code.txt"),
+    { timeoutMs: 15_000 },
+  );
+  const { stdout: committedText } = await exec("git", ["show", "HEAD:code.txt"], {
+    cwd: repo,
+  });
+  assert(
+    committedText.startsWith('        println!("hello");\n'),
+    "line-level commit includes selected replacement",
+  );
+  assert(
+    committedText.includes("line 12\n") &&
+      !committedText.includes("line 12 changed\n"),
+    "line-level commit leaves unselected replacement out of HEAD",
+  );
 
+  await app.getByTestId("diff-line-code-txt-deleted-12").click();
+  await app.getByTestId("diff-line-code-txt-added-12").click();
   await app.getByTestId("diff-discard-selected-lines").click();
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.selected_diff_selected_line_count === 0 &&
-      snapshot.selected_diff_selectable_line_count === 2 &&
+      snapshot.repo?.changes.length === 0 &&
       snapshot.status_message === "Discarded 2 selected lines from 'code.txt'." &&
       snapshot.error_message === "",
     { timeoutMs: 10_000 },
@@ -111,12 +135,12 @@ export async function testDiffOptions(app) {
 
   const finalText = await fs.readFile(path.join(repo, "code.txt"), "utf8");
   assert(
-    finalText.startsWith('    println!("hello");\n'),
-    "discard selected lines restores the selected replacement",
+    finalText.startsWith('        println!("hello");\n'),
+    "line-level commit keeps selected replacement in the working tree",
   );
   assert(
-    finalText.includes("line 12 changed\n"),
-    "discard selected lines leaves unselected changes intact",
+    finalText.includes("line 12\n") && !finalText.includes("line 12 changed\n"),
+    "discard selected lines restores the remaining uncommitted replacement",
   );
 }
 

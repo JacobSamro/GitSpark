@@ -3,7 +3,7 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{Duration, SystemTime};
-use std::{env, fs, io};
+use std::{env, fs, io, process};
 
 use anyhow::{Context, Result, anyhow, bail};
 
@@ -1197,6 +1197,65 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn commit_path_content(
+        &self,
+        repo_path: &Path,
+        relative_path: &str,
+        content: &str,
+        message: &str,
+    ) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let relative_path = relative_path.trim();
+        let message = message.trim();
+        if relative_path.is_empty() {
+            bail!("file path cannot be empty");
+        }
+        if message.is_empty() {
+            bail!("commit message cannot be empty");
+        }
+
+        let mode = self.index_mode_for_path(&repo_path, relative_path)?;
+        let temp_path = partial_blob_temp_path(&repo_path, relative_path);
+        fs::write(&temp_path, content)
+            .with_context(|| format!("failed to write temporary blob '{}'", temp_path.display()))?;
+        let blob = self
+            .run_git(
+                &repo_path,
+                &[
+                    "hash-object",
+                    "-w",
+                    "--path",
+                    relative_path,
+                    temp_path.to_string_lossy().as_ref(),
+                ],
+            )
+            .map(|blob| blob.trim().to_string());
+        let _ = fs::remove_file(&temp_path);
+        let blob = blob.context("failed to write selected lines to the git object database")?;
+
+        self.run_git(&repo_path, &["reset", "--mixed", "--quiet", "HEAD"])
+            .context("failed to reset staged changes before committing selected lines")?;
+        self.run_git(
+            &repo_path,
+            &["update-index", "--cacheinfo", &mode, &blob, relative_path],
+        )
+        .with_context(|| format!("failed to stage selected lines for '{relative_path}'"))?;
+        self.run_git(&repo_path, &["commit", "-m", message])
+            .context("failed to create commit")?;
+
+        self.snapshot(&repo_path)
+    }
+
+    pub fn head_file_text(&self, repo_path: &Path, relative_path: &str) -> Result<String> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let relative_path = relative_path.trim();
+        if relative_path.is_empty() {
+            bail!("file path cannot be empty");
+        }
+        self.run_git(&repo_path, &["show", &format!("HEAD:{relative_path}")])
+            .with_context(|| format!("failed to read '{relative_path}' from HEAD"))
+    }
+
     pub fn discard_change(&self, repo_path: &Path, relative_path: &str) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let relative_path = relative_path.trim();
@@ -2270,6 +2329,16 @@ impl GitClient {
         let output = run_git_command(repo_path, args)?;
         Ok(output.stdout)
     }
+
+    fn index_mode_for_path(&self, repo_path: &Path, relative_path: &str) -> Result<String> {
+        let output = self.run_git(repo_path, &["ls-files", "--stage", "--", relative_path])?;
+        let mode = output
+            .lines()
+            .find_map(|line| line.split_whitespace().next())
+            .filter(|mode| !mode.is_empty())
+            .ok_or_else(|| anyhow!("'{relative_path}' is not tracked"))?;
+        Ok(mode.to_string())
+    }
 }
 
 #[derive(Default)]
@@ -2319,6 +2388,23 @@ fn run_git_command(repo_path: &Path, args: &[&str]) -> Result<Output> {
         args,
         repo_path.display(),
         message
+    ))
+}
+
+fn partial_blob_temp_path(repo_path: &Path, relative_path: &str) -> PathBuf {
+    let slug = relative_path
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>();
+    env::temp_dir().join(format!(
+        "gitspark-partial-{}-{}-{}",
+        process::id(),
+        slug,
+        repo_path
+            .to_string_lossy()
+            .chars()
+            .map(|ch| ch as u64)
+            .fold(0u64, |acc, value| acc.wrapping_mul(31).wrapping_add(value))
     ))
 }
 
