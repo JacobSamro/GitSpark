@@ -352,7 +352,7 @@ impl GitClient {
             bail!("tag name cannot be empty");
         }
 
-        self.run_git(&repo_path, &["tag", tag_name, &oid])
+        self.run_git(&repo_path, &["tag", "-a", "-m", "", tag_name, &oid])
             .with_context(|| format!("failed to create tag '{tag_name}'"))?;
         self.snapshot(&repo_path)
     }
@@ -1660,6 +1660,28 @@ mod tests {
 
         let snapshot = GitClient::new().open_repo(&repo).unwrap();
         assert_eq!(snapshot.history[0].tags, vec!["release,one".to_string()]);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn creates_annotated_tags_like_github_desktop() {
+        let repo = temp_repo("annotated-tags");
+        fs::write(repo.join("README.md"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+        let oid = run_git(&repo, &["rev-parse", "HEAD"]).trim().to_string();
+
+        GitClient::new().create_tag(&repo, &oid, "v1.0.0").unwrap();
+
+        let tag_type = run_git(&repo, &["cat-file", "-t", "v1.0.0"]);
+        assert_eq!(tag_type.trim(), "tag");
+
+        let peeled_target = run_git(&repo, &["rev-parse", "v1.0.0^{}"]);
+        assert_eq!(peeled_target.trim(), oid);
 
         let _ = fs::remove_dir_all(repo);
     }
