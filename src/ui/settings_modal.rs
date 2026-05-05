@@ -91,7 +91,7 @@ pub(crate) fn render_settings_modal(
     let window_width = bounds.size.width / px(1.0);
     let window_height = bounds.size.height / px(1.0);
     let panel_width = (window_width - 32.0).clamp(720.0, 940.0);
-    let panel_height = (window_height - 32.0).clamp(540.0, 720.0);
+    let panel_height = (window_height - 32.0).clamp(540.0, 760.0);
     let panel_left = ((window_width - panel_width) / 2.0).max(16.0);
     let panel_top = ((window_height - panel_height) / 2.0).max(16.0);
 
@@ -133,7 +133,7 @@ pub(crate) fn render_settings_modal(
         .w_full()
         .items_center()
         .px(theme::z(24.0))
-        .py(theme::z(14.0))
+        .py(theme::z(12.0))
         .child(div().w_full().max_w(theme::z(680.0)).child(content));
 
     let content_scroll = div()
@@ -176,9 +176,9 @@ pub(crate) fn render_settings_modal(
         .child(
             h_flex()
                 .w_full()
-                .min_h(theme::z(60.0))
+                .min_h(theme::z(52.0))
                 .px(theme::z(24.0))
-                .py(theme::z(12.0))
+                .py(theme::z(8.0))
                 .justify_between()
                 .items_center()
                 .gap(theme::z(12.0))
@@ -403,7 +403,7 @@ fn render_git_section(
 
     v_flex()
         .w_full()
-        .gap(theme::z(22.0))
+        .gap(theme::z(18.0))
         .child(render_section_header("Git", title, &description))
         .children(if has_repo {
             Some(render_git_config_scope(app, cx).into_any_element())
@@ -460,7 +460,7 @@ fn render_git_defaults_section(
 ) -> impl IntoElement {
     v_flex()
         .w_full()
-        .gap(theme::z(12.0))
+        .gap(theme::z(8.0))
         .pt(theme::z(2.0))
         .child(render_section_subhead(
             "Defaults and pull behavior",
@@ -470,62 +470,88 @@ fn render_git_defaults_section(
                 "These defaults apply when GitSpark works without a selected repository."
             },
         ))
-        .child(render_text_input(
-            app,
-            window,
-            cx,
-            "settings-git-default-branch",
-            SettingsField::GitDefaultBranch,
-            "Default Branch",
-            "main",
-            false,
-            false,
-            inherited_global_identity,
-            Some("Used as the default branch name for new repositories."),
-        ))
         .child(
-            div()
+            h_flex()
                 .w_full()
-                .p(theme::z(14.0))
-                .rounded(theme::z(theme::CORNER_RADIUS))
-                .border_1()
-                .border_color(theme::border())
-                .bg(theme::bg())
+                .gap(theme::z(14.0))
+                .items_start()
+                .child(div().flex_1().min_w_0().child(render_text_input(
+                    app,
+                    window,
+                    cx,
+                    "settings-git-default-branch",
+                    SettingsField::GitDefaultBranch,
+                    "Default Branch",
+                    "main",
+                    false,
+                    false,
+                    inherited_global_identity,
+                    None,
+                )))
                 .child(
-                    h_flex()
-                        .gap(theme::z(10.0))
-                        .items_center()
+                    v_flex()
+                        .id("settings-pull-rebase-card")
+                        .flex_1()
+                        .min_w_0()
+                        .gap(theme::z(6.0))
                         .child(
-                            Switch::new("settings-pull-rebase")
-                                .checked(app.repo.identity.pull_rebase.unwrap_or(false))
-                                .disabled(!has_repo)
-                                .on_click(cx.listener(|app, checked: &bool, _window, cx| {
-                                    app.repo.identity.pull_rebase = Some(*checked);
-                                    cx.notify();
-                                })),
+                            div()
+                                .text_size(theme::z(11.0))
+                                .text_color(theme::text_muted())
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child("Pull Behavior"),
                         )
                         .child(
                             div()
-                                .text_size(theme::z(12.0))
-                                .text_color(if has_repo {
-                                    theme::text_main()
+                                .w_full()
+                                .min_h(theme::z(36.0))
+                                .px(theme::z(12.0))
+                                .py(theme::z(8.0))
+                                .rounded(theme::z(theme::CORNER_RADIUS))
+                                .border_1()
+                                .border_color(theme::border())
+                                .bg(theme::bg())
+                                .child(
+                                    h_flex()
+                                        .gap(theme::z(10.0))
+                                        .items_center()
+                                        .child(
+                                            Switch::new("settings-pull-rebase")
+                                                .checked(
+                                                    app.repo.identity.pull_rebase.unwrap_or(false),
+                                                )
+                                                .disabled(!has_repo)
+                                                .on_click(cx.listener(
+                                                    |app, checked: &bool, _window, cx| {
+                                                        app.repo.identity.pull_rebase =
+                                                            Some(*checked);
+                                                        cx.notify();
+                                                    },
+                                                )),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(theme::z(12.0))
+                                                .text_color(if has_repo {
+                                                    theme::text_main()
+                                                } else {
+                                                    theme::text_muted()
+                                                })
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .child("Use pull.rebase"),
+                                        ),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .text_size(theme::z(11.0))
+                                .text_color(theme::text_muted())
+                                .child(if has_repo {
+                                    "Rebase when pulling instead of creating merge commits."
                                 } else {
-                                    theme::text_muted()
-                                })
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child("Use pull.rebase"),
+                                    "Open a repository to configure pull behavior."
+                                }),
                         ),
-                )
-                .child(
-                    div()
-                        .mt(theme::z(8.0))
-                        .text_size(theme::z(11.0))
-                        .text_color(theme::text_muted())
-                        .child(if has_repo {
-                            "When enabled, `git pull` rebases instead of creating merge commits."
-                        } else {
-                            "Open a repository to configure pull behavior for that repository."
-                        }),
                 ),
         )
 }
@@ -583,7 +609,7 @@ fn render_git_scope_radio(
     div()
         .id(id)
         .w_full()
-        .p(theme::z(12.0))
+        .p(theme::z(10.0))
         .rounded(theme::z(theme::CORNER_RADIUS))
         .border_1()
         .border_color(if selected {
