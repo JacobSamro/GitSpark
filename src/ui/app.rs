@@ -6729,14 +6729,12 @@ impl GitSparkApp {
                                     .unwrap_or_else(|| repo_path.to_string_lossy().to_string());
                                 let is_current =
                                     repo_path.to_string_lossy() == current.to_string_lossy();
+                                let repo_id = stable_id_slug(&repo_path.to_string_lossy());
                                 let path_clone = repo_path.clone();
                                 let vh = view.clone();
 
                                 h_flex()
-                                    .id(SharedString::from(format!(
-                                        "repo-{}",
-                                        repo_path.to_string_lossy()
-                                    )))
+                                    .id(SharedString::from(format!("repo-{repo_id}")))
                                     .w_full()
                                     .h(px(40.0))
                                     .px(px(10.0))
@@ -7091,133 +7089,133 @@ impl GitSparkApp {
             }
         }
 
-        let branch_list =
-            if items.is_empty() {
-                div()
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .left_0()
-                    .w_full()
-                    .child(
-                        v_flex()
-                            .size_full()
-                            .items_center()
-                            .justify_center()
-                            .px(px(16.0))
-                            .child(
-                                div()
-                                    .text_size(theme::z(12.0))
-                                    .text_color(theme::text_muted())
-                                    .text_align(gpui::TextAlign::Center)
-                                    .child("Sorry, I can't find that branch"),
-                            ),
-                    )
-                    .into_any_element()
-            } else {
-                let count = items.len();
-                let view = cx.entity().clone();
-                div()
-                    .id("branch-list-scroll")
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .left_0()
-                    .w_full()
-                    .overflow_y_scrollbar()
-                    .child(
-                        uniform_list("branch-list", count, {
-                            move |range, _win, _cx| {
-                                range
-                            .map(|ix| match &items[ix] {
-                                BranchListItem::SectionHeader(title) => div()
-                                    .id(SharedString::from(format!("branch-section-{ix}")))
-                                    .w_full()
-                                    .px(px(10.0))
-                                    .py(px(8.0))
-                                    .child(
-                                        div()
-                                            .text_size(theme::z(theme::FONT_SIZE))
-                                            .text_color(theme::text_main())
-                                            .font_weight(FontWeight::BOLD)
-                                            .child(title.clone()),
-                                    )
-                                    .into_any_element(),
-                                BranchListItem::Branch(branch) => {
-                                    let is_current = branch.is_current;
-                                    let name = branch.name.clone();
-                                    let ctx_name = branch.name.clone();
-                                    let updated = branch.updated.clone();
-                                    let vh = view.clone();
-
-                                    let row = h_flex()
-                                        .id(SharedString::from(format!("branch-{}", branch.name)))
+        let branch_list = if items.is_empty() {
+            div()
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .left_0()
+                .w_full()
+                .child(
+                    v_flex()
+                        .size_full()
+                        .items_center()
+                        .justify_center()
+                        .px(px(16.0))
+                        .child(
+                            div()
+                                .text_size(theme::z(12.0))
+                                .text_color(theme::text_muted())
+                                .text_align(gpui::TextAlign::Center)
+                                .child("Sorry, I can't find that branch"),
+                        ),
+                )
+                .into_any_element()
+        } else {
+            let count = items.len();
+            let view = cx.entity().clone();
+            div()
+                .id("branch-list-scroll")
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .left_0()
+                .w_full()
+                .overflow_y_scrollbar()
+                .child(
+                    uniform_list("branch-list", count, {
+                        move |range, _win, _cx| {
+                            range
+                                .map(|ix| match &items[ix] {
+                                    BranchListItem::SectionHeader(title) => div()
+                                        .id(SharedString::from(format!("branch-section-{ix}")))
                                         .w_full()
-                                        .h(px(36.0))
                                         .px(px(10.0))
-                                        .items_center()
-                                        .gap(px(8.0))
-                                        .cursor_pointer()
-                                        .hover(|s| s.bg(theme::hover_bg()))
-                                        .bg(if is_current {
-                                            theme::hover_bg()
-                                        } else {
-                                            gpui::transparent_black()
-                                        })
-                                        .child({
-                                            let mut check_slot = div()
-                                                .w(px(20.0))
-                                                .flex_shrink_0()
-                                                .items_center()
-                                                .justify_center();
-                                            if is_current {
-                                                check_slot = check_slot.child(
-                                                    Icon::new(IconName::Check)
-                                                        .size(px(14.0))
-                                                        .text_color(theme::text_main()),
-                                                );
-                                            }
-                                            check_slot
-                                        })
+                                        .py(px(8.0))
                                         .child(
-                                            div().flex_1().overflow_x_hidden().child(
-                                                div()
-                                                    .text_size(theme::z(theme::FONT_SIZE))
-                                                    .text_color(theme::text_main())
-                                                    .whitespace_nowrap()
-                                                    .child(branch.name.clone()),
-                                            ),
-                                        )
-                                        .children(updated.map(|updated| {
                                             div()
-                                                .flex_shrink_0()
-                                                .text_size(theme::z(12.0))
-                                                .text_color(theme::text_muted())
-                                                .child(updated)
-                                        }))
-                                        .on_click(move |_evt, _win, cx| {
-                                            let name = name.clone();
-                                            vh.update(cx, |app, cx| {
-                                                app.select_branch_from_selector(name, cx);
-                                            });
-                                        });
+                                                .text_size(theme::z(theme::FONT_SIZE))
+                                                .text_color(theme::text_main())
+                                                .font_weight(FontWeight::BOLD)
+                                                .child(title.clone()),
+                                        )
+                                        .into_any_element(),
+                                    BranchListItem::Branch(branch) => {
+                                        let is_current = branch.is_current;
+                                        let name = branch.name.clone();
+                                        let ctx_name = branch.name.clone();
+                                        let updated = branch.updated.clone();
+                                        let branch_id = stable_id_slug(&branch.name);
+                                        let vh = view.clone();
 
-                                    crate::ui::branch_context_menu::bind_branch_context_click(
-                                        row,
-                                        view.clone(),
-                                        ctx_name,
-                                    )
-                                    .into_any_element()
-                                }
-                            })
-                            .collect()
-                            }
-                        })
-                        .flex_1()
-                        .with_sizing_behavior(ListSizingBehavior::Infer),
-                    )
-                    .into_any_element()
-            };
+                                        let row = h_flex()
+                                            .id(SharedString::from(format!("branch-{branch_id}")))
+                                            .w_full()
+                                            .h(px(36.0))
+                                            .px(px(10.0))
+                                            .items_center()
+                                            .gap(px(8.0))
+                                            .cursor_pointer()
+                                            .hover(|s| s.bg(theme::hover_bg()))
+                                            .bg(if is_current {
+                                                theme::hover_bg()
+                                            } else {
+                                                gpui::transparent_black()
+                                            })
+                                            .child({
+                                                let mut check_slot = div()
+                                                    .w(px(20.0))
+                                                    .flex_shrink_0()
+                                                    .items_center()
+                                                    .justify_center();
+                                                if is_current {
+                                                    check_slot = check_slot.child(
+                                                        Icon::new(IconName::Check)
+                                                            .size(px(14.0))
+                                                            .text_color(theme::text_main()),
+                                                    );
+                                                }
+                                                check_slot
+                                            })
+                                            .child(
+                                                div().flex_1().overflow_x_hidden().child(
+                                                    div()
+                                                        .text_size(theme::z(theme::FONT_SIZE))
+                                                        .text_color(theme::text_main())
+                                                        .whitespace_nowrap()
+                                                        .child(branch.name.clone()),
+                                                ),
+                                            )
+                                            .children(updated.map(|updated| {
+                                                div()
+                                                    .flex_shrink_0()
+                                                    .text_size(theme::z(12.0))
+                                                    .text_color(theme::text_muted())
+                                                    .child(updated)
+                                            }))
+                                            .on_click(move |_evt, _win, cx| {
+                                                let name = name.clone();
+                                                vh.update(cx, |app, cx| {
+                                                    app.select_branch_from_selector(name, cx);
+                                                });
+                                            });
+
+                                        crate::ui::branch_context_menu::bind_branch_context_click(
+                                            row,
+                                            view.clone(),
+                                            ctx_name,
+                                        )
+                                        .into_any_element()
+                                    }
+                                })
+                                .collect()
+                        }
+                    })
+                    .flex_1()
+                    .with_sizing_behavior(ListSizingBehavior::Infer),
+                )
+                .into_any_element()
+        };
 
         let branch_selector_footer = if self.repo.pending_cherry_pick_oid.is_some() {
             "Choose a branch to cherry-pick into"

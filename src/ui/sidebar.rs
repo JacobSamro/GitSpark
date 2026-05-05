@@ -7,6 +7,7 @@ use crate::models::{ChangeEntry, CommitInfo};
 use crate::ui::app::GitSparkApp;
 use crate::ui::changes_context_menu;
 use crate::ui::history_context_menu;
+use crate::ui::ids::stable_id_slug;
 use crate::ui::theme;
 use crate::ui::theme::z;
 use crate::ui::ui_state::SidebarTab;
@@ -512,8 +513,9 @@ pub fn render_change_row(
     };
 
     // Interactive checkbox
+    let checkbox_id = stable_id_slug(&change.path);
     let checkbox = render_checkbox(included)
-        .id(SharedString::from(format!("chk-{}", change.path)))
+        .id(SharedString::from(format!("chk-{checkbox_id}")))
         .cursor_pointer()
         .on_click(move |_evt, _win, cx| {
             let path = checkbox_path.clone();

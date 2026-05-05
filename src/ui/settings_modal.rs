@@ -10,6 +10,7 @@ use gpui_component::{Disableable, Icon, IconName, h_flex, v_flex};
 
 use crate::models::{AiProvider, RemoteModelOption};
 use crate::ui::app::{GitSparkApp, SettingsAction};
+use crate::ui::ids::stable_id_slug;
 use crate::ui::theme;
 use crate::ui::ui_state::{OpenRouterModelsState, SettingsSection};
 
@@ -1241,9 +1242,10 @@ fn render_model_option(
 ) -> impl IntoElement {
     let selected = model.id == selected_model;
     let model_id = model.id.clone();
+    let model_row_id = stable_id_slug(&model.id);
 
     h_flex()
-        .id(SharedString::from(format!("settings-model-{}", model.id)))
+        .id(SharedString::from(format!("settings-model-{model_row_id}")))
         .w_full()
         .px(theme::z(10.0))
         .py(theme::z(6.0))
