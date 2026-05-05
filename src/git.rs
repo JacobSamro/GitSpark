@@ -1040,18 +1040,12 @@ impl GitClient {
     pub fn read_identity(&self, repo_path: &Path) -> Result<GitIdentity> {
         let repo_path = self.resolve_repo_root(repo_path)?;
 
-        let mut identity = GitIdentity {
+        let identity = GitIdentity {
             user_name: self.read_optional_config(&repo_path, "user.name")?,
             user_email: self.read_optional_config(&repo_path, "user.email")?,
             pull_rebase: self.read_optional_bool_config(&repo_path, "pull.rebase")?,
             default_branch: non_empty(self.read_optional_config(&repo_path, "init.defaultBranch")?),
         };
-
-        if (identity.user_name.trim().is_empty() || identity.user_email.trim().is_empty())
-            && let Some((name, email)) = self.read_effective_author_identity(&repo_path)?
-        {
-            fill_missing_author_identity(&mut identity, name, email);
-        }
 
         Ok(identity)
     }
@@ -1793,16 +1787,6 @@ impl GitClient {
     fn run_git_bytes(&self, repo_path: &Path, args: &[&str]) -> Result<Vec<u8>> {
         let output = run_git_command(repo_path, args)?;
         Ok(output.stdout)
-    }
-
-    fn read_effective_author_identity(&self, repo_path: &Path) -> Result<Option<(String, String)>> {
-        match self.run_git(repo_path, &["var", "GIT_AUTHOR_IDENT"]) {
-            Ok(output) => match parse_author_ident(output.trim()) {
-                Ok(identity) => Ok(Some(identity)),
-                Err(_) => Ok(None),
-            },
-            Err(_) => Ok(None),
-        }
     }
 }
 
@@ -2719,6 +2703,7 @@ fn non_empty(value: String) -> Option<String> {
     }
 }
 
+#[cfg(test)]
 fn fill_missing_author_identity(identity: &mut GitIdentity, name: String, email: String) {
     if identity.user_name.trim().is_empty() {
         identity.user_name = name;
@@ -2728,6 +2713,7 @@ fn fill_missing_author_identity(identity: &mut GitIdentity, name: String, email:
     }
 }
 
+#[cfg(test)]
 fn parse_author_ident(value: &str) -> Result<(String, String)> {
     let Some(email_end) = value.rfind('>') else {
         bail!("git author identity did not contain an email address");

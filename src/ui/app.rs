@@ -3094,17 +3094,7 @@ impl GitSparkApp {
     }
 
     pub(crate) fn identity_settings_focus_field(&self) -> SettingsField {
-        let missing_name = self.repo.identity.user_name.trim().is_empty();
-        let missing_email = self.repo.identity.user_email.trim().is_empty();
-
-        if missing_name
-            || !git_author_name_is_valid(&self.repo.identity.user_name)
-            || !missing_email
-        {
-            SettingsField::GitUserName
-        } else {
-            SettingsField::GitUserEmail
-        }
+        identity_settings_focus_field_for(&self.repo.identity)
     }
 
     pub(crate) fn open_identity_settings_from_warning(&mut self, cx: &mut Context<Self>) {
@@ -8720,6 +8710,16 @@ fn branch_switch_needs_stash(error: &str) -> bool {
         || normalized.contains("please commit your changes or stash them")
 }
 
+fn identity_settings_focus_field_for(identity: &GitIdentity) -> SettingsField {
+    let missing_name = identity.user_name.trim().is_empty();
+
+    if missing_name || !git_author_name_is_valid(&identity.user_name) {
+        SettingsField::GitUserName
+    } else {
+        SettingsField::GitUserEmail
+    }
+}
+
 fn reveal_path(path: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Some(command) = external_command_from_env("GITSPARK_REVEAL_COMMAND") {
         return spawn_shell_path_command(&command, path).map_err(Into::into);
@@ -8789,7 +8789,11 @@ fn next_char_boundary(s: &str, pos: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_TAG_NAME_LENGTH, sanitized_ref_name, tag_name_length_validation_message};
+    use super::{
+        GitIdentity, MAX_TAG_NAME_LENGTH, identity_settings_focus_field_for, sanitized_ref_name,
+        tag_name_length_validation_message,
+    };
+    use crate::ui::settings_modal::SettingsField;
 
     #[test]
     fn validates_github_desktop_tag_name_length_limit() {
@@ -8807,6 +8811,33 @@ mod tests {
         assert_eq!(sanitized_ref_name(".@{bad..name."), "bad-name-");
         assert_eq!(sanitized_ref_name("////"), "///-");
         assert_eq!(sanitized_ref_name("   "), "");
+    }
+
+    #[test]
+    fn focuses_missing_or_invalid_identity_field() {
+        let mut identity = GitIdentity {
+            user_name: String::new(),
+            user_email: "dev@example.test".to_string(),
+            pull_rebase: None,
+            default_branch: None,
+        };
+        assert!(matches!(
+            identity_settings_focus_field_for(&identity),
+            SettingsField::GitUserName
+        ));
+
+        identity.user_name = ".".to_string();
+        assert!(matches!(
+            identity_settings_focus_field_for(&identity),
+            SettingsField::GitUserName
+        ));
+
+        identity.user_name = "GitSpark Dev".to_string();
+        identity.user_email.clear();
+        assert!(matches!(
+            identity_settings_focus_field_for(&identity),
+            SettingsField::GitUserEmail
+        ));
     }
 }
 
