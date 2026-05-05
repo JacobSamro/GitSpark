@@ -1621,6 +1621,49 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub fn rebase_branch(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        let Some(snapshot) = self.repo.snapshot.as_ref() else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        let current_branch = snapshot.repo.current_branch.clone();
+        let target = self.repo.merge_target.trim().to_string();
+        if target.is_empty() {
+            self.messages.error_message = "Choose a branch to rebase onto.".to_string();
+            cx.notify();
+            return;
+        }
+        if current_branch == target {
+            self.messages.error_message = "Choose another branch to rebase onto.".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.messages.status_message = format!("Rebasing '{current_branch}' onto '{target}'...");
+        self.messages.error_message.clear();
+        let tx = self.event_tx.clone();
+        let git = GitClient::new();
+        thread::spawn(move || {
+            let res = git
+                .rebase_current_branch_onto(&path, &target)
+                .map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::RepoOperationCompleted(
+                res,
+                "Rebase branch".to_string(),
+                format!("Rebased '{current_branch}' onto '{target}'."),
+            ));
+        });
+        cx.notify();
+    }
+
     // ------------------------------------------------------------------
     // Commit operations
     // ------------------------------------------------------------------
@@ -2166,6 +2209,14 @@ impl GitSparkApp {
             self.nav.branch_selector_mode = BranchSelectorMode::Switch;
             self.repo.merge_target = name;
             self.merge_branch(cx);
+            return;
+        }
+
+        if self.nav.branch_selector_mode == BranchSelectorMode::Rebase {
+            self.nav.show_branch_selector = false;
+            self.nav.branch_selector_mode = BranchSelectorMode::Switch;
+            self.repo.merge_target = name;
+            self.rebase_branch(cx);
             return;
         }
 
@@ -3305,6 +3356,7 @@ impl Render for GitSparkApp {
             .on_action(cx.listener(Self::handle_menu_update_from_default_branch))
             .on_action(cx.listener(Self::handle_menu_compare_branch))
             .on_action(cx.listener(Self::handle_menu_merge_branch))
+            .on_action(cx.listener(Self::handle_menu_rebase_branch))
             .on_action(cx.listener(Self::handle_menu_compare_on_github))
             .on_action(cx.listener(Self::handle_menu_view_branch_on_github))
             .on_action(cx.listener(Self::handle_menu_discard_all_changes))
@@ -3642,6 +3694,22 @@ impl GitSparkApp {
         self.repo.pending_cherry_pick_oid = None;
         self.messages.status_message =
             "Choose a branch to merge into the current branch.".to_string();
+        cx.notify();
+    }
+
+    pub fn menu_rebase_branch(&mut self, cx: &mut Context<Self>) {
+        if self.repo.snapshot.is_none() {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.nav.show_branch_selector = true;
+        self.nav.branch_selector_mode = BranchSelectorMode::Rebase;
+        self.repo.pending_cherry_pick_oid = None;
+        self.messages.status_message =
+            "Choose a branch to rebase the current branch onto.".to_string();
+        self.messages.error_message.clear();
         cx.notify();
     }
 
@@ -4025,6 +4093,15 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         self.menu_merge_branch(cx);
+    }
+
+    fn handle_menu_rebase_branch(
+        &mut self,
+        _: &crate::MenuRebaseBranch,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_rebase_branch(cx);
     }
 
     fn handle_menu_compare_on_github(
@@ -7956,8 +8033,9 @@ impl GitSparkApp {
         // Separate local branches, filtered by search text
         let filter = self.filters.branch_filter_text.to_lowercase();
         let merge_mode = self.nav.branch_selector_mode == BranchSelectorMode::Merge;
+        let rebase_mode = self.nav.branch_selector_mode == BranchSelectorMode::Rebase;
         let compare_mode = self.nav.branch_selector_mode == BranchSelectorMode::Compare;
-        let target_mode = merge_mode || compare_mode;
+        let target_mode = merge_mode || rebase_mode || compare_mode;
         let local_branches: Vec<&BranchInfo> = branches
             .iter()
             .filter(|b| !b.is_remote)
@@ -8306,6 +8384,8 @@ impl GitSparkApp {
             "Choose a branch to cherry-pick into"
         } else if self.nav.branch_selector_mode == BranchSelectorMode::Merge {
             "Choose a branch to merge into"
+        } else if self.nav.branch_selector_mode == BranchSelectorMode::Rebase {
+            "Choose a branch to rebase onto"
         } else if self.nav.branch_selector_mode == BranchSelectorMode::Compare {
             "Choose a branch to compare against"
         } else {

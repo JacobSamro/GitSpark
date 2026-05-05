@@ -693,6 +693,38 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn rebase_current_branch_onto(
+        &self,
+        repo_path: &Path,
+        target_branch: &str,
+    ) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let target_branch = target_branch.trim();
+        if target_branch.is_empty() {
+            bail!("rebase target cannot be empty");
+        }
+
+        let current_branch = self.current_stash_branch_name(&repo_path)?;
+        if current_branch == target_branch {
+            bail!("cannot rebase a branch onto itself");
+        }
+
+        self.run_git(
+            &repo_path,
+            &[
+                "rev-parse",
+                "--verify",
+                &format!("refs/heads/{target_branch}^{{commit}}"),
+            ],
+        )
+        .with_context(|| format!("branch '{target_branch}' does not exist"))?;
+
+        self.run_git(&repo_path, &["rebase", target_branch])
+            .with_context(|| format!("failed to rebase onto '{target_branch}'"))?;
+
+        self.snapshot(&repo_path)
+    }
+
     pub fn github_commit_url(&self, repo_path: &Path, oid: &str) -> Result<Option<String>> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let oid = self.verify_commit_oid(&repo_path, oid)?;
@@ -2317,6 +2349,44 @@ mod tests {
             "Merge branch 'main' into feature"
         );
         assert!(repo.join("main.txt").exists());
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn rebases_current_branch_onto_target_branch() {
+        let repo = temp_repo("rebase-branch");
+        fs::write(repo.join("README.md"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+
+        run_git(&repo, &["switch", "-c", "feature"]);
+        fs::write(repo.join("feature.txt"), "feature\n").unwrap();
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "feature"]);
+
+        run_git(&repo, &["switch", "main"]);
+        fs::write(repo.join("main.txt"), "main\n").unwrap();
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "main"]);
+
+        run_git(&repo, &["switch", "feature"]);
+        let snapshot = GitClient::new()
+            .rebase_current_branch_onto(&repo, "main")
+            .unwrap();
+
+        assert_eq!(snapshot.repo.current_branch, "feature");
+        assert_eq!(snapshot.history[0].summary, "feature");
+        assert!(repo.join("main.txt").exists());
+
+        let comparison = GitClient::new()
+            .compare_current_branch_with(&repo, "main")
+            .unwrap();
+        assert_eq!(comparison.ahead, 1);
+        assert_eq!(comparison.behind, 0);
 
         let _ = fs::remove_dir_all(repo);
     }

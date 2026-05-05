@@ -25,6 +25,7 @@ pub enum MainTab {
 pub enum BranchSelectorMode {
     Switch,
     Merge,
+    Rebase,
     Compare,
 }
 

@@ -133,6 +133,9 @@ pub(crate) enum AutomationCommand {
     MergeBranch {
         name: String,
     },
+    RebaseBranch {
+        name: String,
+    },
     UpdateFromDefaultBranch,
     CompareBranch {
         name: String,
@@ -711,6 +714,11 @@ impl GitSparkApp {
                 self.merge_branch(cx);
                 AutomationResponse::success(self.automation_snapshot())
             }
+            AutomationCommand::RebaseBranch { name } => {
+                self.repo.merge_target = name;
+                self.rebase_branch(cx);
+                AutomationResponse::success(self.automation_snapshot())
+            }
             AutomationCommand::UpdateFromDefaultBranch => {
                 self.update_from_default_branch(cx);
                 AutomationResponse::success(self.automation_snapshot())
@@ -989,7 +997,9 @@ impl GitSparkApp {
         if self.nav.show_branch_selector {
             let branch_selector_target_mode = matches!(
                 self.nav.branch_selector_mode,
-                BranchSelectorMode::Merge | BranchSelectorMode::Compare
+                BranchSelectorMode::Merge
+                    | BranchSelectorMode::Rebase
+                    | BranchSelectorMode::Compare
             );
             children.push(
                 automation_node(
@@ -1676,7 +1686,9 @@ impl GitSparkApp {
                         .filter(|branch| {
                             !matches!(
                                 self.nav.branch_selector_mode,
-                                BranchSelectorMode::Merge | BranchSelectorMode::Compare
+                                BranchSelectorMode::Merge
+                                    | BranchSelectorMode::Rebase
+                                    | BranchSelectorMode::Compare
                             ) || !branch.is_current
                         })
                         .map(|branch| {
@@ -3700,6 +3712,14 @@ mod tests {
         match merge {
             AutomationCommand::MergeBranch { name } => assert_eq!(name, "merge/source"),
             _ => panic!("expected merge_branch command"),
+        }
+
+        let rebase: AutomationCommand =
+            serde_json::from_str(r#"{"command":"rebase_branch","name":"main"}"#)
+                .expect("rebase branch command parses");
+        match rebase {
+            AutomationCommand::RebaseBranch { name } => assert_eq!(name, "main"),
+            _ => panic!("expected rebase_branch command"),
         }
 
         let update: AutomationCommand =
