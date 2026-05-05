@@ -95,6 +95,61 @@ export async function testSettingsPersistence(app, fixture) {
     "global scope persists default branch to isolated global git config",
   );
 
+  await app.command({ command: "show_global_settings", show: true });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.show_settings === true &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "settings-git-user-name" && node.enabled === true,
+      ) &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "settings-git-user-email" && node.enabled === true,
+      ) &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "settings-pull-rebase" && node.visible === false,
+      ),
+    { timeoutMs: 10_000 },
+  );
+  await app.getByTestId("settings-git-user-name").fill("Global GitSpark");
+  await app
+    .getByTestId("settings-git-user-email")
+    .fill("global@gitspark.local");
+  await app.getByTestId("settings-save-git").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Git config saved." &&
+      snapshot.error_message === "" &&
+      snapshot.git_user_name === "Global GitSpark" &&
+      snapshot.git_user_email === "global@gitspark.local",
+    { timeoutMs: 10_000 },
+  );
+  assert(
+    (await gitOutputWithEnv(
+      fixture.workRepo,
+      ["config", "--global", "--get", "user.name"],
+      { GIT_CONFIG_GLOBAL: fixture.globalGitConfig },
+    )) === "Global GitSpark",
+    "app-level settings persist global user.name while repository is open",
+  );
+  assert(
+    (await gitOptionalOutput(fixture.workRepo, ["config", "--local", "--get", "user.name"])) ===
+      null,
+    "app-level global settings do not recreate local user.name override",
+  );
+
+  await app.command({ command: "show_repository_settings", show: true });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.show_settings === true &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "settings-git-scope-global" && node.visible === true,
+      ) &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "settings-pull-rebase" && node.visible === true,
+      ),
+    { timeoutMs: 10_000 },
+  );
+
   await app.getByTestId("settings-tab-ai").click();
   await app.getByTestId("settings-provider-openai-compatible").click();
   await app.getByTestId("settings-ai-model").fill("gpt-e2e-precise");

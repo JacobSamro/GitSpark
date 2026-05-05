@@ -86,6 +86,12 @@ pub(crate) enum AutomationCommand {
     ShowSettings {
         show: bool,
     },
+    ShowGlobalSettings {
+        show: bool,
+    },
+    ShowRepositorySettings {
+        show: bool,
+    },
     ShowRepoSelector {
         show: bool,
     },
@@ -562,6 +568,24 @@ impl GitSparkApp {
             AutomationCommand::ShowSettings { show } => {
                 if show {
                     self.open_settings_modal(None, cx);
+                } else {
+                    self.close_settings_modal();
+                }
+                cx.notify();
+                AutomationResponse::success(self.automation_snapshot())
+            }
+            AutomationCommand::ShowGlobalSettings { show } => {
+                if show {
+                    self.open_global_settings_modal(None, cx);
+                } else {
+                    self.close_settings_modal();
+                }
+                cx.notify();
+                AutomationResponse::success(self.automation_snapshot())
+            }
+            AutomationCommand::ShowRepositorySettings { show } => {
+                if show {
+                    self.open_repository_settings_modal(None, cx);
                 } else {
                     self.close_settings_modal();
                 }
