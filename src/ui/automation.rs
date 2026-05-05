@@ -194,6 +194,7 @@ impl From<AutomationNetworkAction> for NetworkAction {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum AutomationSettingsSection {
     Remote,
+    IgnoredFiles,
     Git,
     Ai,
     Appearance,
@@ -204,6 +205,7 @@ impl From<AutomationSettingsSection> for SettingsSection {
     fn from(section: AutomationSettingsSection) -> Self {
         match section {
             AutomationSettingsSection::Remote => Self::Remote,
+            AutomationSettingsSection::IgnoredFiles => Self::IgnoredFiles,
             AutomationSettingsSection::Git => Self::Git,
             AutomationSettingsSection::Ai => Self::Ai,
             AutomationSettingsSection::Appearance => Self::Appearance,
@@ -216,6 +218,7 @@ impl From<SettingsSection> for AutomationSettingsSection {
     fn from(section: SettingsSection) -> Self {
         match section {
             SettingsSection::Remote => Self::Remote,
+            SettingsSection::IgnoredFiles => Self::IgnoredFiles,
             SettingsSection::Git => Self::Git,
             SettingsSection::Ai => Self::Ai,
             SettingsSection::Appearance => Self::Appearance,
@@ -228,6 +231,7 @@ impl From<SettingsSection> for AutomationSettingsSection {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum AutomationSettingsField {
     RemoteUrl,
+    IgnoredFiles,
     GitUserName,
     GitUserEmail,
     GitDefaultBranch,
@@ -242,6 +246,7 @@ impl From<AutomationSettingsField> for SettingsField {
     fn from(field: AutomationSettingsField) -> Self {
         match field {
             AutomationSettingsField::RemoteUrl => Self::RemoteUrl,
+            AutomationSettingsField::IgnoredFiles => Self::IgnoredFiles,
             AutomationSettingsField::GitUserName => Self::GitUserName,
             AutomationSettingsField::GitUserEmail => Self::GitUserEmail,
             AutomationSettingsField::GitDefaultBranch => Self::GitDefaultBranch,
@@ -372,6 +377,7 @@ struct AutomationSnapshot {
     ai_system_prompt: String,
     repo_remote_name: Option<String>,
     repo_remote_url: String,
+    repo_ignored_files_text: String,
 }
 
 #[derive(Serialize)]
@@ -489,6 +495,7 @@ enum AutomationNodeAction {
     TogglePublishPrivate,
     ConfirmPublishRepository,
     SaveRemoteSettings,
+    SaveIgnoredFilesSettings,
     SaveGitSettings,
     SaveAiSettings,
     SetGitConfigScope(bool),
@@ -652,6 +659,9 @@ impl GitSparkApp {
                     AutomationSettingsSection::Remote => {
                         self.handle_settings_action(SettingsAction::SaveRemote, cx);
                     }
+                    AutomationSettingsSection::IgnoredFiles => {
+                        self.handle_settings_action(SettingsAction::SaveIgnoredFiles, cx);
+                    }
                     AutomationSettingsSection::Ai => {
                         self.handle_settings_action(SettingsAction::SaveAiSettings, cx);
                     }
@@ -779,6 +789,7 @@ impl GitSparkApp {
             ai_system_prompt: self.settings.ai.system_prompt.clone(),
             repo_remote_name: self.repo.remote_name.clone(),
             repo_remote_url: self.repo.remote_url.clone(),
+            repo_ignored_files_text: self.repo.ignored_files_text.clone(),
         }
     }
 
@@ -2074,6 +2085,9 @@ impl GitSparkApp {
             AutomationNodeAction::SaveRemoteSettings => {
                 self.handle_settings_action(SettingsAction::SaveRemote, cx);
             }
+            AutomationNodeAction::SaveIgnoredFilesSettings => {
+                self.handle_settings_action(SettingsAction::SaveIgnoredFiles, cx);
+            }
             AutomationNodeAction::SaveAiSettings => {
                 self.handle_settings_action(SettingsAction::SaveAiSettings, cx);
             }
@@ -2144,6 +2158,10 @@ impl GitSparkApp {
                 self.repo.remote_url = text;
                 self.settings_modal.remote_url_selection = None;
             }
+            SettingsField::IgnoredFiles => {
+                self.repo.ignored_files_text = text;
+                self.settings_modal.ignored_files_selection = None;
+            }
             SettingsField::GitUserName => {
                 self.active_git_settings_identity_mut().user_name = text;
                 self.settings_modal.git_user_name_selection = None;
@@ -2189,6 +2207,7 @@ impl GitSparkApp {
     fn set_automation_settings_cursor(&mut self, field: SettingsField, cursor: usize) {
         match field {
             SettingsField::RemoteUrl => self.settings_modal.remote_url_cursor = cursor,
+            SettingsField::IgnoredFiles => self.settings_modal.ignored_files_cursor = cursor,
             SettingsField::GitUserName => self.settings_modal.git_user_name_cursor = cursor,
             SettingsField::GitUserEmail => self.settings_modal.git_user_email_cursor = cursor,
             SettingsField::GitDefaultBranch => {
@@ -2504,6 +2523,11 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
     let mut sections = Vec::new();
     if app.settings_has_repository_scope() {
         sections.push((SettingsSection::Remote, "settings-tab-remote", "Remote"));
+        sections.push((
+            SettingsSection::IgnoredFiles,
+            "settings-tab-ignored-files",
+            "Ignored Files",
+        ));
     }
     sections.extend([
         (SettingsSection::Git, "settings-tab-git", "Git"),
@@ -2573,6 +2597,24 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
                     ),
                 ]);
             }
+        }
+        SettingsSection::IgnoredFiles => {
+            nodes.extend([
+                settings_field_node(
+                    app,
+                    "settings-ignored-files-text",
+                    "Ignored files",
+                    SettingsField::IgnoredFiles,
+                    app.repo.ignored_files_text.as_str(),
+                ),
+                automation_node(
+                    "settings-save-ignored-files",
+                    AutomationRole::Button,
+                    Some("settings-save-ignored-files"),
+                    Some("Save"),
+                    Some(AutomationNodeAction::SaveIgnoredFilesSettings),
+                ),
+            ]);
         }
         SettingsSection::Git => {
             nodes.extend([

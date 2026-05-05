@@ -9,6 +9,7 @@ pub enum SidebarTab {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SettingsSection {
     Remote,
+    IgnoredFiles,
     Git,
     Ai,
     Appearance,

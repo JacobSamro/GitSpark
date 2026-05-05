@@ -23,6 +23,7 @@ const SETTINGS_MODAL_MAX_HEIGHT: f32 = 760.0;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SettingsField {
     RemoteUrl,
+    IgnoredFiles,
     GitUserName,
     GitUserEmail,
     GitDefaultBranch,
@@ -38,6 +39,7 @@ pub(crate) struct SettingsModalState {
     pub active_field: Option<SettingsField>,
     pub git_user_name_cursor: usize,
     pub remote_url_cursor: usize,
+    pub ignored_files_cursor: usize,
     pub git_user_email_cursor: usize,
     pub git_default_branch_cursor: usize,
     pub ai_model_cursor: usize,
@@ -49,6 +51,7 @@ pub(crate) struct SettingsModalState {
     // Per-field selection anchors
     pub git_user_name_selection: Option<usize>,
     pub remote_url_selection: Option<usize>,
+    pub ignored_files_selection: Option<usize>,
     pub git_user_email_selection: Option<usize>,
     pub git_default_branch_selection: Option<usize>,
     pub ai_model_selection: Option<usize>,
@@ -64,6 +67,7 @@ impl SettingsModalState {
             focus: cx.focus_handle(),
             active_field: Some(default_settings_field(SettingsSection::Git)),
             remote_url_cursor: 0,
+            ignored_files_cursor: 0,
             git_user_name_cursor: 0,
             git_user_email_cursor: 0,
             git_default_branch_cursor: 0,
@@ -74,6 +78,7 @@ impl SettingsModalState {
             openrouter_model_filter_cursor: 0,
             show_model_picker: false,
             remote_url_selection: None,
+            ignored_files_selection: None,
             git_user_name_selection: None,
             git_user_email_selection: None,
             git_default_branch_selection: None,
@@ -89,6 +94,7 @@ impl SettingsModalState {
 pub(crate) fn default_settings_field(section: SettingsSection) -> SettingsField {
     match section {
         SettingsSection::Remote => SettingsField::RemoteUrl,
+        SettingsSection::IgnoredFiles => SettingsField::IgnoredFiles,
         SettingsSection::Git => SettingsField::GitUserName,
         SettingsSection::Ai => SettingsField::AiModel,
         SettingsSection::Appearance | SettingsSection::Integrations => SettingsField::GitUserName,
@@ -125,6 +131,13 @@ pub(crate) fn render_settings_modal(
                 }))
                 .into_any_element()
         }),
+        SettingsSection::IgnoredFiles => Some(
+            render_primary_button("settings-save-ignored-files", "Save", true, cx)
+                .on_click(cx.listener(|app, _evt, _window, cx| {
+                    app.handle_settings_action(SettingsAction::SaveIgnoredFiles, cx);
+                }))
+                .into_any_element(),
+        ),
         SettingsSection::Git => Some(
             render_primary_button("settings-save-git", "Save Git Config", true, cx)
                 .on_click(cx.listener(|app, _evt, _window, cx| {
@@ -144,6 +157,9 @@ pub(crate) fn render_settings_modal(
 
     let content = match app.nav.settings_section {
         SettingsSection::Remote => render_remote_section(app, window, cx).into_any_element(),
+        SettingsSection::IgnoredFiles => {
+            render_ignored_files_section(app, window, cx).into_any_element()
+        }
         SettingsSection::Git => {
             render_git_section(app, window, repo_scope.as_deref(), cx).into_any_element()
         }
@@ -313,7 +329,10 @@ fn settings_status_text(app: &GitSparkApp) -> Option<(&str, Hsla)> {
     }
 
     match app.messages.status_message.as_str() {
-        "AI settings saved." | "Git config saved." | "Remote settings saved." => {
+        "AI settings saved."
+        | "Git config saved."
+        | "Remote settings saved."
+        | "Ignored files saved." => {
             Some((app.messages.status_message.as_str(), theme::text_muted()))
         }
         _ => None,
@@ -328,6 +347,12 @@ fn render_nav(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElem
             "settings-tab-remote",
             "Remote",
             IconName::GitHub,
+        ));
+        sections.push((
+            SettingsSection::IgnoredFiles,
+            "settings-tab-ignored-files",
+            "Ignored Files",
+            IconName::FolderClosed,
         ));
     }
     sections.extend([
@@ -506,6 +531,43 @@ fn render_remote_section(
             Some("Used by fetch, pull, push, and GitHub links."),
         ))
         .into_any_element()
+}
+
+fn render_ignored_files_section(
+    app: &GitSparkApp,
+    window: &Window,
+    cx: &mut Context<GitSparkApp>,
+) -> impl IntoElement {
+    v_flex()
+        .w_full()
+        .gap(theme::z(18.0))
+        .child(render_section_header(
+            "Ignored Files",
+            "Repository .gitignore",
+            "Edit patterns for intentionally untracked files in this repository.",
+        ))
+        .child(
+            div()
+                .text_size(theme::z(12.0))
+                .text_color(theme::text_muted())
+                .line_height(theme::z(18.0))
+                .child(
+                    "Files already tracked by Git are not affected. Leave this empty to remove the root .gitignore file.",
+                ),
+        )
+        .child(render_text_input(
+            app,
+            window,
+            cx,
+            "settings-ignored-files-text",
+            SettingsField::IgnoredFiles,
+            "Ignored files",
+            "Ignored files",
+            false,
+            true,
+            false,
+            Some("One pattern per line."),
+        ))
 }
 
 fn render_git_section(
@@ -1597,6 +1659,7 @@ fn render_text_input(
     } else {
         value.to_string()
     };
+    let large_multiline = matches!(field, SettingsField::IgnoredFiles);
 
     let text = if disabled {
         div()
@@ -1625,7 +1688,8 @@ fn render_text_input(
         .key_context("text-field")
         .on_key_down(cx.listener(GitSparkApp::handle_settings_key))
         .w_full()
-        .when(multiline, |el| el.h(theme::z(54.0)))
+        .when(large_multiline, |el| el.h(theme::z(260.0)))
+        .when(multiline && !large_multiline, |el| el.h(theme::z(54.0)))
         .when(!multiline, |el| el.min_h(theme::z(36.0)))
         .px(theme::z(12.0))
         .py(theme::z(8.0))

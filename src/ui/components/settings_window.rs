@@ -163,6 +163,7 @@ pub fn render_settings_window(
                                                     }
                                                 }
                                                 SettingsSection::Remote
+                                                | SettingsSection::IgnoredFiles
                                                 | SettingsSection::Appearance
                                                 | SettingsSection::Integrations => {}
                                             }

@@ -135,6 +135,7 @@ pub enum SidebarAction {
 #[derive(Clone)]
 pub enum SettingsAction {
     SaveRemote,
+    SaveIgnoredFiles,
     SaveGitConfig,
     SaveAiSettings,
     SetGitConfigScope(bool),
@@ -684,6 +685,7 @@ impl GitSparkApp {
     pub fn handle_settings_action(&mut self, action: SettingsAction, cx: &mut Context<Self>) {
         match action {
             SettingsAction::SaveRemote => self.save_remote_settings(cx),
+            SettingsAction::SaveIgnoredFiles => self.save_ignored_files_settings(cx),
             SettingsAction::SaveGitConfig => self.save_git_config(),
             SettingsAction::SaveAiSettings => {
                 if self.settings.ai.provider == AiProvider::OpenRouter {
@@ -1793,6 +1795,31 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    fn save_ignored_files_settings(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            self.messages.status_message.clear();
+            return;
+        };
+
+        match self
+            .git
+            .write_gitignore(&path, &self.repo.ignored_files_text)
+        {
+            Ok(snapshot) => {
+                self.add_recent_repo(snapshot.repo.path.clone());
+                self.adopt_snapshot(snapshot);
+                self.messages.status_message = "Ignored files saved.".to_string();
+                self.messages.error_message.clear();
+            }
+            Err(err) => {
+                self.messages.error_message = format!("Failed to save ignored files: {err}");
+                self.messages.status_message.clear();
+            }
+        }
+        cx.notify();
+    }
+
     fn load_identity(&mut self, path: &Path) {
         self.load_global_identity();
         match self.git.read_identity(path) {
@@ -1861,6 +1888,22 @@ impl GitSparkApp {
                 self.settings_modal.remote_url_cursor = 0;
                 self.settings_modal.remote_url_selection = None;
                 self.messages.error_message = format!("Could not load remote settings: {err}");
+            }
+        }
+    }
+
+    fn load_ignored_files_settings(&mut self, path: &Path) {
+        match self.git.read_gitignore(path) {
+            Ok(text) => {
+                self.repo.ignored_files_text = text;
+                self.settings_modal.ignored_files_cursor = self.repo.ignored_files_text.len();
+                self.settings_modal.ignored_files_selection = None;
+            }
+            Err(err) => {
+                self.repo.ignored_files_text.clear();
+                self.settings_modal.ignored_files_cursor = 0;
+                self.settings_modal.ignored_files_selection = None;
+                self.messages.error_message = format!("Could not load ignored files: {err}");
             }
         }
     }
@@ -2603,6 +2646,7 @@ impl GitSparkApp {
             .unwrap_or_default();
         self.load_identity(&snapshot.repo.path);
         self.load_remote_settings(&snapshot.repo.path);
+        self.load_ignored_files_settings(&snapshot.repo.path);
         self.ensure_repo_watch(&snapshot.repo.path);
         self.repo.has_stash = has_stash;
         if has_stash {
@@ -4876,7 +4920,11 @@ impl GitSparkApp {
         if let Some(section) = section {
             self.nav.settings_section = section;
         } else if scope == SettingsScope::Global
-            && self.nav.settings_section == crate::ui::ui_state::SettingsSection::Remote
+            && matches!(
+                self.nav.settings_section,
+                crate::ui::ui_state::SettingsSection::Remote
+                    | crate::ui::ui_state::SettingsSection::IgnoredFiles
+            )
         {
             self.nav.settings_section = crate::ui::ui_state::SettingsSection::Git;
         } else if scope == SettingsScope::Repository
@@ -4892,6 +4940,10 @@ impl GitSparkApp {
             && let Some(path) = self.repo_path().map(PathBuf::from)
         {
             self.load_remote_settings(&path);
+        } else if self.nav.settings_section == crate::ui::ui_state::SettingsSection::IgnoredFiles
+            && let Some(path) = self.repo_path().map(PathBuf::from)
+        {
+            self.load_ignored_files_settings(&path);
         } else if self.nav.settings_section == crate::ui::ui_state::SettingsSection::Git {
             if self.settings_has_repository_scope()
                 && let Some(path) = self.repo_path().map(PathBuf::from)
@@ -4921,6 +4973,7 @@ impl GitSparkApp {
     pub(crate) fn settings_field_value(&self, field: SettingsField) -> &str {
         match field {
             SettingsField::RemoteUrl => self.repo.remote_url.as_str(),
+            SettingsField::IgnoredFiles => self.repo.ignored_files_text.as_str(),
             SettingsField::GitUserName => self.active_git_settings_identity().user_name.as_str(),
             SettingsField::GitUserEmail => self.active_git_settings_identity().user_email.as_str(),
             SettingsField::GitDefaultBranch => self
@@ -4976,6 +5029,7 @@ impl GitSparkApp {
     pub(crate) fn settings_field_cursor(&self, field: SettingsField) -> usize {
         match field {
             SettingsField::RemoteUrl => self.settings_modal.remote_url_cursor,
+            SettingsField::IgnoredFiles => self.settings_modal.ignored_files_cursor,
             SettingsField::GitUserName => self.settings_modal.git_user_name_cursor,
             SettingsField::GitUserEmail => self.settings_modal.git_user_email_cursor,
             SettingsField::GitDefaultBranch => self.settings_modal.git_default_branch_cursor,
@@ -4992,6 +5046,7 @@ impl GitSparkApp {
     pub(crate) fn settings_field_selection(&self, field: SettingsField) -> Option<usize> {
         match field {
             SettingsField::RemoteUrl => self.settings_modal.remote_url_selection,
+            SettingsField::IgnoredFiles => self.settings_modal.ignored_files_selection,
             SettingsField::GitUserName => self.settings_modal.git_user_name_selection,
             SettingsField::GitUserEmail => self.settings_modal.git_user_email_selection,
             SettingsField::GitDefaultBranch => self.settings_modal.git_default_branch_selection,
@@ -5042,7 +5097,10 @@ impl GitSparkApp {
             return;
         }
 
-        let multiline = matches!(field, SettingsField::AiSystemPrompt);
+        let multiline = matches!(
+            field,
+            SettingsField::IgnoredFiles | SettingsField::AiSystemPrompt
+        );
 
         // Get mutable references to the value, cursor, and selection for the active field
         let handled = match field {
@@ -5060,6 +5118,22 @@ impl GitSparkApp {
                 );
                 self.settings_modal.remote_url_cursor = state.cursor;
                 self.settings_modal.remote_url_selection = state.selection;
+                h
+            }
+            SettingsField::IgnoredFiles => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.settings_modal.ignored_files_cursor,
+                    selection: self.settings_modal.ignored_files_selection,
+                };
+                let h = crate::ui::text_field::handle_text_key(
+                    &mut self.repo.ignored_files_text,
+                    &mut state,
+                    multiline,
+                    event,
+                    cx,
+                );
+                self.settings_modal.ignored_files_cursor = state.cursor;
+                self.settings_modal.ignored_files_selection = state.selection;
                 h
             }
             SettingsField::GitUserName => {
@@ -5202,6 +5276,7 @@ impl GitSparkApp {
     fn set_settings_field_cursor(&mut self, field: SettingsField, cursor: usize) {
         match field {
             SettingsField::RemoteUrl => self.settings_modal.remote_url_cursor = cursor,
+            SettingsField::IgnoredFiles => self.settings_modal.ignored_files_cursor = cursor,
             SettingsField::GitUserName => self.settings_modal.git_user_name_cursor = cursor,
             SettingsField::GitUserEmail => self.settings_modal.git_user_email_cursor = cursor,
             SettingsField::GitDefaultBranch => {

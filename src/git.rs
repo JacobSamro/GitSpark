@@ -3,7 +3,7 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{Duration, SystemTime};
-use std::{env, fs};
+use std::{env, fs, io};
 
 use anyhow::{Context, Result, anyhow, bail};
 
@@ -829,6 +829,39 @@ impl GitClient {
             content.push_str(pattern);
             content.push('\n');
             fs::write(&gitignore_path, content)
+                .with_context(|| format!("failed to write '{}'", gitignore_path.display()))?;
+        }
+
+        self.snapshot(&repo_path)
+    }
+
+    pub fn read_gitignore(&self, repo_path: &Path) -> Result<String> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let gitignore_path = repo_path.join(".gitignore");
+        if !gitignore_path.exists() {
+            return Ok(String::new());
+        }
+
+        fs::read_to_string(&gitignore_path)
+            .with_context(|| format!("failed to read '{}'", gitignore_path.display()))
+    }
+
+    pub fn write_gitignore(&self, repo_path: &Path, text: &str) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let gitignore_path = repo_path.join(".gitignore");
+
+        if text.is_empty() {
+            match fs::remove_file(&gitignore_path) {
+                Ok(()) => {}
+                Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+                Err(err) => {
+                    return Err(err).with_context(|| {
+                        format!("failed to remove '{}'", gitignore_path.display())
+                    });
+                }
+            }
+        } else {
+            fs::write(&gitignore_path, text)
                 .with_context(|| format!("failed to write '{}'", gitignore_path.display()))?;
         }
 
@@ -2250,6 +2283,29 @@ mod tests {
             run_git(&repo, &["remote", "get-url", "origin"]).trim(),
             "https://github.com/example/new.git"
         );
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn reads_writes_and_removes_root_gitignore() {
+        let repo = temp_repo("gitignore-settings");
+        run_git(&repo, &["init", "-b", "main"]);
+
+        let git = GitClient::new();
+        assert_eq!(git.read_gitignore(&repo).unwrap(), "");
+
+        let snapshot = git.write_gitignore(&repo, "target/\n*.log\n").unwrap();
+        assert_eq!(snapshot.repo.remote_name, None);
+        assert_eq!(
+            fs::read_to_string(repo.join(".gitignore")).unwrap(),
+            "target/\n*.log\n"
+        );
+        assert_eq!(git.read_gitignore(&repo).unwrap(), "target/\n*.log\n");
+
+        git.write_gitignore(&repo, "").unwrap();
+        assert!(!repo.join(".gitignore").exists());
+        assert_eq!(git.read_gitignore(&repo).unwrap(), "");
 
         let _ = fs::remove_dir_all(repo);
     }
