@@ -315,39 +315,41 @@ fn render_footer(publish_enabled: bool, cx: &mut Context<GitSparkApp>) -> impl I
                     cx.notify();
                 })),
         )
+        .child(render_publish_button(publish_enabled, cx))
+}
+
+fn render_publish_button(publish_enabled: bool, cx: &mut Context<GitSparkApp>) -> impl IntoElement {
+    let button = div()
+        .id("publish-confirm")
+        .px(theme::z(18.0))
+        .py(theme::z(7.0))
+        .rounded(theme::z(theme::CORNER_RADIUS))
+        .bg(if publish_enabled {
+            theme::commit_button_bg()
+        } else {
+            theme::surface_bg_alt()
+        })
         .child(
             div()
-                .id("publish-confirm")
-                .px(theme::z(18.0))
-                .py(theme::z(7.0))
-                .rounded(theme::z(theme::CORNER_RADIUS))
-                .bg(if publish_enabled {
-                    theme::commit_button_bg()
+                .text_size(theme::z(13.0))
+                .text_color(if publish_enabled {
+                    theme::commit_button_text()
                 } else {
-                    theme::surface_bg_alt()
+                    theme::text_muted()
                 })
-                .cursor_pointer()
-                .hover(move |s| {
-                    if publish_enabled {
-                        s.bg(theme::commit_button_hover_bg())
-                    } else {
-                        s
-                    }
-                })
-                .child(
-                    div()
-                        .text_size(theme::z(13.0))
-                        .text_color(if publish_enabled {
-                            theme::commit_button_text()
-                        } else {
-                            theme::text_muted()
-                        })
-                        .child("Publish Repository"),
-                )
-                .on_click(cx.listener(|app, _evt, _win, cx| {
-                    if !app.network.publish_name.trim().is_empty() {
-                        app.publish_repository(cx);
-                    }
-                })),
+                .child("Publish Repository"),
         )
+        .on_click(cx.listener(|app, _evt, _win, cx| {
+            if !app.network.publish_name.trim().is_empty() {
+                app.publish_repository(cx);
+            }
+        }));
+
+    if publish_enabled {
+        button
+            .cursor_pointer()
+            .hover(|s| s.bg(theme::commit_button_hover_bg()))
+    } else {
+        button
+    }
 }

@@ -56,6 +56,33 @@ export async function testRepositoryFlows(app, fixture) {
     (snapshot) => snapshot.status_message === "Repository refreshed.",
     { timeoutMs: 10_000 },
   );
+
+  await app.command({
+    command: "network_action",
+    action: "publish_repository",
+  });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.active_dialog === "publish_repository" &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "publish-confirm" && node.enabled === true,
+      ),
+    { timeoutMs: 10_000 },
+  );
+  await expect(app.getByTestId("publish-repo-name")).toBeVisible({
+    timeoutMs: 10_000,
+  });
+  await app.getByTestId("publish-repo-name").fill("");
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.active_dialog === "publish_repository" &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "publish-confirm" && node.enabled === false,
+      ),
+    { timeoutMs: 10_000 },
+  );
+  await app.getByTestId("publish-cancel").click();
+  await app.waitForSnapshot((snapshot) => snapshot.active_dialog === "none");
 }
 
 export async function testLocalChangeAutoSync(app, fixture) {

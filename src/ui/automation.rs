@@ -176,6 +176,7 @@ pub(crate) enum AutomationNetworkAction {
     Fetch,
     Pull,
     Push,
+    PublishRepository,
 }
 
 impl From<AutomationNetworkAction> for NetworkAction {
@@ -184,6 +185,7 @@ impl From<AutomationNetworkAction> for NetworkAction {
             AutomationNetworkAction::Fetch => Self::Fetch,
             AutomationNetworkAction::Pull => Self::Pull,
             AutomationNetworkAction::Push => Self::Push,
+            AutomationNetworkAction::PublishRepository => Self::PublishRepository,
         }
     }
 }
@@ -466,6 +468,10 @@ enum AutomationNodeAction {
     RestoreStash,
     ShowDiscardStash,
     ConfirmDiscardStash,
+    SetPublishName,
+    SetPublishDescription,
+    TogglePublishPrivate,
+    ConfirmPublishRepository,
     SaveGitSettings,
     SaveAiSettings,
     SetGitConfigScope(bool),
@@ -1256,6 +1262,50 @@ impl GitSparkApp {
             }
         }
 
+        if matches!(self.nav.active_dialog, ActiveDialog::PublishRepository) {
+            let publish_enabled = !self.network.publish_name.trim().is_empty()
+                && self.network.active_action.is_none();
+            children.extend([
+                automation_node(
+                    "publish-repo-name",
+                    AutomationRole::Textbox,
+                    Some("publish-repo-name"),
+                    Some(self.network.publish_name.as_str()),
+                    Some(AutomationNodeAction::SetPublishName),
+                ),
+                automation_node(
+                    "publish-repo-description",
+                    AutomationRole::Textbox,
+                    Some("publish-repo-description"),
+                    Some(self.network.publish_description.as_str()),
+                    Some(AutomationNodeAction::SetPublishDescription),
+                ),
+                automation_node(
+                    "publish-repo-private",
+                    AutomationRole::Button,
+                    Some("publish-repo-private"),
+                    Some("Keep this code private"),
+                    Some(AutomationNodeAction::TogglePublishPrivate),
+                )
+                .selected(self.network.publish_private),
+                automation_node(
+                    "publish-cancel",
+                    AutomationRole::Button,
+                    Some("publish-cancel"),
+                    Some("Cancel"),
+                    Some(AutomationNodeAction::CancelDialog),
+                ),
+                automation_node(
+                    "publish-confirm",
+                    AutomationRole::Button,
+                    Some("publish-confirm"),
+                    Some("Publish Repository"),
+                    Some(AutomationNodeAction::ConfirmPublishRepository),
+                )
+                .enabled(publish_enabled),
+            ]);
+        }
+
         if matches!(self.nav.active_dialog, ActiveDialog::ResetToCommit { .. }) {
             children.extend([
                 automation_node(
@@ -1796,6 +1846,31 @@ impl GitSparkApp {
                     return AutomationResponse::failure("discard stash dialog is not active");
                 }
                 self.discard_stash(cx);
+            }
+            AutomationNodeAction::SetPublishName => {
+                self.network.publish_name = fill_text.unwrap_or_default();
+                self.publish_name_cursor = self.network.publish_name.len();
+                self.publish_name_selection = None;
+                cx.notify();
+            }
+            AutomationNodeAction::SetPublishDescription => {
+                self.network.publish_description = fill_text.unwrap_or_default();
+                self.publish_description_cursor = self.network.publish_description.len();
+                self.publish_description_selection = None;
+                cx.notify();
+            }
+            AutomationNodeAction::TogglePublishPrivate => {
+                self.network.publish_private = !self.network.publish_private;
+                cx.notify();
+            }
+            AutomationNodeAction::ConfirmPublishRepository => {
+                if !matches!(self.nav.active_dialog, ActiveDialog::PublishRepository) {
+                    return AutomationResponse::failure("publish dialog is not active");
+                }
+                if self.network.publish_name.trim().is_empty() {
+                    return AutomationResponse::failure("publish repository name is required");
+                }
+                self.publish_repository(cx);
             }
             AutomationNodeAction::SaveGitSettings => {
                 self.handle_settings_action(SettingsAction::SaveGitConfig, cx);
@@ -3007,6 +3082,20 @@ mod tests {
         let stash_pop: AutomationCommand =
             serde_json::from_str(r#"{"command":"stash_pop"}"#).expect("stash pop command parses");
         assert!(matches!(stash_pop, AutomationCommand::StashPop));
+    }
+
+    #[test]
+    fn parses_publish_repository_network_action() {
+        let command: AutomationCommand =
+            serde_json::from_str(r#"{"command":"network_action","action":"publish_repository"}"#)
+                .expect("publish repository network action parses");
+
+        assert!(matches!(
+            command,
+            AutomationCommand::NetworkAction {
+                action: AutomationNetworkAction::PublishRepository,
+            }
+        ));
     }
 
     #[test]
