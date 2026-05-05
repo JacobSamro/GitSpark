@@ -83,7 +83,7 @@ pub(crate) fn build_history_context_menu(
         ))
         .item(menu_item(
             delete_tag_label(&commit_tags),
-            commit_tags.len() == 1,
+            !commit_tags.is_empty(),
             view.clone(),
             oid.clone(),
             HistoryContextMenuAction::DeleteTag,

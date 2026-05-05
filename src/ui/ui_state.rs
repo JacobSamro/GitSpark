@@ -71,6 +71,9 @@ pub enum ActiveDialog {
     CreateTag {
         target_oid: String,
     },
+    ChooseTagToDelete {
+        target_oid: String,
+    },
     DeleteTag {
         tag_name: String,
     },

@@ -502,6 +502,7 @@ enum AutomationNodeAction {
     ConfirmRenameBranch,
     ConfirmDeleteBranch,
     ConfirmCreateTag,
+    SelectTagToDelete(String),
     ConfirmDeleteTag,
     ConfirmResetToCommit,
     ConfirmStashChanges,
@@ -1501,6 +1502,35 @@ impl GitSparkApp {
             ]);
         }
 
+        if let ActiveDialog::ChooseTagToDelete { target_oid } = &self.nav.active_dialog {
+            let tags = self.commit_tags_for_oid(target_oid);
+            children.push(automation_node(
+                "choose-delete-tag-description",
+                AutomationRole::Status,
+                Some("choose-delete-tag-description"),
+                Some("Choose tag to delete"),
+                None::<AutomationNodeAction>,
+            ));
+            children.extend(tags.into_iter().map(|tag_name| {
+                let tag_id = stable_test_slug(&tag_name);
+                let label = tag_name.clone();
+                automation_node(
+                    format!("choose-delete-tag-{tag_id}"),
+                    AutomationRole::Button,
+                    Some(format!("choose-delete-tag-{tag_id}")),
+                    Some(label.as_str()),
+                    Some(AutomationNodeAction::SelectTagToDelete(tag_name)),
+                )
+            }));
+            children.push(automation_node(
+                "choose-delete-tag-cancel",
+                AutomationRole::Button,
+                Some("choose-delete-tag-cancel"),
+                Some("Cancel"),
+                Some(AutomationNodeAction::CancelDialog),
+            ));
+        }
+
         if matches!(self.nav.active_dialog, ActiveDialog::PublishRepository) {
             let publish_enabled = !self.network.publish_name.trim().is_empty()
                 && self.network.active_action.is_none();
@@ -2050,6 +2080,16 @@ impl GitSparkApp {
                     _ => return AutomationResponse::failure("create tag dialog is not active"),
                 };
                 self.create_tag(target_oid, cx);
+            }
+            AutomationNodeAction::SelectTagToDelete(tag_name) => {
+                if !matches!(
+                    self.nav.active_dialog,
+                    ActiveDialog::ChooseTagToDelete { .. }
+                ) {
+                    return AutomationResponse::failure("choose tag dialog is not active");
+                }
+                self.nav.active_dialog = ActiveDialog::DeleteTag { tag_name };
+                cx.notify();
             }
             AutomationNodeAction::ConfirmDeleteTag => {
                 let tag_name = match &self.nav.active_dialog {
@@ -3192,7 +3232,7 @@ fn history_action_nodes(
         .map(|(suffix, label, action)| {
             let enabled = match action {
                 AutomationHistoryAction::CopyTag => !tags.is_empty(),
-                AutomationHistoryAction::DeleteTag => tags.len() == 1,
+                AutomationHistoryAction::DeleteTag => !tags.is_empty(),
                 AutomationHistoryAction::ResetToCommit => can_reset_to_commit,
                 _ => true,
             };
@@ -3415,6 +3455,7 @@ fn active_dialog_name(dialog: &ActiveDialog) -> &'static str {
         ActiveDialog::RenameBranch { .. } => "rename_branch",
         ActiveDialog::DeleteBranch { .. } => "delete_branch",
         ActiveDialog::CreateTag { .. } => "create_tag",
+        ActiveDialog::ChooseTagToDelete { .. } => "choose_tag_to_delete",
         ActiveDialog::DeleteTag { .. } => "delete_tag",
         ActiveDialog::ResetToCommit { .. } => "reset_to_commit",
         ActiveDialog::CreateRepository => "create_repository",

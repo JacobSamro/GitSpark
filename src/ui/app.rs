@@ -2197,8 +2197,8 @@ impl GitSparkApp {
                     self.messages.error_message =
                         format!("Commit {} has no tags.", short_commit_label(&oid));
                 } else {
-                    self.messages.error_message =
-                        "Choose a commit with a single tag to delete it.".to_string();
+                    self.nav.active_dialog = ActiveDialog::ChooseTagToDelete { target_oid: oid };
+                    self.messages.error_message.clear();
                 }
             }
             HistoryContextMenuAction::ResetToCommit => {
@@ -6483,6 +6483,7 @@ impl GitSparkApp {
             ActiveDialog::RenameBranch { .. } => (400.0, 230.0),
             ActiveDialog::DeleteBranch { .. } => (440.0, 220.0),
             ActiveDialog::CreateTag { .. } => (400.0, 230.0),
+            ActiveDialog::ChooseTagToDelete { .. } => (420.0, 320.0),
             ActiveDialog::DeleteTag { .. } => (420.0, 220.0),
             ActiveDialog::ResetToCommit { .. } => (500.0, 240.0),
             ActiveDialog::CreateRepository => (560.0, 390.0),
@@ -7238,6 +7239,160 @@ impl GitSparkApp {
                                     )
                                     .on_click(cx.listener(move |app, _evt, _win, cx| {
                                         app.delete_tag(tag_name_for_click.clone(), cx);
+                                    })),
+                            ),
+                    )
+            }
+            ActiveDialog::ChooseTagToDelete { target_oid } => {
+                let tags = self.commit_tags_for_oid(target_oid);
+                let short_oid = short_commit_label(target_oid).to_string();
+                let view = cx.entity().clone();
+                let tag_count = tags.len();
+
+                v_flex()
+                    .w(px(420.0))
+                    .bg(theme::panel_bg())
+                    .rounded(theme::z(theme::CORNER_RADIUS))
+                    .border_1()
+                    .border_color(theme::border())
+                    .shadow_lg()
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .px(theme::z(16.0))
+                            .py(theme::z(12.0))
+                            .items_center()
+                            .justify_between()
+                            .border_b_1()
+                            .border_color(theme::border())
+                            .child(
+                                div()
+                                    .text_size(theme::z(14.0))
+                                    .text_color(theme::text_main())
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("Delete Tag"),
+                            )
+                            .child(
+                                div()
+                                    .id("choose-delete-tag-close")
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::hover_bg()))
+                                    .rounded(px(4.0))
+                                    .p(px(4.0))
+                                    .child(
+                                        Icon::new(IconName::Close)
+                                            .size(px(14.0))
+                                            .text_color(theme::text_muted()),
+                                    )
+                                    .on_click(cx.listener(|app, _evt, _win, cx| {
+                                        app.nav.active_dialog = ActiveDialog::None;
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .p(theme::z(16.0))
+                            .gap(theme::z(10.0))
+                            .child(
+                                div()
+                                    .id("choose-delete-tag-description")
+                                    .text_size(theme::z(12.0))
+                                    .line_height(theme::z(18.0))
+                                    .text_color(theme::text_main())
+                                    .child(format!(
+                                        "Choose which tag to delete from commit {short_oid}."
+                                    )),
+                            )
+                            .child(
+                                div()
+                                    .id("choose-delete-tag-list-scroll")
+                                    .w_full()
+                                    .h(px(160.0))
+                                    .overflow_y_scrollbar()
+                                    .rounded(theme::z(theme::CORNER_RADIUS))
+                                    .border_1()
+                                    .border_color(theme::border())
+                                    .bg(theme::bg())
+                                    .child(
+                                        uniform_list("choose-delete-tag-list", tag_count, {
+                                            let tags = tags.clone();
+                                            move |range, _win, _cx| {
+                                                range
+                                                    .map(|ix| {
+                                                        let tag_name = tags[ix].clone();
+                                                        let tag_id = stable_id_slug(&tag_name);
+                                                        let row_view = view.clone();
+
+                                                        h_flex()
+                                                            .id(SharedString::from(format!(
+                                                                "choose-delete-tag-{tag_id}"
+                                                            )))
+                                                            .w_full()
+                                                            .h(px(36.0))
+                                                            .px(theme::z(12.0))
+                                                            .items_center()
+                                                            .cursor_pointer()
+                                                            .hover(|s| s.bg(theme::hover_bg()))
+                                                            .child(
+                                                                div()
+                                                                    .flex_1()
+                                                                    .min_w_0()
+                                                                    .text_size(theme::z(12.0))
+                                                                    .text_color(theme::text_main())
+                                                                    .whitespace_nowrap()
+                                                                    .child(tag_name.clone()),
+                                                            )
+                                                            .on_click(move |_evt, _win, cx| {
+                                                                let tag_name = tag_name.clone();
+                                                                row_view.update(cx, |app, cx| {
+                                                                    app.nav.active_dialog =
+                                                                        ActiveDialog::DeleteTag {
+                                                                            tag_name,
+                                                                        };
+                                                                    cx.notify();
+                                                                });
+                                                            })
+                                                            .into_any_element()
+                                                    })
+                                                    .collect()
+                                            }
+                                        })
+                                        .flex_1()
+                                        .with_sizing_behavior(ListSizingBehavior::Infer),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .px(theme::z(16.0))
+                            .py(theme::z(12.0))
+                            .justify_end()
+                            .gap(theme::z(8.0))
+                            .border_t_1()
+                            .border_color(theme::border())
+                            .child(
+                                div()
+                                    .id("choose-delete-tag-cancel")
+                                    .px(theme::z(12.0))
+                                    .py(theme::z(6.0))
+                                    .rounded(theme::z(theme::CORNER_RADIUS))
+                                    .bg(theme::surface_bg())
+                                    .border_1()
+                                    .border_color(theme::surface_bg_alt())
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::toolbar_hover_bg()))
+                                    .child(
+                                        div()
+                                            .text_size(theme::z(12.0))
+                                            .text_color(theme::text_main())
+                                            .child("Cancel"),
+                                    )
+                                    .on_click(cx.listener(|app, _evt, _win, cx| {
+                                        app.nav.active_dialog = ActiveDialog::None;
+                                        cx.notify();
                                     })),
                             ),
                     )
@@ -8041,12 +8196,8 @@ impl GitSparkApp {
             .filter(|b| filter.is_empty() || b.name.to_lowercase().contains(&filter))
             .collect();
 
-        // Find default branch (current one)
-        let default_branch = local_branches
-            .iter()
-            .find(|b| b.is_current)
-            .map(|b| b.name.clone())
-            .unwrap_or_else(|| current_branch.clone());
+        let default_branch_name = self.default_branch_name();
+        let branch_selector_target = current_branch.clone();
 
         // --- Header: Current Branch + caret up ---
         let _header = h_flex()
@@ -8217,11 +8368,10 @@ impl GitSparkApp {
             });
 
         // --- Grouped branch list: Default Branch + Other Branches ---
-        // Separate into default (current) and others
         let mut default_branches: Vec<BranchInfo> = Vec::new();
         let mut other_branches: Vec<BranchInfo> = Vec::new();
         for b in &local_branches {
-            if b.is_current || b.name == "main" || b.name == "master" {
+            if b.name == default_branch_name {
                 default_branches.push((*b).clone());
             } else {
                 other_branches.push((*b).clone());
@@ -8391,6 +8541,7 @@ impl GitSparkApp {
         };
         let show_branch_selector_target = self.repo.pending_cherry_pick_oid.is_some()
             || self.nav.branch_selector_mode == BranchSelectorMode::Merge
+            || self.nav.branch_selector_mode == BranchSelectorMode::Rebase
             || self.nav.branch_selector_mode == BranchSelectorMode::Compare;
 
         // --- Branch selector prompt ---
@@ -8435,7 +8586,7 @@ impl GitSparkApp {
                                 .text_size(theme::z(theme::FONT_SIZE))
                                 .text_color(theme::text_main())
                                 .font_weight(FontWeight::BOLD)
-                                .child(default_branch),
+                                .child(branch_selector_target),
                         )
                     }),
             );
