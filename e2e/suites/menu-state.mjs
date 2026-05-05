@@ -17,6 +17,25 @@ export async function testMenuStateWithoutRepository(app) {
   assert(snapshot.menu_availability.push === false, "no repo disables Push");
   assert(snapshot.menu_availability.create_branch === false, "no repo disables branch actions");
   assert(snapshot.menu_availability.view_repository_on_github === false, "no repo disables GitHub actions");
+
+  await app.command({
+    command: "change_action",
+    path: "missing.txt",
+    action: "reveal_in_finder",
+  });
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.error_message === "No repository selected.",
+    { timeoutMs: 10_000 },
+  );
+  await app.command({
+    command: "change_action",
+    path: "missing.txt",
+    action: "open_in_editor",
+  });
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.error_message === "No repository selected.",
+    { timeoutMs: 10_000 },
+  );
 }
 
 export async function testMenuStateWithRepository(app) {
