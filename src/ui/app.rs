@@ -181,10 +181,6 @@ const ZOOM_STEP: f32 = 1.0;
 const ZOOM_MIN: f32 = 10.0;
 const ZOOM_MAX: f32 = 24.0;
 const MAX_TAG_NAME_LENGTH: usize = 245;
-const TOOLBAR_BRANCH_SECTION_WIDTH: f32 = 300.0;
-const TOOLBAR_NETWORK_SECTION_WIDTH: f32 = 231.0;
-const TOOLBAR_DIVIDER_WIDTH: f32 = 1.0;
-const NETWORK_DROPDOWN_WIDTH: f32 = 300.0;
 
 pub struct GitSparkApp {
     git: GitClient,
@@ -3975,7 +3971,7 @@ impl GitSparkApp {
             snapshot.is_none(),
         )
         .flex_none()
-        .w(px(TOOLBAR_BRANCH_SECTION_WIDTH))
+        .w(px(toolbar::BRANCH_SECTION_WIDTH))
         .on_click(cx.listener(|app, _evt, _win, cx| {
             if app.repo.snapshot.is_none() {
                 return;
@@ -4052,7 +4048,7 @@ impl GitSparkApp {
             .child(
                 div()
                     .flex_none()
-                    .w(px(TOOLBAR_NETWORK_SECTION_WIDTH))
+                    .w(px(toolbar::NETWORK_SECTION_WIDTH))
                     .h_full()
                     .child(h_flex().size_full().child(network_main).children(
                         if has_network_dropdown {
@@ -7185,8 +7181,11 @@ impl GitSparkApp {
             .top(theme::z(theme::TOOLBAR_HEIGHT))
             .left_0()
             .w_full()
-            .child(div().flex_none().w(px(TOOLBAR_BRANCH_SECTION_WIDTH)))
-            .child(div().flex_none().w(px(TOOLBAR_DIVIDER_WIDTH)))
+            .child(
+                div()
+                    .flex_none()
+                    .w(px(crate::ui::toolbar::network_dropdown_left_offset())),
+            )
             .child(panel);
 
         div()
@@ -7208,7 +7207,7 @@ impl GitSparkApp {
         let fetch_desc = format!("Fetch the latest changes from {remote_name}");
 
         v_flex()
-            .w(px(NETWORK_DROPDOWN_WIDTH))
+            .w(px(crate::ui::toolbar::NETWORK_DROPDOWN_WIDTH))
             .bg(theme::panel_bg())
             .border_1()
             .border_color(theme::toolbar_button_border())

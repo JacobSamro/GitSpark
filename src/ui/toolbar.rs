@@ -18,6 +18,15 @@ const SECTION_GAP: f32 = 10.0;
 const CARET_ICON_SIZE: f32 = 10.0;
 const BADGE_PILL_RADIUS: f32 = 8.0;
 
+pub const BRANCH_SECTION_WIDTH: f32 = 300.0;
+pub const NETWORK_SECTION_WIDTH: f32 = 231.0;
+pub const SECTION_DIVIDER_WIDTH: f32 = 1.0;
+pub const NETWORK_DROPDOWN_WIDTH: f32 = 300.0;
+
+pub fn network_dropdown_left_offset() -> f32 {
+    BRANCH_SECTION_WIDTH + SECTION_DIVIDER_WIDTH
+}
+
 // ---------------------------------------------------------------------------
 // Icon source — either a built-in IconName or a custom SVG path
 // ---------------------------------------------------------------------------
