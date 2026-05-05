@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 
 import { expect } from "../gitspark.mjs";
 import { assert } from "../support/assertions.mjs";
-import { gitOutput } from "../support/fixtures.mjs";
+import { gitOptionalOutput, gitOutput } from "../support/fixtures.mjs";
 
 export async function testAiValidation(app) {
   await app.command({ command: "generate_ai_commit" });
@@ -48,6 +48,35 @@ export async function testSettingsPersistence(app, fixture) {
     (await gitOutput(fixture.workRepo, ["config", "user.email"])) ===
       "precise@gitspark.local",
     "git user.email persisted to repository config",
+  );
+
+  await app.getByTestId("settings-git-scope-global").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "settings-git-user-name" && node.enabled === false,
+      ) &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "settings-git-user-email" && node.enabled === false,
+      ),
+    { timeoutMs: 10_000 },
+  );
+  await app.getByTestId("settings-save-git").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Git config saved." &&
+      snapshot.error_message === "",
+    { timeoutMs: 10_000 },
+  );
+  assert(
+    (await gitOptionalOutput(fixture.workRepo, ["config", "--local", "--get", "user.name"])) ===
+      null,
+    "global scope clears repository user.name override",
+  );
+  assert(
+    (await gitOptionalOutput(fixture.workRepo, ["config", "--local", "--get", "user.email"])) ===
+      null,
+    "global scope clears repository user.email override",
   );
 
   await app.getByTestId("settings-tab-ai").click();

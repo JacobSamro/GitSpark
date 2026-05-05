@@ -1485,19 +1485,16 @@ impl GitSparkApp {
     // ------------------------------------------------------------------
 
     fn save_git_config(&mut self) {
-        if !git_author_name_is_valid(&self.active_git_settings_identity().user_name) {
-            self.messages.error_message = INVALID_GIT_AUTHOR_NAME_MESSAGE.to_string();
-            self.messages.status_message.clear();
-            return;
-        }
-
         if let Some(path) = self.repo_path().map(PathBuf::from) {
             let write_result = if self.repo.use_local_identity {
+                if !git_author_name_is_valid(&self.repo.local_identity.user_name) {
+                    self.messages.error_message = INVALID_GIT_AUTHOR_NAME_MESSAGE.to_string();
+                    self.messages.status_message.clear();
+                    return;
+                }
                 self.git.write_identity(&path, &self.repo.local_identity)
             } else {
-                self.git
-                    .write_global_identity(&self.repo.global_identity)
-                    .and_then(|_| self.git.clear_local_author_identity(&path))
+                self.git.clear_local_author_identity(&path)
             };
 
             match write_result {
@@ -1512,8 +1509,10 @@ impl GitSparkApp {
                         return;
                     }
 
-                    self.settings.default_branch =
-                        self.active_git_settings_identity().default_branch.clone();
+                    if self.repo.use_local_identity {
+                        self.settings.default_branch =
+                            self.repo.local_identity.default_branch.clone();
+                    }
                     self.persist_settings();
                     self.load_identity(&path);
                     self.messages.status_message = "Git config saved.".to_string();
@@ -1525,6 +1524,11 @@ impl GitSparkApp {
                 }
             }
         } else {
+            if !git_author_name_is_valid(&self.repo.global_identity.user_name) {
+                self.messages.error_message = INVALID_GIT_AUTHOR_NAME_MESSAGE.to_string();
+                self.messages.status_message.clear();
+                return;
+            }
             match self.git.write_global_identity(&self.repo.global_identity) {
                 Ok(()) => {
                     self.load_global_identity();
@@ -4293,6 +4297,17 @@ impl GitSparkApp {
         }
     }
 
+    pub(crate) fn settings_field_read_only(&self, field: SettingsField) -> bool {
+        self.repo.snapshot.is_some()
+            && !self.repo.use_local_identity
+            && matches!(
+                field,
+                SettingsField::GitUserName
+                    | SettingsField::GitUserEmail
+                    | SettingsField::GitDefaultBranch
+            )
+    }
+
     pub(crate) fn settings_field_cursor(&self, field: SettingsField) -> usize {
         match field {
             SettingsField::GitUserName => self.settings_modal.git_user_name_cursor,
@@ -4356,6 +4371,9 @@ impl GitSparkApp {
         let Some(field) = self.settings_modal.active_field else {
             return;
         };
+        if self.settings_field_read_only(field) {
+            return;
+        }
 
         let multiline = matches!(field, SettingsField::AiSystemPrompt);
 

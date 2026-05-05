@@ -389,6 +389,7 @@ fn render_git_section(
         .unwrap_or_else(|| {
             "Author and default branch are stored in global Git config.".to_string()
         });
+    let inherited_global_identity = has_repo && !app.repo.use_local_identity;
 
     v_flex()
         .w_full()
@@ -418,6 +419,7 @@ fn render_git_section(
                     "Jane Doe",
                     false,
                     false,
+                    inherited_global_identity,
                     None,
                 )))
                 .child(div().flex_1().child(render_text_input(
@@ -430,6 +432,7 @@ fn render_git_section(
                     "jane@example.com",
                     false,
                     false,
+                    inherited_global_identity,
                     None,
                 ))),
         )
@@ -443,6 +446,7 @@ fn render_git_section(
             "main",
             false,
             false,
+            inherited_global_identity,
             Some("Used as the default branch name for new repositories."),
         ))
         .child(
@@ -849,6 +853,7 @@ fn render_ai_section(
             app.settings.ai.provider.api_key_hint(),
             true,
             false,
+            false,
             None,
         ))
         .child(render_text_input(
@@ -861,6 +866,7 @@ fn render_ai_section(
             "Write a concise conventional commit message...",
             false,
             true,
+            false,
             Some("Used verbatim when generating commit suggestions."),
         ))
 }
@@ -962,6 +968,7 @@ fn render_model_group(
             SettingsField::AiModel,
             "Model",
             "gpt-4.1-mini",
+            false,
             false,
             false,
             None,
@@ -1092,6 +1099,7 @@ fn render_openrouter_models(
                         SettingsField::OpenRouterModelFilter,
                         "Search Models",
                         "Search models...",
+                        false,
                         false,
                         false,
                         None,
@@ -1279,6 +1287,7 @@ fn render_endpoint_group(
             AiProvider::OpenAICompatible.default_endpoint(),
             false,
             false,
+            false,
             Some("Use any OpenAI-compatible chat completions endpoint."),
         )
         .into_any_element()
@@ -1343,14 +1352,16 @@ fn render_text_input(
     placeholder: &str,
     password: bool,
     multiline: bool,
+    disabled: bool,
     note: Option<&str>,
 ) -> impl IntoElement {
     use crate::ui::text_field;
 
+    let disabled = disabled || app.settings_field_read_only(field);
     let value = app.settings_field_value(field);
     let cursor = app.settings_field_cursor(field).min(value.len());
     let selection = app.settings_field_selection(field);
-    let focused = app.settings_field_focused(field, window);
+    let focused = app.settings_field_focused(field, window) && !disabled;
 
     let display_value = if password && !focused {
         mask_password(value)
@@ -1358,14 +1369,26 @@ fn render_text_input(
         value.to_string()
     };
 
-    let text = text_field::render_text_content(
-        &display_value,
-        cursor,
-        selection,
-        focused,
-        placeholder,
-        multiline,
-    );
+    let text = if disabled {
+        div()
+            .text_size(theme::z(12.0))
+            .text_color(theme::text_muted())
+            .truncate()
+            .child(if display_value.is_empty() {
+                placeholder.to_string()
+            } else {
+                display_value.clone()
+            })
+    } else {
+        text_field::render_text_content(
+            &display_value,
+            cursor,
+            selection,
+            focused,
+            placeholder,
+            multiline,
+        )
+    };
 
     let field_shell = div()
         .id(id)
@@ -1388,11 +1411,18 @@ fn render_text_input(
         } else {
             theme::border()
         })
-        .cursor_text()
+        .text_color(if disabled {
+            theme::text_muted()
+        } else {
+            theme::text_main()
+        })
+        .when(!disabled, |el| el.cursor_text())
         .child(text)
-        .on_click(cx.listener(move |app, _evt, window, cx| {
-            app.activate_settings_field(field, window, cx);
-        }));
+        .when(!disabled, |el| {
+            el.on_click(cx.listener(move |app, _evt, window, cx| {
+                app.activate_settings_field(field, window, cx);
+            }))
+        });
 
     v_flex()
         .w_full()

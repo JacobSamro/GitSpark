@@ -117,6 +117,14 @@ export async function gitOutput(repo, args) {
   return stdout.trim();
 }
 
+export async function gitOptionalOutput(repo, args) {
+  try {
+    return await gitOutput(repo, args);
+  } catch {
+    return null;
+  }
+}
+
 function shellQuote(value) {
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }

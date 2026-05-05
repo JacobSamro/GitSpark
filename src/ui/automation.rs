@@ -1610,6 +1610,9 @@ impl GitSparkApp {
                 self.handle_sidebar_action(SidebarAction::OpenRepo(path), cx);
             }
             AutomationNodeAction::SetSettingsField(field) => {
+                if self.settings_field_read_only(field) {
+                    return AutomationResponse::failure("settings field is read-only");
+                }
                 let Some(text) = fill_text else {
                     return AutomationResponse::failure("fill text is required");
                 };
@@ -2207,18 +2210,21 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
                 .visible(app.repo.snapshot.is_some())
                 .selected(app.repo.use_local_identity),
                 settings_field_node(
+                    app,
                     "settings-git-user-name",
                     "User Name",
                     SettingsField::GitUserName,
                     app.active_git_settings_identity().user_name.as_str(),
                 ),
                 settings_field_node(
+                    app,
                     "settings-git-user-email",
                     "User Email",
                     SettingsField::GitUserEmail,
                     app.active_git_settings_identity().user_email.as_str(),
                 ),
                 settings_field_node(
+                    app,
                     "settings-git-default-branch",
                     "Default Branch",
                     SettingsField::GitDefaultBranch,
@@ -2275,6 +2281,7 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
                 nodes.push(openrouter_model_picker_node(app));
             } else {
                 nodes.push(settings_field_node(
+                    app,
                     "settings-ai-model",
                     "Model",
                     SettingsField::AiModel,
@@ -2292,6 +2299,7 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
                 ));
             } else {
                 nodes.push(settings_field_node(
+                    app,
                     "settings-ai-endpoint",
                     "Endpoint",
                     SettingsField::AiEndpoint,
@@ -2301,12 +2309,14 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
 
             nodes.extend([
                 settings_field_node(
+                    app,
                     "settings-ai-api-key",
                     "API Key",
                     SettingsField::AiApiKey,
                     app.settings.ai.api_key.as_str(),
                 ),
                 settings_field_node(
+                    app,
                     "settings-ai-system-prompt",
                     "System Prompt",
                     SettingsField::AiSystemPrompt,
@@ -2353,6 +2363,7 @@ fn openrouter_model_picker_node(app: &GitSparkApp) -> AutomationNode {
             .trim()
             .to_ascii_lowercase();
         let mut children = vec![settings_field_node(
+            app,
             "settings-openrouter-model-filter",
             "Search Models",
             SettingsField::OpenRouterModelFilter,
@@ -2423,6 +2434,7 @@ fn openrouter_model_picker_node(app: &GitSparkApp) -> AutomationNode {
 }
 
 fn settings_field_node(
+    app: &GitSparkApp,
     test_id: &'static str,
     label: &'static str,
     field: SettingsField,
@@ -2435,6 +2447,7 @@ fn settings_field_node(
         Some(value),
         Some(AutomationNodeAction::SetSettingsField(field)),
     )
+    .enabled(!app.settings_field_read_only(field))
     .children(vec![automation_node(
         format!("{test_id}-label"),
         AutomationRole::Status,
