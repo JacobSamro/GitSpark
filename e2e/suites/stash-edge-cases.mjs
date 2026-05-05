@@ -153,6 +153,12 @@ export async function testStashEdgeCases(app) {
   await exec("git", ["mv", "rename-old.txt", "rename-new.txt"], { cwd: repo });
   await fs.rm(path.join(repo, "delete-stash.txt"));
   await app.command({ command: "refresh_repo" });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.repo?.changes.some((change) => change.path === "rename-new.txt") &&
+      snapshot.repo?.changes.some((change) => change.path === "delete-stash.txt"),
+    { timeoutMs: 10_000 },
+  );
   await app.command({ command: "stash_all" });
   await app.getByTestId("stash-changes-confirm").click();
   await app.waitForSnapshot(

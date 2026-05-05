@@ -39,6 +39,7 @@ import {
 } from "./suites/settings-ai.mjs";
 import { testSettingsScopeRegressions } from "./suites/settings-scope-regressions.mjs";
 import { testStashEdgeCases } from "./suites/stash-edge-cases.mjs";
+import { testSubmoduleDiff } from "./suites/submodule-diff.mjs";
 import { testVisualContracts } from "./suites/visual-contracts.mjs";
 import { makeFreshSampleRepo } from "./support/fixtures.mjs";
 import { startMockAiServer } from "./support/mock-ai.mjs";
@@ -80,6 +81,7 @@ try {
   await testConflictFlows(app, fixture);
   await testDiffOptions(app);
   await testBinaryDiffFallback(app);
+  await testSubmoduleDiff(app);
   await testCompareEdgeCases(app);
   await testCreateCloneRepositoryWorkflows(app);
   await testGithubEnterpriseUrlBehavior(app, fixture);

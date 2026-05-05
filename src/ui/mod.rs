@@ -21,6 +21,7 @@ pub mod sidebar;
 pub mod stash_changes_dialog;
 pub mod stash_file_list;
 pub mod status_bar;
+pub mod submodule_diff;
 pub mod text_field;
 pub mod theme;
 pub mod toolbar;

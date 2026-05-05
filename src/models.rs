@@ -27,6 +27,12 @@ pub struct DiffEntry {
     pub path: String,
     pub diff: String,
     pub is_binary: bool,
+    #[serde(default)]
+    pub is_submodule: bool,
+    #[serde(default)]
+    pub submodule_old_oid: Option<String>,
+    #[serde(default)]
+    pub submodule_new_oid: Option<String>,
     /// The original diff text before any expansion (for collapse).
     #[serde(skip)]
     pub original_diff: Option<String>,

@@ -2547,6 +2547,26 @@ impl GitSparkApp {
         }
     }
 
+    pub(crate) fn open_submodule_repository(
+        &mut self,
+        relative_path: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(repo_path) = self.repo_path() else {
+            self.messages.error_message = "No repository selected.".to_string();
+            return;
+        };
+
+        let full_path = repo_path.join(relative_path);
+        if !full_path.is_dir() {
+            self.messages.error_message =
+                format!("Submodule '{}' is not checked out locally.", relative_path);
+            return;
+        }
+
+        self.open_repo_with_notify(full_path, cx);
+    }
+
     // ------------------------------------------------------------------
     // Settings persistence
     // ------------------------------------------------------------------

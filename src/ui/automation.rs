@@ -379,6 +379,7 @@ struct AutomationSnapshot {
     diff_hide_whitespace_changes: bool,
     diff_show_side_by_side: bool,
     selected_diff_visible_line_count: Option<usize>,
+    selected_diff_is_submodule: bool,
     show_settings: bool,
     show_repo_selector: bool,
     show_branch_selector: bool,
@@ -556,6 +557,8 @@ enum AutomationNodeAction {
     SelectTab(SidebarTab),
     RevealSelectedBinaryInFinder,
     OpenSelectedBinaryWithDefaultProgram,
+    OpenSelectedSubmodule,
+    RevealSelectedSubmodule,
     ToggleSideBySideDiff,
     ToggleHideWhitespaceChanges,
     SetBranchFilter,
@@ -934,6 +937,7 @@ impl GitSparkApp {
                     self.nav.diff_options.hide_whitespace_changes,
                 )
             }),
+            selected_diff_is_submodule: self.selected_diff().is_some_and(|diff| diff.is_submodule),
             show_settings: self.nav.show_settings,
             show_repo_selector: self.nav.show_repo_selector,
             show_branch_selector: self.nav.show_branch_selector,
@@ -1146,7 +1150,9 @@ impl GitSparkApp {
             .visible(
                 self.nav.sidebar_tab == SidebarTab::Changes
                     && self.selection.selected_change.is_some()
-                    && self.selected_diff().is_some_and(|diff| !diff.is_binary),
+                    && self
+                        .selected_diff()
+                        .is_some_and(|diff| !diff.is_binary && !diff.is_submodule),
             )
             .selected(self.nav.diff_options.show_side_by_side),
             automation_node(
@@ -1159,7 +1165,7 @@ impl GitSparkApp {
             .visible(
                 self.nav.sidebar_tab == SidebarTab::Changes
                     && self.selection.selected_change.is_some()
-                    && self.selected_diff().is_some(),
+                    && self.selected_diff().is_some_and(|diff| !diff.is_submodule),
             )
             .selected(self.nav.diff_options.hide_whitespace_changes),
             automation_node(
@@ -1172,6 +1178,28 @@ impl GitSparkApp {
             .visible(
                 self.nav.sidebar_tab == SidebarTab::Changes
                     && self.selected_diff().is_some_and(|diff| diff.is_binary),
+            ),
+            automation_node(
+                "diff-submodule-open",
+                AutomationRole::Button,
+                Some("diff-submodule-open"),
+                Some("Open Submodule"),
+                Some(AutomationNodeAction::OpenSelectedSubmodule),
+            )
+            .visible(
+                self.nav.sidebar_tab == SidebarTab::Changes
+                    && self.selected_diff().is_some_and(|diff| diff.is_submodule),
+            ),
+            automation_node(
+                "diff-submodule-reveal",
+                AutomationRole::Button,
+                Some("diff-submodule-reveal"),
+                Some(crate::ui::labels::reveal_in_file_manager_menu()),
+                Some(AutomationNodeAction::RevealSelectedSubmodule),
+            )
+            .visible(
+                self.nav.sidebar_tab == SidebarTab::Changes
+                    && self.selected_diff().is_some_and(|diff| diff.is_submodule),
             ),
             automation_node(
                 "diff-binary-open-default",
@@ -2602,6 +2630,25 @@ impl GitSparkApp {
                 };
                 if !self.selected_diff().is_some_and(|diff| diff.is_binary) {
                     return AutomationResponse::failure("selected file is not binary");
+                }
+                self.reveal_in_finder(&path);
+                cx.notify();
+            }
+            AutomationNodeAction::OpenSelectedSubmodule => {
+                let Some(path) = self.selection.selected_change.clone() else {
+                    return AutomationResponse::failure("no selected submodule");
+                };
+                if !self.selected_diff().is_some_and(|diff| diff.is_submodule) {
+                    return AutomationResponse::failure("selected file is not a submodule");
+                }
+                self.open_submodule_repository(&path, cx);
+            }
+            AutomationNodeAction::RevealSelectedSubmodule => {
+                let Some(path) = self.selection.selected_change.clone() else {
+                    return AutomationResponse::failure("no selected submodule");
+                };
+                if !self.selected_diff().is_some_and(|diff| diff.is_submodule) {
+                    return AutomationResponse::failure("selected file is not a submodule");
                 }
                 self.reveal_in_finder(&path);
                 cx.notify();

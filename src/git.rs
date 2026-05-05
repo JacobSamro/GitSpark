@@ -282,12 +282,16 @@ impl GitClient {
                 Err(_) => "Binary file or deleted".to_string(),
             };
 
-            let is_binary = looks_binary_diff(&diff_output);
+            let submodule = submodule_diff_metadata(&diff_output);
+            let is_binary = !submodule.is_submodule && looks_binary_diff(&diff_output);
 
             diffs.push(DiffEntry {
                 path: file,
                 diff: diff_output,
                 is_binary,
+                is_submodule: submodule.is_submodule,
+                submodule_old_oid: submodule.old_oid,
+                submodule_new_oid: submodule.new_oid,
                 ..Default::default()
             });
         }
@@ -1941,6 +1945,7 @@ impl GitClient {
                         &change.path,
                     ],
                 )?;
+                let submodule = submodule_diff_metadata(&diff);
                 Ok(DiffEntry {
                     path: change.path.clone(),
                     diff: if diff.trim().is_empty() {
@@ -1949,6 +1954,9 @@ impl GitClient {
                         diff
                     },
                     is_binary: false,
+                    is_submodule: submodule.is_submodule,
+                    submodule_old_oid: submodule.old_oid,
+                    submodule_new_oid: submodule.new_oid,
                     original_diff: None,
                     file_contents: None,
                 })
@@ -2005,10 +2013,18 @@ impl GitClient {
                 .join("\n\n")
         };
 
-        let is_binary = looks_binary_diff(&combined)
-            || self
-                .path_is_binary(repo_path, &change.path)
+        let mut submodule = submodule_diff_metadata(&combined);
+        if !submodule.is_submodule {
+            submodule.is_submodule = self
+                .path_is_submodule(repo_path, &change.path)
                 .unwrap_or(false);
+        }
+
+        let is_binary = !submodule.is_submodule
+            && (looks_binary_diff(&combined)
+                || self
+                    .path_is_binary(repo_path, &change.path)
+                    .unwrap_or(false));
 
         let diff_text = if combined.trim().is_empty() {
             "No textual diff available".to_string()
@@ -2032,6 +2048,9 @@ impl GitClient {
             path: change.path.clone(),
             diff: diff_text,
             is_binary,
+            is_submodule: submodule.is_submodule,
+            submodule_old_oid: submodule.old_oid,
+            submodule_new_oid: submodule.new_oid,
             original_diff: None,
             file_contents,
         })
@@ -2084,6 +2103,14 @@ impl GitClient {
                 Err(error)
             }
         })
+    }
+
+    fn path_is_submodule(&self, repo_path: &Path, relative_path: &str) -> Result<bool> {
+        let output = self.run_git(repo_path, &["ls-files", "--stage", "--", relative_path])?;
+        Ok(output
+            .lines()
+            .filter_map(|line| line.split_whitespace().next())
+            .any(|mode| mode == "160000"))
     }
 
     fn path_is_binary(&self, repo_path: &Path, relative_path: &str) -> Result<bool> {
@@ -3567,6 +3594,31 @@ fn clean_git_ref_name(name: String) -> String {
 
 fn looks_binary_diff(diff: &str) -> bool {
     diff.contains("Binary files") || diff.contains("GIT binary patch")
+}
+
+#[derive(Default)]
+struct SubmoduleDiffMetadata {
+    is_submodule: bool,
+    old_oid: Option<String>,
+    new_oid: Option<String>,
+}
+
+fn submodule_diff_metadata(diff: &str) -> SubmoduleDiffMetadata {
+    let mut metadata = SubmoduleDiffMetadata::default();
+
+    for line in diff.lines() {
+        if line.contains("Subproject commit ") {
+            metadata.is_submodule = true;
+        }
+
+        if let Some(oid) = line.strip_prefix("-Subproject commit ") {
+            metadata.old_oid = Some(oid.trim().to_string());
+        } else if let Some(oid) = line.strip_prefix("+Subproject commit ") {
+            metadata.new_oid = Some(oid.trim().to_string());
+        }
+    }
+
+    metadata
 }
 
 fn format_relative_time(timestamp: SystemTime) -> String {

@@ -7,6 +7,7 @@ use crate::ui::app::{DiffExpandDirection, GitSparkApp};
 use gpui_component::scroll::ScrollableElement;
 
 use crate::ui::binary_diff::render_binary_diff_panel;
+use crate::ui::submodule_diff::render_submodule_diff_panel;
 use crate::ui::theme;
 use crate::ui::theme::z;
 
@@ -1084,10 +1085,20 @@ pub fn render_workspace(
     let Some(file_path) = selected_file else {
         return render_empty_state();
     };
-    let diff_options_view = view
-        .filter(|_| diff.is_some_and(|entry| !entry.is_binary && !entry.diff.trim().is_empty()));
+    let diff_options_view = view.filter(|_| {
+        diff.is_some_and(|entry| {
+            !entry.is_binary && !entry.is_submodule && !entry.diff.trim().is_empty()
+        })
+    });
 
     let diff_content: AnyElement = match diff {
+        Some(entry) if entry.is_submodule => div()
+            .w_full()
+            .flex_1()
+            .items_center()
+            .justify_center()
+            .child(render_submodule_diff_panel(file_path, entry, view))
+            .into_any_element(),
         Some(entry) if entry.is_binary => div()
             .w_full()
             .flex_1()
