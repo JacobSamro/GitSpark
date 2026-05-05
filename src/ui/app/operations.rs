@@ -1873,6 +1873,12 @@ impl GitSparkApp {
         }
     }
 
+    pub fn toggle_hide_whitespace_changes(&mut self, cx: &mut Context<Self>) {
+        self.nav.diff_options.hide_whitespace_changes =
+            !self.nav.diff_options.hide_whitespace_changes;
+        cx.notify();
+    }
+
     /// Re-fetch the diff for a single file in the working directory.
     pub fn refresh_file_diff(&mut self, file_path: String) {
         let Some(path) = self.repo_path().map(PathBuf::from) else {

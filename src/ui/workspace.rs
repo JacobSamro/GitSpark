@@ -950,8 +950,12 @@ fn add_hunk_context_menu(
 
 /// Render a dummy EOF row with expand-down. Entire row is clickable.
 /// Render the diff header bar showing the selected file path.
-fn render_diff_header(file_path: &str) -> Div {
-    h_flex()
+fn render_diff_header(
+    file_path: &str,
+    hide_whitespace_changes: bool,
+    view: Option<&Entity<GitSparkApp>>,
+) -> Div {
+    let mut header = h_flex()
         .w_full()
         .h(z(theme::DIFF_HEADER_HEIGHT))
         .flex_shrink_0()
@@ -962,10 +966,52 @@ fn render_diff_header(file_path: &str) -> Div {
         .items_center()
         .child(
             div()
+                .flex_1()
+                .min_w_0()
                 .text_color(theme::text_main())
                 .text_size(z(12.0))
                 .child(file_path.to_string()),
-        )
+        );
+
+    if let Some(vh) = view {
+        let vh_click = vh.clone();
+        header = header.child(
+            h_flex()
+                .id("diff-option-hide-whitespace")
+                .h(z(24.0))
+                .px(z(10.0))
+                .items_center()
+                .justify_center()
+                .rounded(z(theme::CORNER_RADIUS_SM))
+                .border_1()
+                .border_color(if hide_whitespace_changes {
+                    theme::accent()
+                } else {
+                    theme::border()
+                })
+                .bg(if hide_whitespace_changes {
+                    theme::toolbar_hover_bg()
+                } else {
+                    theme::surface_bg()
+                })
+                .text_size(z(11.0))
+                .text_color(if hide_whitespace_changes {
+                    theme::text_main()
+                } else {
+                    theme::text_muted()
+                })
+                .cursor_pointer()
+                .hover(|style| style.bg(theme::toolbar_hover_bg()))
+                .child("Hide whitespace")
+                .on_click(move |_evt, _win, cx| {
+                    vh_click.update(cx, |app, cx| {
+                        app.toggle_hide_whitespace_changes(cx);
+                    });
+                }),
+        );
+    }
+
+    header
 }
 
 /// Render the empty state when no file is selected.
@@ -992,6 +1038,7 @@ fn render_empty_state() -> Div {
 pub fn render_workspace(
     selected_file: Option<&str>,
     diff: Option<&DiffEntry>,
+    hide_whitespace_changes: bool,
     view: Option<&Entity<GitSparkApp>>,
 ) -> Div {
     let Some(file_path) = selected_file else {
@@ -1025,6 +1072,7 @@ pub fn render_workspace(
             .into_any_element(),
         Some(entry) => {
             let parsed = parse_diff(&entry.diff);
+            let visible_lines = visible_diff_lines(&parsed, hide_whitespace_changes);
 
             // Collect hunk boundaries for expansion type computation
             let hunk_bounds: Vec<HunkBounds> = entry
@@ -1037,7 +1085,7 @@ pub fn render_workspace(
 
             let mut scroll_content = div().flex().flex_col().w_full();
             let mut hunk_index = 0usize;
-            for line in &parsed {
+            for line in &visible_lines {
                 if matches!(line.kind, DiffLineKind::HunkHeader) {
                     let exp_type = expansion_types
                         .get(hunk_index)
@@ -1055,6 +1103,20 @@ pub fn render_workspace(
                 } else {
                     scroll_content = scroll_content.child(render_diff_line(line));
                 }
+            }
+
+            if meaningful_diff_line_count(&visible_lines) == 0 && hide_whitespace_changes {
+                scroll_content = scroll_content.child(
+                    h_flex()
+                        .id("diff-whitespace-hidden-empty")
+                        .w_full()
+                        .h(z(theme::DIFF_ROW_HEIGHT * 2.0))
+                        .items_center()
+                        .justify_center()
+                        .text_size(z(12.0))
+                        .text_color(theme::text_muted())
+                        .child("Only whitespace changes hidden."),
+                );
             }
 
             // Expand-down row after the last hunk if file has more lines
@@ -1139,6 +1201,60 @@ pub fn render_workspace(
         .min_h_0()
         .items_start()
         .bg(theme::bg())
-        .child(render_diff_header(file_path))
+        .child(render_diff_header(file_path, hide_whitespace_changes, view))
         .child(diff_content)
+}
+
+pub fn visible_diff_line_count(diff_text: &str, hide_whitespace_changes: bool) -> usize {
+    let parsed = parse_diff(diff_text);
+    meaningful_diff_line_count(&visible_diff_lines(&parsed, hide_whitespace_changes))
+}
+
+fn visible_diff_lines(lines: &[DiffLine], hide_whitespace_changes: bool) -> Vec<DiffLine> {
+    if !hide_whitespace_changes {
+        return lines.to_vec();
+    }
+
+    let mut result = Vec::with_capacity(lines.len());
+    let mut index = 0usize;
+    while index < lines.len() {
+        let line = &lines[index];
+        if matches!(line.kind, DiffLineKind::Deleted) {
+            let del_start = index;
+            while index < lines.len() && matches!(lines[index].kind, DiffLineKind::Deleted) {
+                index += 1;
+            }
+            let add_start = index;
+            while index < lines.len() && matches!(lines[index].kind, DiffLineKind::Added) {
+                index += 1;
+            }
+            let del_block = &lines[del_start..add_start];
+            let add_block = &lines[add_start..index];
+            if del_block.len() == add_block.len()
+                && del_block.iter().zip(add_block.iter()).all(|(old, new)| {
+                    whitespace_normalized(&old.content) == whitespace_normalized(&new.content)
+                })
+            {
+                continue;
+            }
+            result.extend_from_slice(del_block);
+            result.extend_from_slice(add_block);
+        } else {
+            result.push(line.clone());
+            index += 1;
+        }
+    }
+
+    result
+}
+
+fn meaningful_diff_line_count(lines: &[DiffLine]) -> usize {
+    lines
+        .iter()
+        .filter(|line| !matches!(line.kind, DiffLineKind::HunkHeader))
+        .count()
+}
+
+fn whitespace_normalized(value: &str) -> String {
+    value.chars().filter(|ch| !ch.is_whitespace()).collect()
 }

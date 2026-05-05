@@ -2,6 +2,7 @@ import { GitSparkAutomation } from "./gitspark.mjs";
 import { testAutomationContracts } from "./suites/automation-contracts.mjs";
 import { testCompareEdgeCases } from "./suites/compare-edge-cases.mjs";
 import { testConflictFlows } from "./suites/conflict-flows.mjs";
+import { testDiffOptions } from "./suites/diff-options.mjs";
 import { testFileOperationEdgeCases } from "./suites/file-edge-cases.mjs";
 import { testGithubEnterpriseUrlBehavior } from "./suites/github-url-behavior.mjs";
 import { testKeyboardFocusPaths } from "./suites/keyboard-focus.mjs";
@@ -76,6 +77,7 @@ try {
   await testChangeFileActions(app, fixture);
   await testUndoLastCommit(app, fixture);
   await testConflictFlows(app, fixture);
+  await testDiffOptions(app);
   await testCompareEdgeCases(app);
   await testCreateCloneRepositoryWorkflows(app);
   await testGithubEnterpriseUrlBehavior(app, fixture);

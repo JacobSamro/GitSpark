@@ -376,6 +376,8 @@ struct AutomationSnapshot {
     selected_change: Option<String>,
     selected_commit: Option<String>,
     selected_commit_file: Option<String>,
+    diff_hide_whitespace_changes: bool,
+    selected_diff_visible_line_count: Option<usize>,
     show_settings: bool,
     show_repo_selector: bool,
     show_branch_selector: bool,
@@ -551,6 +553,7 @@ enum AutomationNodeAction {
     SelectChange(String),
     SelectCommit(String),
     SelectTab(SidebarTab),
+    ToggleHideWhitespaceChanges,
     SetBranchFilter,
     SetCommitBody,
     SetCommitSummary,
@@ -919,6 +922,13 @@ impl GitSparkApp {
             selected_change: self.selection.selected_change.clone(),
             selected_commit: self.selection.selected_commit.clone(),
             selected_commit_file: self.selection.selected_commit_file.clone(),
+            diff_hide_whitespace_changes: self.nav.diff_options.hide_whitespace_changes,
+            selected_diff_visible_line_count: self.selected_diff().map(|diff| {
+                crate::ui::workspace::visible_diff_line_count(
+                    &diff.diff,
+                    self.nav.diff_options.hide_whitespace_changes,
+                )
+            }),
             show_settings: self.nav.show_settings,
             show_repo_selector: self.nav.show_repo_selector,
             show_branch_selector: self.nav.show_branch_selector,
@@ -1121,6 +1131,19 @@ impl GitSparkApp {
                 Some(AutomationNodeAction::SetBranchFilter),
             )
             .visible(self.nav.show_branch_selector),
+            automation_node(
+                "diff-option-hide-whitespace",
+                AutomationRole::Button,
+                Some("diff-option-hide-whitespace"),
+                Some("Hide whitespace"),
+                Some(AutomationNodeAction::ToggleHideWhitespaceChanges),
+            )
+            .visible(
+                self.nav.sidebar_tab == SidebarTab::Changes
+                    && self.selection.selected_change.is_some()
+                    && self.selected_diff().is_some(),
+            )
+            .selected(self.nav.diff_options.hide_whitespace_changes),
             automation_node(
                 "status-message",
                 AutomationRole::Status,
@@ -2522,6 +2545,9 @@ impl GitSparkApp {
             }
             AutomationNodeAction::SelectCommit(oid) => {
                 self.handle_sidebar_action(SidebarAction::SelectCommit(oid), cx);
+            }
+            AutomationNodeAction::ToggleHideWhitespaceChanges => {
+                self.toggle_hide_whitespace_changes(cx);
             }
             AutomationNodeAction::SelectTab(tab) => {
                 self.nav.sidebar_tab = tab;

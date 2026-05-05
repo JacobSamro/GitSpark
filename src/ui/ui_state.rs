@@ -107,6 +107,7 @@ pub struct NavState {
     pub settings_section: SettingsSection,
     pub branch_selector_mode: BranchSelectorMode,
     pub active_dialog: ActiveDialog,
+    pub diff_options: DiffViewOptions,
     /// Undo commit: Some((summary, timestamp)) after a successful commit
     pub undo_commit: Option<(String, std::time::Instant)>,
 }
@@ -155,9 +156,15 @@ impl Default for NavState {
             settings_section: SettingsSection::Git,
             branch_selector_mode: BranchSelectorMode::Switch,
             active_dialog: ActiveDialog::None,
+            diff_options: DiffViewOptions::default(),
             undo_commit: None,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DiffViewOptions {
+    pub hide_whitespace_changes: bool,
 }
 
 #[derive(Clone, Copy, Default)]

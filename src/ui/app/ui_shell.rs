@@ -3332,6 +3332,7 @@ impl GitSparkApp {
                                 crate::ui::workspace::render_workspace(
                                     selected_file,
                                     selected_diff,
+                                    self.nav.diff_options.hide_whitespace_changes,
                                     None, // History diffs are read-only, no expand controls
                                 ),
                             )),
@@ -3345,6 +3346,7 @@ impl GitSparkApp {
                     resizable_panel().child(crate::ui::workspace::render_workspace(
                         selected_file,
                         selected_diff,
+                        self.nav.diff_options.hide_whitespace_changes,
                         Some(&view),
                     )),
                 )
