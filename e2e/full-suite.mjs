@@ -1,4 +1,5 @@
 import { GitSparkAutomation } from "./gitspark.mjs";
+import { testConflictFlows } from "./suites/conflict-flows.mjs";
 import {
   testChangeFileActions,
   testCommitFlow,
@@ -58,6 +59,7 @@ try {
   await testDiscardConfirmationDialog(app, fixture);
   await testChangeFileActions(app, fixture);
   await testUndoLastCommit(app, fixture);
+  await testConflictFlows(app, fixture);
 } finally {
   await app.close();
   await aiServer.close();
