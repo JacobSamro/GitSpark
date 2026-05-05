@@ -603,6 +603,7 @@ enum AutomationNodeAction {
     SetGitConfigScope(bool),
     TogglePullRebase,
     ChangeAiProvider(AiProvider),
+    ShowOpenRouterModelPicker,
     SelectOpenRouterModel(String),
     GenerateAiCommit,
     UndoLastCommit,
@@ -2855,6 +2856,11 @@ impl GitSparkApp {
             AutomationNodeAction::ChangeAiProvider(provider) => {
                 self.handle_settings_action(SettingsAction::ChangeProvider(provider), cx);
             }
+            AutomationNodeAction::ShowOpenRouterModelPicker => {
+                self.settings_modal.show_model_picker = true;
+                self.ensure_openrouter_models(cx);
+                cx.notify();
+            }
             AutomationNodeAction::SelectOpenRouterModel(model_id) => {
                 self.handle_settings_action(SettingsAction::SelectOpenRouterModel(model_id), cx);
             }
@@ -3576,7 +3582,7 @@ fn openrouter_model_picker_node(app: &GitSparkApp) -> AutomationNode {
         AutomationRole::Button,
         Some("settings-ai-model"),
         Some(selected_model_name),
-        None::<AutomationNodeAction>,
+        Some(AutomationNodeAction::ShowOpenRouterModelPicker),
     );
 
     if app.settings_modal.show_model_picker {

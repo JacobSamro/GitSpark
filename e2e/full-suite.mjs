@@ -37,6 +37,7 @@ import {
 } from "./suites/settings-ai.mjs";
 import { testSettingsScopeRegressions } from "./suites/settings-scope-regressions.mjs";
 import { testStashEdgeCases } from "./suites/stash-edge-cases.mjs";
+import { testVisualContracts } from "./suites/visual-contracts.mjs";
 import { makeFreshSampleRepo } from "./support/fixtures.mjs";
 import { startMockAiServer } from "./support/mock-ai.mjs";
 
@@ -81,6 +82,7 @@ try {
   await testFileOperationEdgeCases(app);
   await testStashEdgeCases(app);
   await testKeyboardFocusPaths(app, fixture);
+  await testVisualContracts(app);
   await testAutomationContracts(app);
   await testPerformanceScaleSmoke(app);
   await testMenuStateWithRepository(app);
