@@ -2371,32 +2371,54 @@ fn normalize_github_remote_url(remote_url: &str) -> Option<String> {
         return None;
     }
 
-    let repository = remote_url
-        .strip_prefix("https://github.com/")
-        .or_else(|| remote_url.strip_prefix("http://github.com/"))
-        .map(str::to_string)
+    let (host, repository) = remote_url
+        .strip_prefix("https://")
+        .or_else(|| remote_url.strip_prefix("http://"))
+        .and_then(split_remote_host_and_path)
         .or_else(|| {
             remote_url
-                .strip_prefix("git@github.com:")
-                .map(str::to_string)
+                .strip_prefix("git://")
+                .and_then(split_remote_host_and_path)
         })
         .or_else(|| {
             remote_url
-                .strip_prefix("ssh://git@github.com/")
-                .map(str::to_string)
+                .strip_prefix("ssh://")
+                .and_then(split_remote_host_and_path)
+                .map(|(host, repository)| (strip_remote_port(host), repository))
         })
         .or_else(|| {
-            remote_url
-                .strip_prefix("git://github.com/")
-                .map(str::to_string)
+            let (host, repository) = remote_url.split_once(':')?;
+            if host.contains('/') {
+                return None;
+            }
+            Some((strip_remote_user(host), repository))
         })?;
 
-    let repository = repository.trim_end_matches(".git").trim_matches('/');
-    if repository.is_empty() {
+    let host = strip_remote_user(host).trim();
+    let repository = repository
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(repository)
+        .trim_end_matches(".git")
+        .trim_matches('/');
+    if host.is_empty() || repository.is_empty() {
         None
     } else {
-        Some(format!("https://github.com/{repository}"))
+        Some(format!("https://{host}/{repository}"))
     }
+}
+
+fn split_remote_host_and_path(remote_url: &str) -> Option<(&str, &str)> {
+    let (host, path) = remote_url.split_once('/')?;
+    Some((strip_remote_user(host), path))
+}
+
+fn strip_remote_user(host: &str) -> &str {
+    host.rsplit_once('@').map(|(_, host)| host).unwrap_or(host)
+}
+
+fn strip_remote_port(host: &str) -> &str {
+    host.split_once(':').map(|(host, _)| host).unwrap_or(host)
 }
 
 fn encode_github_path(path: &str) -> String {
@@ -2534,6 +2556,22 @@ mod tests {
                 "ssh://git@github.com/JacobSamro/GitSpark.git",
                 "https://github.com/JacobSamro/GitSpark",
             ),
+            (
+                "https://github.enterprise.local/JacobSamro/GitSpark.git",
+                "https://github.enterprise.local/JacobSamro/GitSpark",
+            ),
+            (
+                "https://github.enterprise.local:8443/JacobSamro/GitSpark.git",
+                "https://github.enterprise.local:8443/JacobSamro/GitSpark",
+            ),
+            (
+                "git@github.enterprise.local:JacobSamro/GitSpark.git",
+                "https://github.enterprise.local/JacobSamro/GitSpark",
+            ),
+            (
+                "ssh://git@github.enterprise.local:2222/JacobSamro/GitSpark.git",
+                "https://github.enterprise.local/JacobSamro/GitSpark",
+            ),
         ];
 
         for (input, expected) in cases {
@@ -2585,6 +2623,59 @@ mod tests {
 
         let _ = fs::remove_dir_all(repo);
         let _ = fs::remove_dir_all(remote);
+    }
+
+    #[test]
+    fn builds_github_urls_against_enterprise_hosts() {
+        let repo = temp_repo("github-enterprise-urls");
+        fs::write(repo.join("README.md"), "one\n").unwrap();
+        fs::create_dir_all(repo.join("src")).unwrap();
+        fs::write(repo.join("src/file name.rs"), "fn main() {}\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(
+            &repo,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "git@github.enterprise.local:owner/repo.git",
+            ],
+        );
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+        let oid = run_git(&repo, &["rev-parse", "HEAD"]).trim().to_string();
+
+        let git = GitClient::new();
+        assert_eq!(
+            git.github_repository_url(&repo).unwrap().as_deref(),
+            Some("https://github.enterprise.local/owner/repo")
+        );
+        assert_eq!(
+            git.github_commit_url(&repo, &oid).unwrap().as_deref(),
+            Some(format!("https://github.enterprise.local/owner/repo/commit/{oid}").as_str())
+        );
+        assert_eq!(
+            git.github_branch_url(&repo, "feature/test branch")
+                .unwrap()
+                .as_deref(),
+            Some("https://github.enterprise.local/owner/repo/tree/feature%2Ftest%20branch")
+        );
+        assert_eq!(
+            git.github_compare_branch_url(&repo, "feature/test branch")
+                .unwrap()
+                .as_deref(),
+            Some("https://github.enterprise.local/owner/repo/compare/feature%2Ftest%20branch")
+        );
+        assert_eq!(
+            git.github_file_url(&repo, "src/file name.rs")
+                .unwrap()
+                .as_deref(),
+            Some("https://github.enterprise.local/owner/repo/blob/main/src/file%20name.rs")
+        );
+
+        let _ = fs::remove_dir_all(repo);
     }
 
     #[test]
