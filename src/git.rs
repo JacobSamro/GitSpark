@@ -2401,11 +2401,16 @@ fn normalize_github_remote_url(remote_url: &str) -> Option<String> {
         .unwrap_or(repository)
         .trim_end_matches(".git")
         .trim_matches('/');
-    if host.is_empty() || repository.is_empty() {
+    if host.is_empty() || repository.is_empty() || !is_github_remote_host(host) {
         None
     } else {
         Some(format!("https://{host}/{repository}"))
     }
+}
+
+fn is_github_remote_host(host: &str) -> bool {
+    let host = strip_remote_port(host).to_ascii_lowercase();
+    host == "github.com" || host.starts_with("github.") || host.contains(".github.")
 }
 
 fn split_remote_host_and_path(remote_url: &str) -> Option<(&str, &str)> {
@@ -2579,6 +2584,18 @@ mod tests {
                 normalize_github_remote_url(input).as_deref(),
                 Some(expected)
             );
+        }
+    }
+
+    #[test]
+    fn rejects_non_github_remote_hosts_for_github_urls() {
+        for input in [
+            "https://gitlab.com/owner/repo.git",
+            "git@gitlab.com:owner/repo.git",
+            "https://bitbucket.org/owner/repo.git",
+            "ssh://git@git.internal.local/owner/repo.git",
+        ] {
+            assert_eq!(normalize_github_remote_url(input), None);
         }
     }
 
