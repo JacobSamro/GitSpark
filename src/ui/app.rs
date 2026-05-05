@@ -16,7 +16,7 @@ use gpui_component::{Disableable, Icon, IconName, Sizable, h_flex, v_flex};
 use rfd::FileDialog;
 
 use crate::ai::AiClient;
-use crate::git::GitClient;
+use crate::git::{GitClient, safe_repository_directory_name};
 use crate::models::{
     AiProvider, AppSettings, BranchInfo, ChangeEntry, CommitInfo, CommitSuggestion, DiffEntry,
     GitIdentity, INVALID_GIT_AUTHOR_NAME_MESSAGE, RemoteModelOption, RepoSnapshot,
@@ -67,6 +67,15 @@ pub(crate) enum AppEvent {
     RepoOperationCompleted(Result<RepoSnapshot, String>, String, String),
     CommitDiffCopied(String, Result<String, String>),
     Automation(automation::AutomationRequest),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RepositoryField {
+    CreateName,
+    CreateDescription,
+    CreatePath,
+    CloneUrl,
+    ClonePath,
 }
 
 /// Direction for diff context expansion.
@@ -212,6 +221,18 @@ pub struct GitSparkApp {
     pub(crate) publish_name_selection: Option<usize>,
     pub(crate) publish_description_cursor: usize,
     pub(crate) publish_description_selection: Option<usize>,
+    pub(crate) repository_focus: FocusHandle,
+    pub(crate) repository_active_field: Option<RepositoryField>,
+    pub(crate) repository_create_name_cursor: usize,
+    pub(crate) repository_create_name_selection: Option<usize>,
+    pub(crate) repository_create_description_cursor: usize,
+    pub(crate) repository_create_description_selection: Option<usize>,
+    pub(crate) repository_create_path_cursor: usize,
+    pub(crate) repository_create_path_selection: Option<usize>,
+    pub(crate) repository_clone_url_cursor: usize,
+    pub(crate) repository_clone_url_selection: Option<usize>,
+    pub(crate) repository_clone_path_cursor: usize,
+    pub(crate) repository_clone_path_selection: Option<usize>,
     pub(crate) settings_modal: SettingsModalState,
     // Zoom
     rem_size: f32,
@@ -266,6 +287,18 @@ impl GitSparkApp {
             publish_name_selection: None,
             publish_description_cursor: 0,
             publish_description_selection: None,
+            repository_focus: cx.focus_handle(),
+            repository_active_field: None,
+            repository_create_name_cursor: 0,
+            repository_create_name_selection: None,
+            repository_create_description_cursor: 0,
+            repository_create_description_selection: None,
+            repository_create_path_cursor: 0,
+            repository_create_path_selection: None,
+            repository_clone_url_cursor: 0,
+            repository_clone_url_selection: None,
+            repository_clone_path_cursor: 0,
+            repository_clone_path_selection: None,
             settings_modal: SettingsModalState::new(cx),
             rem_size: DEFAULT_REM_SIZE,
             render_count: 0,
@@ -541,6 +574,7 @@ impl GitSparkApp {
                 }
                 AppEvent::FileDiffRefreshed(_, Err(_)) => {}
                 AppEvent::RepoOperationCompleted(Ok(snapshot), _action_label, success_message) => {
+                    self.add_recent_repo(snapshot.repo.path.clone());
                     self.adopt_snapshot(snapshot);
                     self.messages.status_message = success_message;
                     self.messages.error_message.clear();
@@ -746,6 +780,157 @@ impl GitSparkApp {
             let res = git.open_repo(path).map_err(|e| e.to_string());
             let _ = tx.send(AppEvent::RepoLoaded(res));
         });
+    }
+
+    fn default_repository_parent_path(&self) -> String {
+        self.repo_path()
+            .and_then(|path| path.parent().map(Path::to_path_buf))
+            .or_else(dirs::document_dir)
+            .or_else(dirs::home_dir)
+            .unwrap_or_else(|| PathBuf::from("."))
+            .to_string_lossy()
+            .to_string()
+    }
+
+    fn open_create_repository_dialog(&mut self, cx: &mut Context<Self>) {
+        if self.repo.create_repo_path.trim().is_empty() {
+            self.repo.create_repo_path = self.default_repository_parent_path();
+        }
+        self.repository_active_field = Some(RepositoryField::CreateName);
+        self.repository_create_name_cursor = self.repo.create_repo_name.len();
+        self.repository_create_name_selection = None;
+        self.nav.active_dialog = ActiveDialog::CreateRepository;
+        self.nav.show_repo_selector = false;
+        self.nav.show_branch_selector = false;
+        self.nav.show_network_dropdown = false;
+        self.messages.error_message.clear();
+        cx.notify();
+    }
+
+    fn open_clone_repository_dialog(&mut self, cx: &mut Context<Self>) {
+        self.repository_active_field = Some(RepositoryField::CloneUrl);
+        self.repository_clone_url_cursor = self.repo.clone_repo_url.len();
+        self.repository_clone_url_selection = None;
+        self.nav.active_dialog = ActiveDialog::CloneRepository;
+        self.nav.show_repo_selector = false;
+        self.nav.show_branch_selector = false;
+        self.nav.show_network_dropdown = false;
+        self.messages.error_message.clear();
+        cx.notify();
+    }
+
+    pub(crate) fn create_repository_validation_message(&self) -> Option<String> {
+        if self.repo.create_repo_name.trim().is_empty() {
+            return Some("Type a repository name.".to_string());
+        }
+        if safe_repository_directory_name(&self.repo.create_repo_name).is_empty() {
+            return Some(format!(
+                "{} is not a valid repository name.",
+                self.repo.create_repo_name.trim()
+            ));
+        }
+        if self.repo.create_repo_path.trim().is_empty() {
+            return Some("Choose a local path.".to_string());
+        }
+        let destination = PathBuf::from(self.repo.create_repo_path.trim())
+            .join(safe_repository_directory_name(&self.repo.create_repo_name));
+        if destination.exists() {
+            if !destination.is_dir() {
+                return Some(format!("{} is not a directory.", destination.display()));
+            }
+            if std::fs::read_dir(&destination)
+                .map(|mut entries| entries.next().is_some())
+                .unwrap_or(true)
+            {
+                return Some(format!(
+                    "{} already exists and is not empty.",
+                    destination.display()
+                ));
+            }
+        }
+        None
+    }
+
+    pub(crate) fn clone_repository_validation_message(&self) -> Option<String> {
+        if self.repo.clone_repo_url.trim().is_empty() {
+            return Some("Type a repository URL.".to_string());
+        }
+        if self.repo.clone_repo_path.trim().is_empty() {
+            return Some("Choose a local path.".to_string());
+        }
+        let destination = PathBuf::from(self.repo.clone_repo_path.trim());
+        if destination.exists() {
+            if !destination.is_dir() {
+                return Some(format!("{} is not a directory.", destination.display()));
+            }
+            if std::fs::read_dir(&destination)
+                .map(|mut entries| entries.next().is_some())
+                .unwrap_or(true)
+            {
+                return Some(format!(
+                    "{} already exists and is not empty.",
+                    destination.display()
+                ));
+            }
+        }
+        None
+    }
+
+    pub(crate) fn create_repository(&mut self, cx: &mut Context<Self>) {
+        if let Some(message) = self.create_repository_validation_message() {
+            self.messages.error_message = message;
+            cx.notify();
+            return;
+        }
+        let parent_path = PathBuf::from(self.repo.create_repo_path.trim());
+        let name = self.repo.create_repo_name.trim().to_string();
+        let description = self.repo.create_repo_description.trim().to_string();
+
+        self.nav.active_dialog = ActiveDialog::None;
+        self.messages.status_message = format!("Creating repository '{name}'...");
+        self.messages.error_message.clear();
+        self.stop_repo_watch();
+        let tx = self.event_tx.clone();
+        let git = GitClient::new();
+        thread::spawn(move || {
+            let res = git
+                .create_repository(&parent_path, &name, &description)
+                .map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::RepoOperationCompleted(
+                res,
+                "Create repository".to_string(),
+                format!("Created repository '{name}'."),
+            ));
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn clone_repository(&mut self, cx: &mut Context<Self>) {
+        if let Some(message) = self.clone_repository_validation_message() {
+            self.messages.error_message = message;
+            cx.notify();
+            return;
+        }
+        let url = self.repo.clone_repo_url.trim().to_string();
+        let destination = PathBuf::from(self.repo.clone_repo_path.trim());
+
+        self.nav.active_dialog = ActiveDialog::None;
+        self.messages.status_message = format!("Cloning '{url}'...");
+        self.messages.error_message.clear();
+        self.stop_repo_watch();
+        let tx = self.event_tx.clone();
+        let git = GitClient::new();
+        thread::spawn(move || {
+            let res = git
+                .clone_repository(&url, &destination)
+                .map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::RepoOperationCompleted(
+                res,
+                "Clone repository".to_string(),
+                format!("Cloned repository from '{url}'."),
+            ));
+        });
+        cx.notify();
     }
 
     pub fn refresh_repo(&mut self, cx: &mut Context<Self>) {
@@ -2907,6 +3092,8 @@ impl Render for GitSparkApp {
 
         root = root
             .on_action(cx.listener(Self::handle_menu_open_repository))
+            .on_action(cx.listener(Self::handle_menu_new_repository))
+            .on_action(cx.listener(Self::handle_menu_clone_repository))
             .on_action(cx.listener(Self::handle_menu_show_settings))
             .on_action(cx.listener(Self::handle_menu_show_changes))
             .on_action(cx.listener(Self::handle_menu_show_history))
@@ -2941,6 +3128,14 @@ impl Render for GitSparkApp {
 impl GitSparkApp {
     pub fn menu_open_repository(&mut self, cx: &mut Context<Self>) {
         self.open_repo_dialog(cx);
+    }
+
+    pub fn menu_new_repository(&mut self, cx: &mut Context<Self>) {
+        self.open_create_repository_dialog(cx);
+    }
+
+    pub fn menu_clone_repository(&mut self, cx: &mut Context<Self>) {
+        self.open_clone_repository_dialog(cx);
     }
 
     pub fn menu_show_settings(&mut self, cx: &mut Context<Self>) {
@@ -3328,6 +3523,24 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         self.open_repo_dialog(cx);
+    }
+
+    fn handle_menu_new_repository(
+        &mut self,
+        _: &crate::MenuNewRepository,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_create_repository_dialog(cx);
+    }
+
+    fn handle_menu_clone_repository(
+        &mut self,
+        _: &crate::MenuCloneRepository,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_clone_repository_dialog(cx);
     }
 
     fn handle_menu_show_settings(
@@ -4284,6 +4497,203 @@ impl GitSparkApp {
         let handled = crate::ui::text_field::handle_text_key(value, &mut state, false, event, cx);
         *cursor = state.cursor;
         *selection = state.selection;
+        if handled {
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn repository_field_value(&self, field: RepositoryField) -> &str {
+        match field {
+            RepositoryField::CreateName => self.repo.create_repo_name.as_str(),
+            RepositoryField::CreateDescription => self.repo.create_repo_description.as_str(),
+            RepositoryField::CreatePath => self.repo.create_repo_path.as_str(),
+            RepositoryField::CloneUrl => self.repo.clone_repo_url.as_str(),
+            RepositoryField::ClonePath => self.repo.clone_repo_path.as_str(),
+        }
+    }
+
+    pub(crate) fn repository_field_cursor(&self, field: RepositoryField) -> usize {
+        match field {
+            RepositoryField::CreateName => self.repository_create_name_cursor,
+            RepositoryField::CreateDescription => self.repository_create_description_cursor,
+            RepositoryField::CreatePath => self.repository_create_path_cursor,
+            RepositoryField::CloneUrl => self.repository_clone_url_cursor,
+            RepositoryField::ClonePath => self.repository_clone_path_cursor,
+        }
+    }
+
+    pub(crate) fn repository_field_selection(&self, field: RepositoryField) -> Option<usize> {
+        match field {
+            RepositoryField::CreateName => self.repository_create_name_selection,
+            RepositoryField::CreateDescription => self.repository_create_description_selection,
+            RepositoryField::CreatePath => self.repository_create_path_selection,
+            RepositoryField::CloneUrl => self.repository_clone_url_selection,
+            RepositoryField::ClonePath => self.repository_clone_path_selection,
+        }
+    }
+
+    pub(crate) fn repository_field_focused(&self, field: RepositoryField, window: &Window) -> bool {
+        self.repository_focus.is_focused(window) && self.repository_active_field == Some(field)
+    }
+
+    pub(crate) fn activate_repository_field(
+        &mut self,
+        field: RepositoryField,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.repository_active_field = Some(field);
+        let cursor = self.repository_field_value(field).len();
+        self.set_repository_field_cursor(field, cursor);
+        self.set_repository_field_selection(field, None);
+        window.focus(&self.repository_focus);
+        cx.notify();
+    }
+
+    fn set_repository_field_cursor(&mut self, field: RepositoryField, cursor: usize) {
+        match field {
+            RepositoryField::CreateName => self.repository_create_name_cursor = cursor,
+            RepositoryField::CreateDescription => {
+                self.repository_create_description_cursor = cursor
+            }
+            RepositoryField::CreatePath => self.repository_create_path_cursor = cursor,
+            RepositoryField::CloneUrl => self.repository_clone_url_cursor = cursor,
+            RepositoryField::ClonePath => self.repository_clone_path_cursor = cursor,
+        }
+    }
+
+    fn set_repository_field_selection(&mut self, field: RepositoryField, selection: Option<usize>) {
+        match field {
+            RepositoryField::CreateName => self.repository_create_name_selection = selection,
+            RepositoryField::CreateDescription => {
+                self.repository_create_description_selection = selection
+            }
+            RepositoryField::CreatePath => self.repository_create_path_selection = selection,
+            RepositoryField::CloneUrl => self.repository_clone_url_selection = selection,
+            RepositoryField::ClonePath => self.repository_clone_path_selection = selection,
+        }
+    }
+
+    pub(crate) fn handle_repository_key(
+        &mut self,
+        event: &KeyDownEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if event.keystroke.key == "escape" {
+            self.nav.active_dialog = ActiveDialog::None;
+            cx.notify();
+            return;
+        }
+        if event.keystroke.key == "tab" {
+            let next_field = match self.nav.active_dialog {
+                ActiveDialog::CreateRepository => match self.repository_active_field {
+                    Some(RepositoryField::CreateName) => RepositoryField::CreateDescription,
+                    Some(RepositoryField::CreateDescription) => RepositoryField::CreatePath,
+                    _ => RepositoryField::CreateName,
+                },
+                ActiveDialog::CloneRepository => match self.repository_active_field {
+                    Some(RepositoryField::CloneUrl) => RepositoryField::ClonePath,
+                    _ => RepositoryField::CloneUrl,
+                },
+                _ => return,
+            };
+            self.repository_active_field = Some(next_field);
+            self.set_repository_field_cursor(
+                next_field,
+                self.repository_field_value(next_field).len(),
+            );
+            self.set_repository_field_selection(next_field, None);
+            cx.notify();
+            return;
+        }
+
+        let Some(field) = self.repository_active_field else {
+            return;
+        };
+
+        let handled = match field {
+            RepositoryField::CreateName => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.repository_create_name_cursor,
+                    selection: self.repository_create_name_selection,
+                };
+                let handled = crate::ui::text_field::handle_text_key(
+                    &mut self.repo.create_repo_name,
+                    &mut state,
+                    false,
+                    event,
+                    cx,
+                );
+                self.repository_create_name_cursor = state.cursor;
+                self.repository_create_name_selection = state.selection;
+                handled
+            }
+            RepositoryField::CreateDescription => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.repository_create_description_cursor,
+                    selection: self.repository_create_description_selection,
+                };
+                let handled = crate::ui::text_field::handle_text_key(
+                    &mut self.repo.create_repo_description,
+                    &mut state,
+                    false,
+                    event,
+                    cx,
+                );
+                self.repository_create_description_cursor = state.cursor;
+                self.repository_create_description_selection = state.selection;
+                handled
+            }
+            RepositoryField::CreatePath => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.repository_create_path_cursor,
+                    selection: self.repository_create_path_selection,
+                };
+                let handled = crate::ui::text_field::handle_text_key(
+                    &mut self.repo.create_repo_path,
+                    &mut state,
+                    false,
+                    event,
+                    cx,
+                );
+                self.repository_create_path_cursor = state.cursor;
+                self.repository_create_path_selection = state.selection;
+                handled
+            }
+            RepositoryField::CloneUrl => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.repository_clone_url_cursor,
+                    selection: self.repository_clone_url_selection,
+                };
+                let handled = crate::ui::text_field::handle_text_key(
+                    &mut self.repo.clone_repo_url,
+                    &mut state,
+                    false,
+                    event,
+                    cx,
+                );
+                self.repository_clone_url_cursor = state.cursor;
+                self.repository_clone_url_selection = state.selection;
+                handled
+            }
+            RepositoryField::ClonePath => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.repository_clone_path_cursor,
+                    selection: self.repository_clone_path_selection,
+                };
+                let handled = crate::ui::text_field::handle_text_key(
+                    &mut self.repo.clone_repo_path,
+                    &mut state,
+                    false,
+                    event,
+                    cx,
+                );
+                self.repository_clone_path_cursor = state.cursor;
+                self.repository_clone_path_selection = state.selection;
+                handled
+            }
+        };
         if handled {
             cx.notify();
         }
@@ -5637,6 +6047,8 @@ impl GitSparkApp {
             ActiveDialog::DeleteBranch { .. } => (440.0, 220.0),
             ActiveDialog::CreateTag { .. } => (400.0, 230.0),
             ActiveDialog::ResetToCommit { .. } => (500.0, 240.0),
+            ActiveDialog::CreateRepository => (560.0, 390.0),
+            ActiveDialog::CloneRepository => (560.0, 330.0),
             ActiveDialog::DiscardChanges { .. } => (420.0, 230.0),
             ActiveDialog::StashAndSwitch { .. } => (576.0, 360.0),
             ActiveDialog::StashChanges => (500.0, 360.0),
@@ -6271,6 +6683,12 @@ impl GitSparkApp {
             }
             ActiveDialog::ResetToCommit { target_oid } => {
                 crate::ui::reset_dialog::render_reset_to_commit_dialog(target_oid, cx)
+            }
+            ActiveDialog::CreateRepository => {
+                crate::ui::repository_dialog::render_create_repository_dialog(self, window, cx)
+            }
+            ActiveDialog::CloneRepository => {
+                crate::ui::repository_dialog::render_clone_repository_dialog(self, window, cx)
             }
             ActiveDialog::DiscardChanges { paths } => {
                 let file_list = if paths.len() <= 10 {

@@ -17,6 +17,8 @@ actions!(
     gitspark_menu,
     [
         MenuOpenRepository,
+        MenuNewRepository,
+        MenuCloneRepository,
         MenuShowSettings,
         MenuShowChanges,
         MenuShowHistory,
@@ -73,6 +75,18 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         let view = view.clone();
         cx.on_action(move |_: &MenuOpenRepository, cx| {
             let _ = view.update(cx, |app, cx| app.menu_open_repository(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuNewRepository, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_new_repository(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuCloneRepository, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_clone_repository(cx));
         });
     }
     {
@@ -238,6 +252,9 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         KeyBinding::new("cmd-g", MenuGoToSummary, None),
         KeyBinding::new("ctrl-h", MenuShowStashedChanges, None),
         KeyBinding::new("cmd-p", MenuPush, None),
+        KeyBinding::new("cmd-n", MenuNewRepository, None),
+        KeyBinding::new("cmd-o", MenuOpenRepository, None),
+        KeyBinding::new("cmd-shift-o", MenuCloneRepository, None),
         KeyBinding::new("cmd-shift-p", MenuPull, None),
         KeyBinding::new("cmd-shift-t", MenuFetch, None),
         KeyBinding::new("cmd-shift-a", MenuOpenExternalEditor, None),
@@ -271,10 +288,12 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         },
         Menu {
             name: "File".into(),
-            items: vec![MenuItem::action(
-                "Add Local Repository…",
-                MenuOpenRepository,
-            )],
+            items: vec![
+                MenuItem::action("New Repository…", MenuNewRepository),
+                MenuItem::separator(),
+                MenuItem::action("Add Local Repository…", MenuOpenRepository),
+                MenuItem::action("Clone Repository…", MenuCloneRepository),
+            ],
         },
         Menu {
             name: "Edit".into(),

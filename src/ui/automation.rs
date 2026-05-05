@@ -470,6 +470,13 @@ enum AutomationNodeAction {
     RestoreStash,
     ShowDiscardStash,
     ConfirmDiscardStash,
+    SetCreateRepositoryName,
+    SetCreateRepositoryDescription,
+    SetCreateRepositoryPath,
+    ConfirmCreateRepository,
+    SetCloneRepositoryUrl,
+    SetCloneRepositoryPath,
+    ConfirmCloneRepository,
     SetPublishName,
     SetPublishDescription,
     TogglePublishPrivate,
@@ -988,6 +995,101 @@ impl GitSparkApp {
                         None::<AutomationNodeAction>,
                     ));
                 }
+            }
+        }
+
+        if matches!(self.nav.active_dialog, ActiveDialog::CreateRepository) {
+            let validation = self.create_repository_validation_message();
+            children.extend([
+                automation_node(
+                    "create-repository-name-input",
+                    AutomationRole::Textbox,
+                    Some("create-repository-name-input"),
+                    Some(self.repo.create_repo_name.as_str()),
+                    Some(AutomationNodeAction::SetCreateRepositoryName),
+                ),
+                automation_node(
+                    "create-repository-description-input",
+                    AutomationRole::Textbox,
+                    Some("create-repository-description-input"),
+                    Some(self.repo.create_repo_description.as_str()),
+                    Some(AutomationNodeAction::SetCreateRepositoryDescription),
+                ),
+                automation_node(
+                    "create-repository-path-input",
+                    AutomationRole::Textbox,
+                    Some("create-repository-path-input"),
+                    Some(self.repo.create_repo_path.as_str()),
+                    Some(AutomationNodeAction::SetCreateRepositoryPath),
+                ),
+                automation_node(
+                    "create-repository-cancel",
+                    AutomationRole::Button,
+                    Some("create-repository-cancel"),
+                    Some("Cancel"),
+                    Some(AutomationNodeAction::CancelDialog),
+                ),
+                automation_node(
+                    "create-repository-confirm",
+                    AutomationRole::Button,
+                    Some("create-repository-confirm"),
+                    Some("Create Repository"),
+                    Some(AutomationNodeAction::ConfirmCreateRepository),
+                )
+                .enabled(validation.is_none()),
+            ]);
+            if let Some(message) = validation {
+                children.push(automation_node(
+                    "create-repository-validation-message",
+                    AutomationRole::Status,
+                    Some("create-repository-validation-message"),
+                    Some(message.as_str()),
+                    None::<AutomationNodeAction>,
+                ));
+            }
+        }
+
+        if matches!(self.nav.active_dialog, ActiveDialog::CloneRepository) {
+            let validation = self.clone_repository_validation_message();
+            children.extend([
+                automation_node(
+                    "clone-repository-url-input",
+                    AutomationRole::Textbox,
+                    Some("clone-repository-url-input"),
+                    Some(self.repo.clone_repo_url.as_str()),
+                    Some(AutomationNodeAction::SetCloneRepositoryUrl),
+                ),
+                automation_node(
+                    "clone-repository-path-input",
+                    AutomationRole::Textbox,
+                    Some("clone-repository-path-input"),
+                    Some(self.repo.clone_repo_path.as_str()),
+                    Some(AutomationNodeAction::SetCloneRepositoryPath),
+                ),
+                automation_node(
+                    "clone-repository-cancel",
+                    AutomationRole::Button,
+                    Some("clone-repository-cancel"),
+                    Some("Cancel"),
+                    Some(AutomationNodeAction::CancelDialog),
+                ),
+                automation_node(
+                    "clone-repository-confirm",
+                    AutomationRole::Button,
+                    Some("clone-repository-confirm"),
+                    Some("Clone"),
+                    Some(AutomationNodeAction::ConfirmCloneRepository),
+                )
+                .enabled(validation.is_none()),
+            ]);
+            if let Some(message) = validation {
+                children.push(automation_node(
+                    "clone-repository-validation-message",
+                    AutomationRole::Status,
+                    Some("clone-repository-validation-message"),
+                    Some(message.as_str()),
+                    None::<AutomationNodeAction>,
+                ));
             }
         }
 
@@ -1879,6 +1981,54 @@ impl GitSparkApp {
                     return AutomationResponse::failure("discard stash dialog is not active");
                 }
                 self.discard_stash(cx);
+            }
+            AutomationNodeAction::SetCreateRepositoryName => {
+                self.repo.create_repo_name = fill_text.unwrap_or_default();
+                self.repository_create_name_cursor = self.repo.create_repo_name.len();
+                self.repository_create_name_selection = None;
+                cx.notify();
+            }
+            AutomationNodeAction::SetCreateRepositoryDescription => {
+                self.repo.create_repo_description = fill_text.unwrap_or_default();
+                self.repository_create_description_cursor = self.repo.create_repo_description.len();
+                self.repository_create_description_selection = None;
+                cx.notify();
+            }
+            AutomationNodeAction::SetCreateRepositoryPath => {
+                self.repo.create_repo_path = fill_text.unwrap_or_default();
+                self.repository_create_path_cursor = self.repo.create_repo_path.len();
+                self.repository_create_path_selection = None;
+                cx.notify();
+            }
+            AutomationNodeAction::ConfirmCreateRepository => {
+                if !matches!(self.nav.active_dialog, ActiveDialog::CreateRepository) {
+                    return AutomationResponse::failure("create repository dialog is not active");
+                }
+                if self.create_repository_validation_message().is_some() {
+                    return AutomationResponse::failure("create repository form is invalid");
+                }
+                self.create_repository(cx);
+            }
+            AutomationNodeAction::SetCloneRepositoryUrl => {
+                self.repo.clone_repo_url = fill_text.unwrap_or_default();
+                self.repository_clone_url_cursor = self.repo.clone_repo_url.len();
+                self.repository_clone_url_selection = None;
+                cx.notify();
+            }
+            AutomationNodeAction::SetCloneRepositoryPath => {
+                self.repo.clone_repo_path = fill_text.unwrap_or_default();
+                self.repository_clone_path_cursor = self.repo.clone_repo_path.len();
+                self.repository_clone_path_selection = None;
+                cx.notify();
+            }
+            AutomationNodeAction::ConfirmCloneRepository => {
+                if !matches!(self.nav.active_dialog, ActiveDialog::CloneRepository) {
+                    return AutomationResponse::failure("clone repository dialog is not active");
+                }
+                if self.clone_repository_validation_message().is_some() {
+                    return AutomationResponse::failure("clone repository form is invalid");
+                }
+                self.clone_repository(cx);
             }
             AutomationNodeAction::SetPublishName => {
                 self.network.publish_name = fill_text.unwrap_or_default();
@@ -3040,6 +3190,8 @@ fn active_dialog_name(dialog: &ActiveDialog) -> &'static str {
         ActiveDialog::DeleteBranch { .. } => "delete_branch",
         ActiveDialog::CreateTag { .. } => "create_tag",
         ActiveDialog::ResetToCommit { .. } => "reset_to_commit",
+        ActiveDialog::CreateRepository => "create_repository",
+        ActiveDialog::CloneRepository => "clone_repository",
         ActiveDialog::RestoreStash => "restore_stash",
         ActiveDialog::DiscardStash => "discard_stash",
         ActiveDialog::PublishRepository => "publish_repository",

@@ -35,6 +35,104 @@ impl GitClient {
         Self
     }
 
+    pub fn create_repository(
+        &self,
+        parent_path: &Path,
+        name: &str,
+        description: &str,
+    ) -> Result<RepoSnapshot> {
+        let parent_path = parent_path.to_path_buf();
+        if !parent_path.exists() {
+            fs::create_dir_all(&parent_path).with_context(|| {
+                format!(
+                    "failed to create parent directory '{}'",
+                    parent_path.display()
+                )
+            })?;
+        }
+        if !parent_path.is_dir() {
+            bail!("'{}' is not a directory", parent_path.display());
+        }
+
+        let name = name.trim();
+        if name.is_empty() {
+            bail!("repository name is required");
+        }
+        let directory_name = safe_repository_directory_name(name);
+        if directory_name.is_empty() {
+            bail!("repository name is not valid");
+        }
+        let repo_path = parent_path.join(directory_name);
+        if repo_path.exists() {
+            let mut entries = fs::read_dir(&repo_path)
+                .with_context(|| format!("failed to inspect '{}'", repo_path.display()))?;
+            if entries.next().is_some() {
+                bail!("'{}' already exists and is not empty", repo_path.display());
+            }
+        } else {
+            fs::create_dir_all(&repo_path)
+                .with_context(|| format!("failed to create '{}'", repo_path.display()))?;
+        }
+
+        self.run_git(&repo_path, &["init"])
+            .with_context(|| format!("failed to initialize '{}'", repo_path.display()))?;
+        let readme_path = repo_path.join("README.md");
+        if !readme_path.exists() {
+            fs::write(&readme_path, format!("# {name}\n")).with_context(|| {
+                format!("failed to write README at '{}'", readme_path.display())
+            })?;
+        }
+        let description = description.trim();
+        if !description.is_empty() {
+            let git_description_path = repo_path.join(".git").join("description");
+            fs::write(&git_description_path, format!("{description}\n")).with_context(|| {
+                format!(
+                    "failed to write Git description at '{}'",
+                    git_description_path.display()
+                )
+            })?;
+        }
+
+        self.snapshot(&repo_path)
+    }
+
+    pub fn clone_repository(&self, url: &str, destination_path: &Path) -> Result<RepoSnapshot> {
+        let url = url.trim();
+        if url.is_empty() {
+            bail!("repository URL is required");
+        }
+        let destination_path = destination_path.to_path_buf();
+        if destination_path.exists() {
+            if !destination_path.is_dir() {
+                bail!("'{}' is not a directory", destination_path.display());
+            }
+            let mut entries = fs::read_dir(&destination_path)
+                .with_context(|| format!("failed to inspect '{}'", destination_path.display()))?;
+            if entries.next().is_some() {
+                bail!(
+                    "'{}' already exists and is not empty",
+                    destination_path.display()
+                );
+            }
+        } else if let Some(parent) = destination_path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create '{}'", parent.display()))?;
+        }
+
+        let parent = destination_path
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        let destination = destination_path.to_string_lossy().to_string();
+        run_git_command(
+            parent,
+            &["clone", "--recursive", "--", url, destination.as_str()],
+        )
+        .with_context(|| format!("failed to clone '{url}'"))?;
+
+        self.snapshot(&destination_path)
+    }
+
     pub fn get_commit_diff(&self, repo_path: &Path, oid: &str) -> Result<Vec<DiffEntry>> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let oid = self.verify_commit_oid(&repo_path, oid)?;
@@ -1663,6 +1761,22 @@ fn parse_ref_tags(refs: &str) -> Vec<String> {
         .collect()
 }
 
+pub(crate) fn safe_repository_directory_name(name: &str) -> String {
+    name.trim()
+        .chars()
+        .map(|ch| {
+            if ch <= '\u{1f}' || matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+            {
+                '-'
+            } else {
+                ch
+            }
+        })
+        .collect::<String>()
+        .trim_matches(|ch| matches!(ch, ' ' | '.'))
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use std::process::Command;
@@ -1674,6 +1788,7 @@ mod tests {
     use super::{
         GITSPARK_STASH_MESSAGE_PREFIX, GitClient, encode_github_path, fill_missing_author_identity,
         normalize_github_remote_url, parse_author_ident, parse_ref_tags,
+        safe_repository_directory_name,
     };
 
     #[test]
@@ -1707,6 +1822,76 @@ mod tests {
             encode_github_path("dashboards/platform/page one.rs"),
             "dashboards/platform/page%20one.rs"
         );
+    }
+
+    #[test]
+    fn sanitizes_repository_directory_names() {
+        assert_eq!(safe_repository_directory_name("My Repo"), "My Repo");
+        assert_eq!(safe_repository_directory_name(" bad/repo? "), "bad-repo-");
+        assert_eq!(safe_repository_directory_name("..."), "");
+    }
+
+    #[test]
+    fn creates_local_repository_with_readme_and_description() {
+        let parent = temp_repo("create-parent");
+        let snapshot = GitClient::new()
+            .create_repository(&parent, "New Repo", "Local test repository")
+            .unwrap();
+        let repo = parent.join("New Repo");
+
+        assert_eq!(snapshot.repo.path, repo);
+        assert_eq!(snapshot.repo.name, "New Repo");
+        assert!(repo.join(".git").is_dir());
+        assert_eq!(
+            fs::read_to_string(repo.join("README.md")).unwrap(),
+            "# New Repo\n"
+        );
+        assert_eq!(
+            fs::read_to_string(repo.join(".git").join("description")).unwrap(),
+            "Local test repository\n"
+        );
+
+        let err = GitClient::new()
+            .create_repository(&parent, "New Repo", "")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("already exists and is not empty"));
+
+        let _ = fs::remove_dir_all(parent);
+    }
+
+    #[test]
+    fn clones_local_repository_into_empty_destination() {
+        let source = temp_repo("clone-source");
+        fs::write(source.join("README.md"), "source\n").unwrap();
+        run_git(&source, &["init", "-b", "main"]);
+        run_git(&source, &["config", "user.name", "GitSpark Test"]);
+        run_git(&source, &["config", "user.email", "test@gitspark.local"]);
+        run_git(&source, &["add", "--all"]);
+        run_git(&source, &["commit", "-m", "initial"]);
+
+        let parent = temp_repo("clone-parent");
+        let destination = parent.join("cloned");
+        let snapshot = GitClient::new()
+            .clone_repository(&source.to_string_lossy(), &destination)
+            .unwrap();
+
+        assert_eq!(snapshot.repo.path, destination);
+        assert_eq!(snapshot.repo.name, "cloned");
+        assert_eq!(
+            fs::read_to_string(destination.join("README.md")).unwrap(),
+            "source\n"
+        );
+        assert_eq!(snapshot.history.len(), 1);
+
+        let err = GitClient::new()
+            .clone_repository(&source.to_string_lossy(), &destination)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("already exists and is not empty"));
+
+        let _ = fs::remove_dir_all(source);
+        let _ = fs::remove_dir_all(parent);
     }
 
     #[test]
