@@ -58,9 +58,13 @@ export async function testSettingsPersistence(app, fixture) {
       ) &&
       snapshot.test_tree?.children?.some(
         (node) => node.id === "settings-git-user-email" && node.enabled === false,
+      ) &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "settings-git-default-branch" && node.enabled === true,
       ),
     { timeoutMs: 10_000 },
   );
+  await app.getByTestId("settings-git-default-branch").fill("trunk");
   await app.getByTestId("settings-save-git").click();
   await app.waitForSnapshot(
     (snapshot) =>
@@ -115,6 +119,10 @@ export async function testSettingsPersistence(app, fixture) {
   assert(
     settingsToml.includes('system_prompt = "Return a precise JSON commit suggestion."'),
     "AI system prompt persisted to isolated settings file",
+  );
+  assert(
+    settingsToml.includes('default_branch = "trunk"'),
+    "default branch persisted independently of repository identity scope",
   );
 
   await app.getByTestId("button-settings").click();

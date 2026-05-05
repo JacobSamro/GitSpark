@@ -1509,10 +1509,8 @@ impl GitSparkApp {
                         return;
                     }
 
-                    if self.repo.use_local_identity {
-                        self.settings.default_branch =
-                            self.repo.local_identity.default_branch.clone();
-                    }
+                    self.settings.default_branch =
+                        self.active_git_settings_identity().default_branch.clone();
                     self.persist_settings();
                     self.load_identity(&path);
                     self.messages.status_message = "Git config saved.".to_string();
@@ -4335,9 +4333,7 @@ impl GitSparkApp {
             && !self.repo.use_local_identity
             && matches!(
                 field,
-                SettingsField::GitUserName
-                    | SettingsField::GitUserEmail
-                    | SettingsField::GitDefaultBranch
+                SettingsField::GitUserName | SettingsField::GitUserEmail
             )
     }
 
