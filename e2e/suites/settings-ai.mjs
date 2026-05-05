@@ -82,7 +82,8 @@ export async function testSettingsPersistence(app, fixture) {
       ) &&
       snapshot.test_tree?.children?.some(
         (node) => node.id === "settings-git-default-branch" && node.enabled === true,
-      ),
+      ) &&
+      snapshot.settings_scope === "repository",
     { timeoutMs: 10_000 },
   );
   await app.getByTestId("settings-git-default-branch").fill("trunk");
@@ -94,6 +95,23 @@ export async function testSettingsPersistence(app, fixture) {
       snapshot.error_message === "",
     { timeoutMs: 10_000 },
   );
+  if (
+    (await gitOptionalOutput(fixture.workRepo, ["config", "--local", "--get", "user.name"])) !==
+    null
+  ) {
+    await app.command({ command: "show_repository_settings", show: true });
+    await app.getByTestId("settings-tab-git").click();
+    await app.getByTestId("settings-git-scope-global").click();
+    await app.getByTestId("settings-git-default-branch").fill("trunk");
+    await app.getByTestId("settings-save-git").click();
+    await app.waitForSnapshot(
+      (snapshot) =>
+        snapshot.show_settings === false &&
+        snapshot.status_message === "Git config saved." &&
+        snapshot.error_message === "",
+      { timeoutMs: 10_000 },
+    );
+  }
   assert(
     (await gitOptionalOutput(fixture.workRepo, ["config", "--local", "--get", "user.name"])) ===
       null,
@@ -217,6 +235,30 @@ export async function testSettingsPersistence(app, fixture) {
   assert(
     settingsToml.includes('default_branch = "trunk"'),
     "default branch persisted independently of repository identity scope",
+  );
+
+  await app.command({ command: "show_global_settings", show: true });
+  await app.getByTestId("settings-tab-git").click();
+  await app.getByTestId("settings-git-default-branch").fill("main");
+  await app.getByTestId("settings-save-git").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.show_settings === false &&
+      snapshot.status_message === "Git config saved." &&
+      snapshot.error_message === "",
+    { timeoutMs: 10_000 },
+  );
+  await gitRunWithEnv(
+    fixture.workRepo,
+    ["config", "--global", "init.defaultBranch", "main"],
+    { GIT_CONFIG_GLOBAL: fixture.globalGitConfig },
+  );
+  await app.openRepo(fixture.workRepo);
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.repo?.path === fixture.workRepo &&
+      snapshot.git_default_branch === "main",
+    { timeoutMs: 10_000 },
   );
 
   await app.waitForSnapshot((snapshot) => snapshot.show_settings === false);

@@ -2590,8 +2590,13 @@ impl GitSparkApp {
             .map(|change| change.path.clone())
             .collect();
         self.close_history_context_menu();
-        self.repo.comparison = previous_comparison
-            .filter(|_| previous_branch.as_deref() == Some(current_branch.as_str()));
+        self.repo.comparison = previous_comparison.filter(|comparison| {
+            previous_branch.as_deref() == Some(current_branch.as_str())
+                && snapshot
+                    .branches
+                    .iter()
+                    .any(|branch| branch.name == comparison.target_branch)
+        });
         self.repo.operation = self
             .git
             .operation_state(&snapshot.repo.path)

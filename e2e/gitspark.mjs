@@ -220,6 +220,22 @@ export class Locator {
     });
   }
 
+  async typeText(text) {
+    return this.app.command({
+      command: "type_text",
+      selector: this.selector,
+      text,
+    });
+  }
+
+  async press(...keys) {
+    return this.app.command({
+      command: "press_keys",
+      selector: this.selector,
+      keys,
+    });
+  }
+
   async isVisible() {
     const nodes = await this.all();
     return nodes.some((node) => node.visible);

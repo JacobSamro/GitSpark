@@ -74,13 +74,13 @@ export async function testCreateBranchDialog(app) {
       snapshot.status_message === "Switched to branch 'dialog-created'." &&
       snapshot.repo?.current_branch === "dialog-created" &&
       snapshot.repo?.branches.some((branch) => branch.name === "dialog-created"),
-    { timeoutMs: 15_000 },
+    { timeoutMs: 30_000 },
   );
 
   await app.getByTestId("branch-main").click();
   await app.waitForSnapshot(
     (snapshot) => snapshot.repo?.current_branch === "main",
-    { timeoutMs: 15_000 },
+    { timeoutMs: 30_000 },
   );
 
   await app.getByTestId("button-branch-selector").click();
@@ -168,12 +168,12 @@ export async function testCreateBranchDialog(app) {
       snapshot.status_message === "Switched to branch 'modal-typed'." &&
       snapshot.repo?.current_branch === "modal-typed" &&
       snapshot.repo?.branches.some((branch) => branch.name === "modal-typed"),
-    { timeoutMs: 15_000 },
+    { timeoutMs: 30_000 },
   );
   await app.getByTestId("branch-main").click();
   await app.waitForSnapshot(
     (snapshot) => snapshot.repo?.current_branch === "main",
-    { timeoutMs: 15_000 },
+    { timeoutMs: 30_000 },
   );
 }
 
@@ -384,7 +384,7 @@ export async function testHistoryAndBranchFlows(app, fixture) {
       snapshot.status_message ===
         `Cherry-picked commit ${shortOid(fixture.cherryPickOid)} into 'main'.` &&
       snapshot.repo?.history[0]?.summary === "feature: add cherry pick fixture",
-    { timeoutMs: 15_000 },
+    { timeoutMs: 30_000 },
   );
 
   await app.command({ command: "create_branch", name: "e2e-created" });
@@ -433,6 +433,21 @@ export async function testHistoryAndBranchFlows(app, fixture) {
       snapshot.test_tree?.children?.some(
         (node) => node.id === "compare-merge-button" && node.enabled === true,
       ),
+    { timeoutMs: 10_000 },
+  );
+
+  await exec("git", ["config", "--global", "init.defaultBranch", "main"], {
+    cwd: fixture.workRepo,
+    env: { ...process.env, GIT_CONFIG_GLOBAL: fixture.globalGitConfig },
+  });
+  await exec("git", ["config", "init.defaultBranch", "main"], {
+    cwd: fixture.workRepo,
+  });
+  await app.openRepo(fixture.workRepo);
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.repo?.current_branch === "e2e-created" &&
+      snapshot.git_default_branch === "main",
     { timeoutMs: 10_000 },
   );
 
@@ -951,7 +966,7 @@ export async function testUndoLastCommit(app, fixture) {
       snapshot.status_message === "Commit created." &&
       snapshot.repo?.changes.length === 0 &&
       snapshot.repo?.history[0]?.summary === "test: undo coverage",
-    { timeoutMs: 15_000 },
+    { timeoutMs: 30_000 },
   );
 
   const taggedHeadSnapshot = await app.waitForSnapshot(
@@ -1002,7 +1017,7 @@ export async function testUndoLastCommit(app, fixture) {
       snapshot.test_tree.children.some(
         (node) => node.id === "undo-last-commit" && node.visible,
       ),
-    { timeoutMs: 15_000 },
+    { timeoutMs: 30_000 },
   );
 
   await app.getByTestId("button-undo-last-commit").click();

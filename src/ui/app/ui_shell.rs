@@ -241,7 +241,7 @@ impl Render for GitSparkApp {
 }
 
 impl GitSparkApp {
-    fn native_menu_availability(&self) -> crate::MenuAvailability {
+    pub(crate) fn native_menu_availability(&self) -> crate::MenuAvailability {
         crate::MenuAvailability {
             has_repository: self.menu_has_repository(),
             fetch: self.menu_can_fetch(),
@@ -1327,6 +1327,29 @@ impl GitSparkApp {
         (left, right)
     }
 
+    pub(crate) fn prepare_commit_summary_field_for_automation(&mut self) {
+        self.summary_cursor = self.commit.summary.len();
+        self.summary_selection = None;
+    }
+
+    pub(crate) fn prepare_commit_body_field_for_automation(&mut self) {
+        self.description_cursor = self.commit.body.len();
+        self.description_selection = None;
+    }
+
+    pub(crate) fn prepare_branch_filter_field_for_automation(&mut self) {
+        self.branch_filter_cursor = self.filters.branch_filter_text.len();
+    }
+
+    pub(crate) fn prepare_repo_filter_field_for_automation(&mut self) {
+        self.repo_filter_cursor = self.filters.repo_filter_text.len();
+    }
+
+    pub(crate) fn prepare_new_branch_field_for_automation(&mut self) {
+        self.new_branch_cursor = self.repo.new_branch_name.len();
+        self.new_branch_selection = None;
+    }
+
     // ------------------------------------------------------------------
     // Sidebar
     // ------------------------------------------------------------------
@@ -1426,6 +1449,14 @@ impl GitSparkApp {
         &mut self,
         event: &KeyDownEvent,
         _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_summary_key_for_automation(event, cx);
+    }
+
+    pub(crate) fn apply_summary_key_for_automation(
+        &mut self,
+        event: &KeyDownEvent,
         cx: &mut Context<Self>,
     ) {
         let ks = &event.keystroke;
@@ -1571,6 +1602,14 @@ impl GitSparkApp {
         &mut self,
         event: &KeyDownEvent,
         _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_description_key_for_automation(event, cx);
+    }
+
+    pub(crate) fn apply_description_key_for_automation(
+        &mut self,
+        event: &KeyDownEvent,
         cx: &mut Context<Self>,
     ) {
         let ks = &event.keystroke;
@@ -1724,6 +1763,14 @@ impl GitSparkApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.apply_branch_filter_key_for_automation(event, cx);
+    }
+
+    pub(crate) fn apply_branch_filter_key_for_automation(
+        &mut self,
+        event: &KeyDownEvent,
+        cx: &mut Context<Self>,
+    ) {
         let ks = &event.keystroke;
         if ks.modifiers.secondary() {
             if ks.key.as_str() == "v" {
@@ -1798,6 +1845,14 @@ impl GitSparkApp {
         &mut self,
         event: &KeyDownEvent,
         _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_new_branch_key_for_automation(event, cx);
+    }
+
+    pub(crate) fn apply_new_branch_key_for_automation(
+        &mut self,
+        event: &KeyDownEvent,
         cx: &mut Context<Self>,
     ) {
         let mut state = crate::ui::text_field::TextFieldState {
@@ -1913,12 +1968,16 @@ impl GitSparkApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.activate_repository_field_for_automation(field);
+        window.focus(&self.repository_focus);
+        cx.notify();
+    }
+
+    pub(crate) fn activate_repository_field_for_automation(&mut self, field: RepositoryField) {
         self.repository_active_field = Some(field);
         let cursor = self.repository_field_value(field).len();
         self.set_repository_field_cursor(field, cursor);
         self.set_repository_field_selection(field, None);
-        window.focus(&self.repository_focus);
-        cx.notify();
     }
 
     fn set_repository_field_cursor(&mut self, field: RepositoryField, cursor: usize) {
@@ -1955,6 +2014,14 @@ impl GitSparkApp {
         &mut self,
         event: &KeyDownEvent,
         _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_repository_key_for_automation(event, cx);
+    }
+
+    pub(crate) fn apply_repository_key_for_automation(
+        &mut self,
+        event: &KeyDownEvent,
         cx: &mut Context<Self>,
     ) {
         if event.keystroke.key == "escape" {
@@ -2125,6 +2192,14 @@ impl GitSparkApp {
         &mut self,
         event: &KeyDownEvent,
         _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_repo_filter_key_for_automation(event, cx);
+    }
+
+    pub(crate) fn apply_repo_filter_key_for_automation(
+        &mut self,
+        event: &KeyDownEvent,
         cx: &mut Context<Self>,
     ) {
         let ks = &event.keystroke;
@@ -2375,17 +2450,29 @@ impl GitSparkApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.activate_settings_field_for_automation(field);
+        window.focus(&self.settings_modal.focus);
+        cx.notify();
+    }
+
+    pub(crate) fn activate_settings_field_for_automation(&mut self, field: SettingsField) {
         let cursor = self.settings_field_value(field).len();
         self.settings_modal.active_field = Some(field);
         self.set_settings_field_cursor(field, cursor);
-        window.focus(&self.settings_modal.focus);
-        cx.notify();
     }
 
     pub(crate) fn handle_settings_key(
         &mut self,
         event: &KeyDownEvent,
         _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_settings_key_for_automation(event, cx);
+    }
+
+    pub(crate) fn apply_settings_key_for_automation(
+        &mut self,
+        event: &KeyDownEvent,
         cx: &mut Context<Self>,
     ) {
         if event.keystroke.key == "escape" {

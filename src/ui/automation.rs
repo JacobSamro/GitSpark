@@ -9,7 +9,7 @@ use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use gpui::Context;
+use gpui::{Context, KeyDownEvent, Keystroke, Modifiers};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -62,6 +62,14 @@ pub(crate) enum AutomationCommand {
         selector: AutomationSelector,
         text: String,
     },
+    TypeText {
+        selector: AutomationSelector,
+        text: String,
+    },
+    PressKeys {
+        selector: AutomationSelector,
+        keys: Vec<String>,
+    },
     OpenRepo {
         path: PathBuf,
     },
@@ -93,6 +101,8 @@ pub(crate) enum AutomationCommand {
     ShowRepositorySettings {
         show: bool,
     },
+    ShowCreateRepository,
+    ShowCloneRepository,
     ShowRepoSelector {
         show: bool,
     },
@@ -394,6 +404,38 @@ struct AutomationSnapshot {
     repo_remote_name: Option<String>,
     repo_remote_url: String,
     repo_ignored_files_text: String,
+    menu_availability: AutomationMenuAvailability,
+}
+
+#[derive(Serialize)]
+struct AutomationMenuAvailability {
+    has_repository: bool,
+    fetch: bool,
+    pull: bool,
+    push: bool,
+    publish_repository: bool,
+    view_repository_on_github: bool,
+    create_branch: bool,
+    modify_current_branch: bool,
+    compare_on_github: bool,
+    change_worktree: bool,
+}
+
+impl From<crate::MenuAvailability> for AutomationMenuAvailability {
+    fn from(availability: crate::MenuAvailability) -> Self {
+        Self {
+            has_repository: availability.has_repository,
+            fetch: availability.fetch,
+            pull: availability.pull,
+            push: availability.push,
+            publish_repository: availability.publish_repository,
+            view_repository_on_github: availability.view_repository_on_github,
+            create_branch: availability.create_branch,
+            modify_current_branch: availability.modify_current_branch,
+            compare_on_github: availability.compare_on_github,
+            change_worktree: availability.change_worktree,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -541,6 +583,10 @@ enum AutomationNodeAction {
     SetCreateRepositoryDescription,
     SetCreateRepositoryPath,
     SetCreateRepositoryBranch,
+    SetCreateRepositoryGitignore(String),
+    SetCreateRepositoryLicense(String),
+    ToggleCreateRepositoryReadme,
+    ToggleCreateRepositoryInitialCommit,
     ConfirmCreateRepository,
     SetCloneRepositoryUrl,
     SetCloneRepositoryName,
@@ -555,6 +601,7 @@ enum AutomationNodeAction {
     SaveGitSettings,
     SaveAiSettings,
     SetGitConfigScope(bool),
+    TogglePullRebase,
     ChangeAiProvider(AiProvider),
     SelectOpenRouterModel(String),
     GenerateAiCommit,
@@ -615,6 +662,12 @@ impl GitSparkApp {
             AutomationCommand::Click { selector } => self.click_automation_node(selector, cx),
             AutomationCommand::Fill { selector, text } => {
                 self.fill_automation_node(selector, text, cx)
+            }
+            AutomationCommand::TypeText { selector, text } => {
+                self.type_text_automation_node(selector, text, cx)
+            }
+            AutomationCommand::PressKeys { selector, keys } => {
+                self.press_keys_automation_node(selector, keys, cx)
             }
             AutomationCommand::OpenRepo { path } => {
                 self.handle_sidebar_action(SidebarAction::OpenRepo(path), cx);
@@ -684,6 +737,14 @@ impl GitSparkApp {
                     self.close_settings_modal();
                 }
                 cx.notify();
+                AutomationResponse::success(self.automation_snapshot())
+            }
+            AutomationCommand::ShowCreateRepository => {
+                self.open_create_repository_dialog(cx);
+                AutomationResponse::success(self.automation_snapshot())
+            }
+            AutomationCommand::ShowCloneRepository => {
+                self.open_clone_repository_dialog(cx);
                 AutomationResponse::success(self.automation_snapshot())
             }
             AutomationCommand::ShowRepoSelector { show } => {
@@ -934,6 +995,7 @@ impl GitSparkApp {
             repo_remote_name: self.repo.remote_name.clone(),
             repo_remote_url: self.repo.remote_url.clone(),
             repo_ignored_files_text: self.repo.ignored_files_text.clone(),
+            menu_availability: self.native_menu_availability().into(),
         }
     }
 
@@ -1297,11 +1359,91 @@ impl GitSparkApp {
                     Some(AutomationNodeAction::SetCreateRepositoryBranch),
                 ),
                 automation_node(
+                    "create-repository-gitignore-none",
+                    AutomationRole::Button,
+                    Some("create-repository-gitignore-none"),
+                    Some("Git ignore: None"),
+                    Some(AutomationNodeAction::SetCreateRepositoryGitignore(
+                        String::new(),
+                    )),
+                )
+                .selected(self.repo.create_repo_gitignore_template.is_empty()),
+                automation_node(
+                    "create-repository-gitignore-rust",
+                    AutomationRole::Button,
+                    Some("create-repository-gitignore-rust"),
+                    Some("Git ignore: Rust"),
+                    Some(AutomationNodeAction::SetCreateRepositoryGitignore(
+                        "Rust".to_string(),
+                    )),
+                )
+                .selected(self.repo.create_repo_gitignore_template == "Rust"),
+                automation_node(
+                    "create-repository-gitignore-node",
+                    AutomationRole::Button,
+                    Some("create-repository-gitignore-node"),
+                    Some("Git ignore: Node"),
+                    Some(AutomationNodeAction::SetCreateRepositoryGitignore(
+                        "Node".to_string(),
+                    )),
+                )
+                .selected(self.repo.create_repo_gitignore_template == "Node"),
+                automation_node(
+                    "create-repository-gitignore-python",
+                    AutomationRole::Button,
+                    Some("create-repository-gitignore-python"),
+                    Some("Git ignore: Python"),
+                    Some(AutomationNodeAction::SetCreateRepositoryGitignore(
+                        "Python".to_string(),
+                    )),
+                )
+                .selected(self.repo.create_repo_gitignore_template == "Python"),
+                automation_node(
+                    "create-repository-license-none",
+                    AutomationRole::Button,
+                    Some("create-repository-license-none"),
+                    Some("License: None"),
+                    Some(AutomationNodeAction::SetCreateRepositoryLicense(
+                        String::new(),
+                    )),
+                )
+                .selected(self.repo.create_repo_license_template.is_empty()),
+                automation_node(
+                    "create-repository-license-mit",
+                    AutomationRole::Button,
+                    Some("create-repository-license-mit"),
+                    Some("License: MIT"),
+                    Some(AutomationNodeAction::SetCreateRepositoryLicense(
+                        "MIT".to_string(),
+                    )),
+                )
+                .selected(self.repo.create_repo_license_template == "MIT"),
+                automation_node(
+                    "create-repository-license-apache-2-0",
+                    AutomationRole::Button,
+                    Some("create-repository-license-apache-2-0"),
+                    Some("License: Apache-2.0"),
+                    Some(AutomationNodeAction::SetCreateRepositoryLicense(
+                        "Apache-2.0".to_string(),
+                    )),
+                )
+                .selected(self.repo.create_repo_license_template == "Apache-2.0"),
+                automation_node(
+                    "create-repository-license-gpl-3-0",
+                    AutomationRole::Button,
+                    Some("create-repository-license-gpl-3-0"),
+                    Some("License: GPL-3.0"),
+                    Some(AutomationNodeAction::SetCreateRepositoryLicense(
+                        "GPL-3.0".to_string(),
+                    )),
+                )
+                .selected(self.repo.create_repo_license_template == "GPL-3.0"),
+                automation_node(
                     "create-repository-readme-checkbox",
                     AutomationRole::Button,
                     Some("create-repository-readme-checkbox"),
                     Some("Initialize this repository with a README"),
-                    None::<AutomationNodeAction>,
+                    Some(AutomationNodeAction::ToggleCreateRepositoryReadme),
                 )
                 .selected(self.repo.create_repo_initialize_readme),
                 automation_node(
@@ -1309,7 +1451,7 @@ impl GitSparkApp {
                     AutomationRole::Button,
                     Some("create-repository-initial-commit-checkbox"),
                     Some("Create initial commit"),
-                    None::<AutomationNodeAction>,
+                    Some(AutomationNodeAction::ToggleCreateRepositoryInitialCommit),
                 )
                 .selected(self.repo.create_repo_initial_commit),
                 automation_node(
@@ -2188,6 +2330,179 @@ impl GitSparkApp {
         self.perform_automation_action(action, Some(text), cx)
     }
 
+    fn type_text_automation_node(
+        &mut self,
+        selector: AutomationSelector,
+        text: String,
+        cx: &mut Context<Self>,
+    ) -> AutomationResponse {
+        let Some(action) = self
+            .query_automation_nodes(&selector)
+            .into_iter()
+            .find(|node| node.visible && node.enabled)
+            .and_then(|node| node.action)
+        else {
+            return AutomationResponse::failure("no visible enabled node matched selector");
+        };
+
+        let keystrokes = text.chars().map(typed_keystroke_for_char).collect();
+        self.dispatch_real_keystrokes(action, keystrokes, cx)
+    }
+
+    fn press_keys_automation_node(
+        &mut self,
+        selector: AutomationSelector,
+        keys: Vec<String>,
+        cx: &mut Context<Self>,
+    ) -> AutomationResponse {
+        let Some(action) = self
+            .query_automation_nodes(&selector)
+            .into_iter()
+            .find(|node| node.visible && node.enabled)
+            .and_then(|node| node.action)
+        else {
+            return AutomationResponse::failure("no visible enabled node matched selector");
+        };
+
+        let mut keystrokes = Vec::with_capacity(keys.len());
+        for key in keys {
+            match Keystroke::parse(&key) {
+                Ok(keystroke) => keystrokes.push(keystroke),
+                Err(err) => return AutomationResponse::failure(err.to_string()),
+            }
+        }
+
+        self.dispatch_real_keystrokes(action, keystrokes, cx)
+    }
+
+    fn dispatch_real_keystrokes(
+        &mut self,
+        action: AutomationNodeAction,
+        keystrokes: Vec<Keystroke>,
+        cx: &mut Context<Self>,
+    ) -> AutomationResponse {
+        self.prepare_automation_text_action(&action);
+        cx.notify();
+
+        for keystroke in keystrokes {
+            let event = KeyDownEvent {
+                keystroke: keystroke.with_simulated_ime(),
+                is_held: false,
+            };
+            self.apply_automation_text_key(&action, &event, cx);
+            self.process_events(cx);
+        }
+
+        AutomationResponse::success(self.automation_snapshot())
+    }
+
+    fn prepare_automation_text_action(&mut self, action: &AutomationNodeAction) {
+        match action {
+            AutomationNodeAction::SetCommitSummary => {
+                self.prepare_commit_summary_field_for_automation();
+            }
+            AutomationNodeAction::SetCommitBody => {
+                self.prepare_commit_body_field_for_automation();
+            }
+            AutomationNodeAction::SetBranchFilter => {
+                self.prepare_branch_filter_field_for_automation();
+            }
+            AutomationNodeAction::SetRepoFilter => {
+                self.prepare_repo_filter_field_for_automation();
+            }
+            AutomationNodeAction::SetNewBranchName => {
+                self.prepare_new_branch_field_for_automation();
+            }
+            AutomationNodeAction::SetSettingsField(field) => {
+                self.activate_settings_field_for_automation(*field);
+            }
+            AutomationNodeAction::SetCreateRepositoryName => {
+                self.activate_repository_field_for_automation(
+                    crate::ui::app::RepositoryField::CreateName,
+                );
+            }
+            AutomationNodeAction::SetCreateRepositoryDescription => {
+                self.activate_repository_field_for_automation(
+                    crate::ui::app::RepositoryField::CreateDescription,
+                );
+            }
+            AutomationNodeAction::SetCreateRepositoryPath => {
+                self.activate_repository_field_for_automation(
+                    crate::ui::app::RepositoryField::CreatePath,
+                );
+            }
+            AutomationNodeAction::SetCreateRepositoryBranch => {
+                self.activate_repository_field_for_automation(
+                    crate::ui::app::RepositoryField::CreateBranchName,
+                );
+            }
+            AutomationNodeAction::SetCloneRepositoryUrl => {
+                self.activate_repository_field_for_automation(
+                    crate::ui::app::RepositoryField::CloneUrl,
+                );
+            }
+            AutomationNodeAction::SetCloneRepositoryName => {
+                self.activate_repository_field_for_automation(
+                    crate::ui::app::RepositoryField::CloneName,
+                );
+            }
+            AutomationNodeAction::SetCloneRepositoryPath => {
+                self.activate_repository_field_for_automation(
+                    crate::ui::app::RepositoryField::ClonePath,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    fn apply_automation_text_key(
+        &mut self,
+        action: &AutomationNodeAction,
+        event: &KeyDownEvent,
+        cx: &mut Context<Self>,
+    ) {
+        if event.keystroke.modifiers.secondary()
+            && event.keystroke.key == "enter"
+            && self.nav.active_dialog == ActiveDialog::None
+            && !self.nav.show_settings
+            && !self.commit.summary.trim().is_empty()
+        {
+            self.commit_all(cx);
+            return;
+        }
+
+        match action {
+            AutomationNodeAction::SetCommitSummary => {
+                self.apply_summary_key_for_automation(event, cx);
+            }
+            AutomationNodeAction::SetCommitBody => {
+                self.apply_description_key_for_automation(event, cx);
+            }
+            AutomationNodeAction::SetBranchFilter => {
+                self.apply_branch_filter_key_for_automation(event, cx);
+            }
+            AutomationNodeAction::SetRepoFilter => {
+                self.apply_repo_filter_key_for_automation(event, cx);
+            }
+            AutomationNodeAction::SetNewBranchName => {
+                self.apply_new_branch_key_for_automation(event, cx);
+            }
+            AutomationNodeAction::SetSettingsField(_) => {
+                self.apply_settings_key_for_automation(event, cx);
+            }
+            AutomationNodeAction::SetCreateRepositoryName
+            | AutomationNodeAction::SetCreateRepositoryDescription
+            | AutomationNodeAction::SetCreateRepositoryPath
+            | AutomationNodeAction::SetCreateRepositoryBranch
+            | AutomationNodeAction::SetCloneRepositoryUrl
+            | AutomationNodeAction::SetCloneRepositoryName
+            | AutomationNodeAction::SetCloneRepositoryPath => {
+                self.apply_repository_key_for_automation(event, cx);
+            }
+            _ => {}
+        }
+    }
+
     fn perform_automation_action(
         &mut self,
         action: AutomationNodeAction,
@@ -2428,6 +2743,22 @@ impl GitSparkApp {
                 self.repository_create_branch_selection = None;
                 cx.notify();
             }
+            AutomationNodeAction::SetCreateRepositoryGitignore(template) => {
+                self.repo.create_repo_gitignore_template = template;
+                cx.notify();
+            }
+            AutomationNodeAction::SetCreateRepositoryLicense(template) => {
+                self.repo.create_repo_license_template = template;
+                cx.notify();
+            }
+            AutomationNodeAction::ToggleCreateRepositoryReadme => {
+                self.repo.create_repo_initialize_readme = !self.repo.create_repo_initialize_readme;
+                cx.notify();
+            }
+            AutomationNodeAction::ToggleCreateRepositoryInitialCommit => {
+                self.repo.create_repo_initial_commit = !self.repo.create_repo_initial_commit;
+                cx.notify();
+            }
             AutomationNodeAction::ConfirmCreateRepository => {
                 if !matches!(self.nav.active_dialog, ActiveDialog::CreateRepository) {
                     return AutomationResponse::failure("create repository dialog is not active");
@@ -2513,6 +2844,13 @@ impl GitSparkApp {
             }
             AutomationNodeAction::SetGitConfigScope(use_local) => {
                 self.handle_settings_action(SettingsAction::SetGitConfigScope(use_local), cx);
+            }
+            AutomationNodeAction::TogglePullRebase => {
+                if self.settings_has_repository_scope() {
+                    let next = !self.repo.identity.pull_rebase.unwrap_or(false);
+                    self.repo.identity.pull_rebase = Some(next);
+                    cx.notify();
+                }
             }
             AutomationNodeAction::ChangeAiProvider(provider) => {
                 self.handle_settings_action(SettingsAction::ChangeProvider(provider), cx);
@@ -3122,7 +3460,7 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
                     AutomationRole::Button,
                     Some("settings-pull-rebase"),
                     Some("Use pull.rebase"),
-                    None::<AutomationNodeAction>,
+                    Some(AutomationNodeAction::TogglePullRebase),
                 )
                 .visible(app.settings_has_repository_scope())
                 .enabled(app.settings_has_repository_scope())
@@ -3630,6 +3968,25 @@ fn stable_test_slug(value: &str) -> String {
     stable_id_slug(value)
 }
 
+fn typed_keystroke_for_char(ch: char) -> Keystroke {
+    let key = match ch {
+        ' ' => "space".to_string(),
+        '\n' => "enter".to_string(),
+        '\t' => "tab".to_string(),
+        ch => ch.to_string(),
+    };
+    let key_char = match ch {
+        '\n' => "\n".to_string(),
+        '\t' => "\t".to_string(),
+        ch => ch.to_string(),
+    };
+    Keystroke {
+        modifiers: Modifiers::none(),
+        key,
+        key_char: Some(key_char),
+    }
+}
+
 struct AutomationConfig {
     addr: String,
     ready_file: Option<PathBuf>,
@@ -3846,6 +4203,29 @@ mod tests {
                 assert_eq!(value, "change-src-main-rs");
             }
             _ => panic!("expected click command with test id selector"),
+        }
+    }
+
+    #[test]
+    fn parses_real_keyboard_commands() {
+        let typed: AutomationCommand = serde_json::from_str(
+            r#"{"command":"type_text","selector":{"by":"test_id","value":"input-commit-summary"},"text":"hello"}"#,
+        )
+        .expect("type text command parses");
+        match typed {
+            AutomationCommand::TypeText { text, .. } => assert_eq!(text, "hello"),
+            _ => panic!("expected type_text command"),
+        }
+
+        let pressed: AutomationCommand = serde_json::from_str(
+            r#"{"command":"press_keys","selector":{"by":"test_id","value":"input-commit-summary"},"keys":["cmd-enter","backspace"]}"#,
+        )
+        .expect("press keys command parses");
+        match pressed {
+            AutomationCommand::PressKeys { keys, .. } => {
+                assert_eq!(keys, ["cmd-enter", "backspace"]);
+            }
+            _ => panic!("expected press_keys command"),
         }
     }
 

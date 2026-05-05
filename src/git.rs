@@ -556,16 +556,25 @@ impl GitClient {
             .next()
             .and_then(|value| value.parse::<usize>().ok())
             .unwrap_or(0);
-        let commits =
-            self.fetch_history_for_revision(&repo_path, &format!("{target_branch}..HEAD"), 100)?;
+        let detail_revision = if behind > 0 {
+            format!("HEAD..{target_branch}")
+        } else {
+            format!("{target_branch}..HEAD")
+        };
+        let commits = self.fetch_history_for_revision(&repo_path, &detail_revision, 100)?;
+        let detail_range = if behind > 0 {
+            format!("HEAD...{target_branch}")
+        } else {
+            range
+        };
         let status_output = self
-            .run_git(&repo_path, &["diff", "--name-status", &range])
+            .run_git(&repo_path, &["diff", "--name-status", &detail_range])
             .with_context(|| format!("failed to list files changed against '{target_branch}'"))?;
         let files = status_output
             .lines()
             .filter_map(parse_name_status_line)
             .collect::<Vec<_>>();
-        let diffs = self.build_compare_diffs(&repo_path, &range, &files)?;
+        let diffs = self.build_compare_diffs(&repo_path, &detail_range, &files)?;
 
         Ok(BranchComparison {
             current_branch,
