@@ -127,6 +127,13 @@ export async function gitOutputWithEnv(repo, args, env) {
   return stdout.trim();
 }
 
+export async function gitRunWithEnv(repo, args, env) {
+  await exec("git", args, {
+    cwd: repo,
+    env: { ...process.env, ...env },
+  });
+}
+
 export async function gitOptionalOutput(repo, args) {
   try {
     return await gitOutput(repo, args);

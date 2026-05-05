@@ -2604,6 +2604,34 @@ impl GitSparkApp {
         }
     }
 
+    pub(crate) fn identity_settings_focus_field(&self) -> SettingsField {
+        let missing_name = self.repo.identity.user_name.trim().is_empty();
+        let missing_email = self.repo.identity.user_email.trim().is_empty();
+
+        if missing_name
+            || !git_author_name_is_valid(&self.repo.identity.user_name)
+            || !missing_email
+        {
+            SettingsField::GitUserName
+        } else {
+            SettingsField::GitUserEmail
+        }
+    }
+
+    pub(crate) fn open_identity_settings_from_warning(&mut self, cx: &mut Context<Self>) {
+        let field = self.identity_settings_focus_field();
+        if self.repo.use_local_identity {
+            self.open_repository_settings_modal(
+                Some(crate::ui::ui_state::SettingsSection::Git),
+                cx,
+            );
+        } else {
+            self.open_global_settings_modal(Some(crate::ui::ui_state::SettingsSection::Git), cx);
+        }
+        self.settings_modal.active_field = Some(field);
+        self.set_settings_field_cursor(field, self.settings_field_value(field).len());
+    }
+
     #[allow(dead_code)]
     pub fn selected_diff(&self) -> Option<&DiffEntry> {
         let snapshot = self.repo.snapshot.as_ref()?;
@@ -5094,18 +5122,9 @@ impl GitSparkApp {
                                     .child("Git Settings"),
                             )
                             .on_click(cx.listener(|app, _evt, window, cx| {
-                                if app.repo.use_local_identity {
-                                    app.open_repository_settings_modal(
-                                        Some(crate::ui::ui_state::SettingsSection::Git),
-                                        cx,
-                                    );
-                                } else {
-                                    app.open_global_settings_modal(
-                                        Some(crate::ui::ui_state::SettingsSection::Git),
-                                        cx,
-                                    );
-                                }
-                                app.activate_settings_field(SettingsField::GitUserName, window, cx);
+                                let field = app.identity_settings_focus_field();
+                                app.open_identity_settings_from_warning(cx);
+                                app.activate_settings_field(field, window, cx);
                             })),
                     )
             });

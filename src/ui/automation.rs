@@ -446,6 +446,7 @@ enum AutomationNodeAction {
     SetBranchFilter,
     SetCommitBody,
     SetCommitSummary,
+    OpenIdentitySettings,
     SetRepoFilter,
     OpenRecentRepo(PathBuf),
     SetSettingsField(SettingsField),
@@ -807,6 +808,14 @@ impl GitSparkApp {
                 Some("commit-identity-warning"),
                 self.missing_identity_message(),
                 None,
+            )
+            .visible(self.repo.snapshot.is_some() && self.missing_identity_message().is_some()),
+            automation_node(
+                "commit-identity-settings",
+                AutomationRole::Button,
+                Some("commit-identity-settings"),
+                Some("Git Settings"),
+                Some(AutomationNodeAction::OpenIdentitySettings),
             )
             .visible(self.repo.snapshot.is_some() && self.missing_identity_message().is_some()),
             automation_node(
@@ -1704,6 +1713,10 @@ impl GitSparkApp {
                 self.commit.summary = text;
                 cx.notify();
             }
+            AutomationNodeAction::OpenIdentitySettings => {
+                self.open_identity_settings_from_warning(cx);
+                cx.notify();
+            }
             AutomationNodeAction::SetRepoFilter => {
                 let Some(text) = fill_text else {
                     return AutomationResponse::failure("fill text is required");
@@ -2587,6 +2600,7 @@ fn settings_field_node(
         Some(AutomationNodeAction::SetSettingsField(field)),
     )
     .enabled(!app.settings_field_read_only(field))
+    .selected(app.settings_modal.active_field == Some(field))
     .children(vec![automation_node(
         format!("{test_id}-label"),
         AutomationRole::Status,

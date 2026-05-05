@@ -6,6 +6,7 @@ import {
   gitOptionalOutput,
   gitOutput,
   gitOutputWithEnv,
+  gitRunWithEnv,
 } from "../support/fixtures.mjs";
 
 export async function testAiValidation(app) {
@@ -194,6 +195,53 @@ export async function testSettingsPersistence(app, fixture) {
 
   await app.getByTestId("button-settings").click();
   await app.waitForSnapshot((snapshot) => snapshot.show_settings === false);
+}
+
+export async function testIdentityWarningOpensMissingEmail(app, fixture) {
+  await gitRunWithEnv(
+    fixture.workRepo,
+    ["config", "--global", "--unset", "user.email"],
+    { GIT_CONFIG_GLOBAL: fixture.globalGitConfig },
+  );
+  await app.command({ command: "refresh_repo" });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.test_tree?.children?.some(
+        (node) =>
+          node.id === "commit-identity-warning" &&
+          node.text === "Configure your Git email before committing.",
+      ) &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "commit-identity-settings" && node.visible === true,
+      ),
+    { timeoutMs: 10_000 },
+  );
+
+  await app.getByTestId("commit-identity-settings").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.show_settings === true &&
+      snapshot.settings_section === "git" &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "settings-git-user-email" && node.selected === true,
+      ) &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "settings-git-user-name" && node.selected === false,
+      ),
+    { timeoutMs: 10_000 },
+  );
+
+  await app.getByTestId("settings-git-user-email").fill("global@gitspark.local");
+  await app.getByTestId("settings-save-git").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Git config saved." &&
+      snapshot.error_message === "" &&
+      !snapshot.test_tree?.children?.some(
+        (node) => node.id === "commit-identity-warning" && node.visible === true,
+      ),
+    { timeoutMs: 10_000 },
+  );
 }
 
 export async function testAiSuccess(app, aiServer) {

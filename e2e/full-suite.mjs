@@ -20,6 +20,7 @@ import {
 import {
   testAiSuccess,
   testAiValidation,
+  testIdentityWarningOpensMissingEmail,
   testSettingsPersistence,
 } from "./suites/settings-ai.mjs";
 import { makeFreshSampleRepo } from "./support/fixtures.mjs";
@@ -45,6 +46,7 @@ try {
   await testLocalChangeAutoSync(app, fixture);
   await testAiValidation(app);
   await testSettingsPersistence(app, fixture);
+  await testIdentityWarningOpensMissingEmail(app, fixture);
   await testAiSuccess(app, aiServer);
   await testCommitFlow(app);
   await testCreateBranchDialog(app);
