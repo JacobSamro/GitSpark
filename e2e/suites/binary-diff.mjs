@@ -15,10 +15,20 @@ export async function testBinaryDiffFallback(app) {
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.selected_change === "asset.bin" &&
+      nodeById(snapshot.test_tree, "diff-binary-reveal")?.visible === true &&
+      nodeById(snapshot.test_tree, "diff-binary-reveal")?.enabled === true &&
       nodeById(snapshot.test_tree, "diff-binary-open-default")?.visible ===
         true &&
       nodeById(snapshot.test_tree, "diff-binary-open-default")?.enabled ===
         true,
+    { timeoutMs: 10_000 },
+  );
+
+  await app.getByTestId("diff-binary-reveal").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Revealed 'asset.bin' in Finder." &&
+      snapshot.error_message === "",
     { timeoutMs: 10_000 },
   );
 

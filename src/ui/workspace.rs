@@ -6,6 +6,7 @@ use crate::models::DiffEntry;
 use crate::ui::app::{DiffExpandDirection, GitSparkApp};
 use gpui_component::scroll::ScrollableElement;
 
+use crate::ui::binary_diff::render_binary_diff_panel;
 use crate::ui::theme;
 use crate::ui::theme::z;
 
@@ -1307,44 +1308,4 @@ fn meaningful_diff_line_count(lines: &[DiffLine]) -> usize {
 
 fn whitespace_normalized(value: &str) -> String {
     value.chars().filter(|ch| !ch.is_whitespace()).collect()
-}
-
-fn render_binary_diff_panel(file_path: &str, view: Option<&Entity<GitSparkApp>>) -> Div {
-    let mut panel = v_flex()
-        .items_center()
-        .gap(z(10.0))
-        .text_size(z(14.0))
-        .text_color(theme::text_muted())
-        .child("This binary file has changed.");
-
-    if let Some(vh) = view {
-        let vh_click = vh.clone();
-        let path = file_path.to_string();
-        panel = panel.child(
-            h_flex()
-                .id("diff-binary-open-default")
-                .h(z(28.0))
-                .px(z(12.0))
-                .items_center()
-                .justify_center()
-                .rounded(z(theme::CORNER_RADIUS_SM))
-                .border_1()
-                .border_color(theme::border())
-                .bg(theme::surface_bg())
-                .text_size(z(12.0))
-                .text_color(theme::text_main())
-                .cursor_pointer()
-                .hover(|style| style.bg(theme::toolbar_hover_bg()))
-                .child("Open file in external program")
-                .on_click(move |_evt, _win, cx| {
-                    let path = path.clone();
-                    vh_click.update(cx, |app, cx| {
-                        app.open_with_default_program(&path);
-                        cx.notify();
-                    });
-                }),
-        );
-    }
-
-    panel
 }

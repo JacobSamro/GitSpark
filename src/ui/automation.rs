@@ -554,6 +554,7 @@ enum AutomationNodeAction {
     SelectChange(String),
     SelectCommit(String),
     SelectTab(SidebarTab),
+    RevealSelectedBinaryInFinder,
     OpenSelectedBinaryWithDefaultProgram,
     ToggleSideBySideDiff,
     ToggleHideWhitespaceChanges,
@@ -1162,10 +1163,21 @@ impl GitSparkApp {
             )
             .selected(self.nav.diff_options.hide_whitespace_changes),
             automation_node(
+                "diff-binary-reveal",
+                AutomationRole::Button,
+                Some("diff-binary-reveal"),
+                Some(crate::ui::labels::reveal_in_file_manager_menu()),
+                Some(AutomationNodeAction::RevealSelectedBinaryInFinder),
+            )
+            .visible(
+                self.nav.sidebar_tab == SidebarTab::Changes
+                    && self.selected_diff().is_some_and(|diff| diff.is_binary),
+            ),
+            automation_node(
                 "diff-binary-open-default",
                 AutomationRole::Button,
                 Some("diff-binary-open-default"),
-                Some("Open file in external program"),
+                Some("Open Anyway"),
                 Some(AutomationNodeAction::OpenSelectedBinaryWithDefaultProgram),
             )
             .visible(
@@ -2582,6 +2594,16 @@ impl GitSparkApp {
                     return AutomationResponse::failure("selected file is not binary");
                 }
                 self.open_with_default_program(&path);
+                cx.notify();
+            }
+            AutomationNodeAction::RevealSelectedBinaryInFinder => {
+                let Some(path) = self.selection.selected_change.clone() else {
+                    return AutomationResponse::failure("no selected binary file");
+                };
+                if !self.selected_diff().is_some_and(|diff| diff.is_binary) {
+                    return AutomationResponse::failure("selected file is not binary");
+                }
+                self.reveal_in_finder(&path);
                 cx.notify();
             }
             AutomationNodeAction::ToggleSideBySideDiff => {
