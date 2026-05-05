@@ -8,7 +8,8 @@ use std::{env, fs, io};
 use anyhow::{Context, Result, anyhow, bail};
 
 use crate::models::{
-    BranchInfo, ChangeEntry, CommitInfo, DiffEntry, GitIdentity, RepoSnapshot, RepoSummary,
+    BranchComparison, BranchInfo, ChangeEntry, CommitInfo, DiffEntry, GitIdentity, RepoSnapshot,
+    RepoSummary,
 };
 
 #[cfg(windows)]
@@ -396,6 +397,54 @@ impl GitClient {
             .with_context(|| format!("failed to check out commit '{oid}'"))?;
 
         self.snapshot(&repo_path)
+    }
+
+    pub fn compare_current_branch_with(
+        &self,
+        repo_path: &Path,
+        target_branch: &str,
+    ) -> Result<BranchComparison> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let target_branch = target_branch.trim();
+        if target_branch.is_empty() {
+            bail!("branch name cannot be empty");
+        }
+
+        let current_branch = self.current_stash_branch_name(&repo_path)?;
+        if current_branch == target_branch {
+            bail!("cannot compare a branch with itself");
+        }
+
+        self.run_git(
+            &repo_path,
+            &[
+                "rev-parse",
+                "--verify",
+                &format!("refs/heads/{target_branch}^{{commit}}"),
+            ],
+        )
+        .with_context(|| format!("branch '{target_branch}' does not exist"))?;
+
+        let range = format!("{target_branch}...HEAD");
+        let counts = self
+            .run_git(&repo_path, &["rev-list", "--left-right", "--count", &range])
+            .with_context(|| format!("failed to compare with branch '{target_branch}'"))?;
+        let mut parts = counts.split_whitespace();
+        let behind = parts
+            .next()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(0);
+        let ahead = parts
+            .next()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(0);
+
+        Ok(BranchComparison {
+            current_branch,
+            target_branch: target_branch.to_string(),
+            ahead,
+            behind,
+        })
     }
 
     pub fn delete_branch(&self, repo_path: &Path, branch_name: &str) -> Result<RepoSnapshot> {
@@ -2107,6 +2156,39 @@ mod tests {
         assert!(!stash_list.contains(GITSPARK_STASH_MESSAGE_PREFIX));
         let snapshot = GitClient::new().open_repo(&repo).unwrap();
         assert_eq!(snapshot.stash_count, 0);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn compares_current_branch_with_target_branch() {
+        let repo = temp_repo("compare-branch");
+        fs::write(repo.join("README.md"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+
+        run_git(&repo, &["switch", "-c", "feature"]);
+        fs::write(repo.join("feature.txt"), "feature\n").unwrap();
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "feature"]);
+
+        run_git(&repo, &["switch", "main"]);
+        fs::write(repo.join("main.txt"), "main\n").unwrap();
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "main"]);
+
+        run_git(&repo, &["switch", "feature"]);
+        let comparison = GitClient::new()
+            .compare_current_branch_with(&repo, "main")
+            .unwrap();
+
+        assert_eq!(comparison.current_branch, "feature");
+        assert_eq!(comparison.target_branch, "main");
+        assert_eq!(comparison.ahead, 1);
+        assert_eq!(comparison.behind, 1);
 
         let _ = fs::remove_dir_all(repo);
     }

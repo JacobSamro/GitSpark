@@ -398,6 +398,16 @@ export async function testHistoryAndBranchFlows(app, fixture) {
     { timeoutMs: 15_000 },
   );
 
+  await app.command({ command: "compare_branch", name: "main" });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.sidebar_tab === "history" &&
+      snapshot.status_message.startsWith("'e2e-created' is ") &&
+      snapshot.status_message.endsWith(" commits behind 'main'.") &&
+      snapshot.error_message === "",
+    { timeoutMs: 10_000 },
+  );
+
   await app.getByTestId("branch-main").click();
   await app.waitForSnapshot(
     (snapshot) => snapshot.repo?.current_branch === "main",

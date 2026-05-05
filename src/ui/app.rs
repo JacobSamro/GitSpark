@@ -18,9 +18,9 @@ use rfd::FileDialog;
 use crate::ai::AiClient;
 use crate::git::{GitClient, safe_repository_directory_name};
 use crate::models::{
-    AiProvider, AppSettings, BranchInfo, ChangeEntry, CommitInfo, CommitSuggestion, DiffEntry,
-    GitIdentity, INVALID_GIT_AUTHOR_NAME_MESSAGE, RemoteModelOption, RepoSnapshot,
-    git_author_name_is_valid,
+    AiProvider, AppSettings, BranchComparison, BranchInfo, ChangeEntry, CommitInfo,
+    CommitSuggestion, DiffEntry, GitIdentity, INVALID_GIT_AUTHOR_NAME_MESSAGE, RemoteModelOption,
+    RepoSnapshot, git_author_name_is_valid,
 };
 use crate::storage::{push_recent_repo, save_settings};
 use crate::ui::automation;
@@ -2131,6 +2131,13 @@ impl GitSparkApp {
             return;
         }
 
+        if self.nav.branch_selector_mode == BranchSelectorMode::Compare {
+            self.nav.show_branch_selector = false;
+            self.nav.branch_selector_mode = BranchSelectorMode::Switch;
+            self.compare_branch(name, cx);
+            return;
+        }
+
         if !self
             .repo
             .snapshot
@@ -3257,6 +3264,7 @@ impl Render for GitSparkApp {
             .on_action(cx.listener(Self::handle_menu_new_branch))
             .on_action(cx.listener(Self::handle_menu_rename_branch))
             .on_action(cx.listener(Self::handle_menu_delete_branch))
+            .on_action(cx.listener(Self::handle_menu_compare_branch))
             .on_action(cx.listener(Self::handle_menu_merge_branch))
             .on_action(cx.listener(Self::handle_menu_view_branch_on_github))
             .on_action(cx.listener(Self::handle_menu_discard_all_changes))
@@ -3599,6 +3607,44 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub fn menu_compare_branch(&mut self, cx: &mut Context<Self>) {
+        if self.repo.snapshot.is_none() {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.nav.sidebar_tab = SidebarTab::History;
+        self.nav.show_branch_selector = true;
+        self.nav.branch_selector_mode = BranchSelectorMode::Compare;
+        self.repo.pending_cherry_pick_oid = None;
+        self.messages.status_message =
+            "Choose a branch to compare against the current branch.".to_string();
+        self.messages.error_message.clear();
+        cx.notify();
+    }
+
+    pub(crate) fn compare_branch(&mut self, target_branch: String, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        match self.git.compare_current_branch_with(&path, &target_branch) {
+            Ok(comparison) => {
+                self.messages.status_message = branch_comparison_message(&comparison);
+                self.messages.error_message.clear();
+                self.nav.sidebar_tab = SidebarTab::History;
+            }
+            Err(err) => {
+                self.messages.error_message =
+                    format!("Could not compare with '{target_branch}': {err}");
+            }
+        }
+        cx.notify();
+    }
+
     pub fn menu_view_current_branch_on_github(&mut self, cx: &mut Context<Self>) {
         let Some(snapshot) = self.repo.snapshot.as_ref() else {
             self.messages.error_message = "No repository selected.".to_string();
@@ -3866,6 +3912,15 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         self.menu_delete_current_branch(cx);
+    }
+
+    fn handle_menu_compare_branch(
+        &mut self,
+        _: &crate::MenuCompareBranch,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_compare_branch(cx);
     }
 
     fn handle_menu_merge_branch(
@@ -7797,10 +7852,12 @@ impl GitSparkApp {
         // Separate local branches, filtered by search text
         let filter = self.filters.branch_filter_text.to_lowercase();
         let merge_mode = self.nav.branch_selector_mode == BranchSelectorMode::Merge;
+        let compare_mode = self.nav.branch_selector_mode == BranchSelectorMode::Compare;
+        let target_mode = merge_mode || compare_mode;
         let local_branches: Vec<&BranchInfo> = branches
             .iter()
             .filter(|b| !b.is_remote)
-            .filter(|b| !merge_mode || !b.is_current)
+            .filter(|b| !target_mode || !b.is_current)
             .filter(|b| filter.is_empty() || b.name.to_lowercase().contains(&filter))
             .collect();
 
@@ -7947,7 +8004,7 @@ impl GitSparkApp {
                     )
                     .child(text_child)
             })
-            .children(if merge_mode {
+            .children(if target_mode {
                 None
             } else {
                 Some(
@@ -8145,11 +8202,14 @@ impl GitSparkApp {
             "Choose a branch to cherry-pick into"
         } else if self.nav.branch_selector_mode == BranchSelectorMode::Merge {
             "Choose a branch to merge into"
+        } else if self.nav.branch_selector_mode == BranchSelectorMode::Compare {
+            "Choose a branch to compare against"
         } else {
             "Choose a branch to switch to"
         };
         let show_branch_selector_target = self.repo.pending_cherry_pick_oid.is_some()
-            || self.nav.branch_selector_mode == BranchSelectorMode::Merge;
+            || self.nav.branch_selector_mode == BranchSelectorMode::Merge
+            || self.nav.branch_selector_mode == BranchSelectorMode::Compare;
 
         // --- Branch selector prompt ---
         let bottom_bar = h_flex()
@@ -8299,6 +8359,30 @@ fn render_branch_switch_option(
 
 fn short_commit_label(oid: &str) -> &str {
     &oid[..oid.len().min(7)]
+}
+
+fn branch_comparison_message(comparison: &BranchComparison) -> String {
+    if comparison.ahead == 0 && comparison.behind == 0 {
+        return format!(
+            "'{}' is up to date with '{}'.",
+            comparison.current_branch, comparison.target_branch
+        );
+    }
+
+    let ahead_unit = if comparison.ahead == 1 {
+        "commit"
+    } else {
+        "commits"
+    };
+    let behind_unit = if comparison.behind == 1 {
+        "commit"
+    } else {
+        "commits"
+    };
+    format!(
+        "'{}' is {} {ahead_unit} ahead and {} {behind_unit} behind '{}'.",
+        comparison.current_branch, comparison.ahead, comparison.behind, comparison.target_branch
+    )
 }
 
 fn tag_name_length_validation_message(tag_name: &str) -> Option<String> {

@@ -43,6 +43,14 @@ pub struct BranchInfo {
     pub updated: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BranchComparison {
+    pub current_branch: String,
+    pub target_branch: String,
+    pub ahead: usize,
+    pub behind: usize,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GitIdentity {
     pub user_name: String,

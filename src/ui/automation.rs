@@ -133,6 +133,9 @@ pub(crate) enum AutomationCommand {
     MergeBranch {
         name: String,
     },
+    CompareBranch {
+        name: String,
+    },
     NetworkAction {
         action: AutomationNetworkAction,
     },
@@ -706,6 +709,10 @@ impl GitSparkApp {
                 self.merge_branch(cx);
                 AutomationResponse::success(self.automation_snapshot())
             }
+            AutomationCommand::CompareBranch { name } => {
+                self.compare_branch(name, cx);
+                AutomationResponse::success(self.automation_snapshot())
+            }
             AutomationCommand::NetworkAction { action } => {
                 self.handle_toolbar_action(ToolbarAction::RunNetworkAction(action.into()), cx);
                 AutomationResponse::success(self.automation_snapshot())
@@ -970,6 +977,10 @@ impl GitSparkApp {
         }
 
         if self.nav.show_branch_selector {
+            let branch_selector_target_mode = matches!(
+                self.nav.branch_selector_mode,
+                BranchSelectorMode::Merge | BranchSelectorMode::Compare
+            );
             children.push(
                 automation_node(
                     "branch-new",
@@ -978,8 +989,8 @@ impl GitSparkApp {
                     Some("New Branch"),
                     Some(AutomationNodeAction::StartCreateBranch),
                 )
-                .visible(self.nav.branch_selector_mode != BranchSelectorMode::Merge)
-                .enabled(self.nav.branch_selector_mode != BranchSelectorMode::Merge),
+                .visible(!branch_selector_target_mode)
+                .enabled(!branch_selector_target_mode),
             );
             children.extend(branch_selector_nodes(self));
         }
@@ -1653,8 +1664,10 @@ impl GitSparkApp {
                         .iter()
                         .filter(|branch| !branch.is_remote)
                         .filter(|branch| {
-                            self.nav.branch_selector_mode != BranchSelectorMode::Merge
-                                || !branch.is_current
+                            !matches!(
+                                self.nav.branch_selector_mode,
+                                BranchSelectorMode::Merge | BranchSelectorMode::Compare
+                            ) || !branch.is_current
                         })
                         .map(|branch| {
                             automation_node(
@@ -3677,6 +3690,14 @@ mod tests {
         match merge {
             AutomationCommand::MergeBranch { name } => assert_eq!(name, "merge/source"),
             _ => panic!("expected merge_branch command"),
+        }
+
+        let compare: AutomationCommand =
+            serde_json::from_str(r#"{"command":"compare_branch","name":"main"}"#)
+                .expect("compare branch command parses");
+        match compare {
+            AutomationCommand::CompareBranch { name } => assert_eq!(name, "main"),
+            _ => panic!("expected compare_branch command"),
         }
     }
 

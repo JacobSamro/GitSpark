@@ -38,6 +38,7 @@ actions!(
         MenuNewBranch,
         MenuRenameBranch,
         MenuDeleteBranch,
+        MenuCompareBranch,
         MenuMergeBranch,
         MenuViewBranchOnGitHub,
         MenuDiscardAllChanges,
@@ -205,6 +206,12 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
     }
     {
         let view = view.clone();
+        cx.on_action(move |_: &MenuCompareBranch, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_compare_branch(cx));
+        });
+    }
+    {
+        let view = view.clone();
         cx.on_action(move |_: &MenuMergeBranch, cx| {
             let _ = view.update(cx, |app, cx| app.menu_merge_branch(cx));
         });
@@ -264,6 +271,7 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         KeyBinding::new("cmd-shift-n", MenuNewBranch, None),
         KeyBinding::new("cmd-shift-r", MenuRenameBranch, None),
         KeyBinding::new("cmd-shift-d", MenuDeleteBranch, None),
+        KeyBinding::new("cmd-shift-b", MenuCompareBranch, None),
         KeyBinding::new("cmd-shift-m", MenuMergeBranch, None),
         KeyBinding::new("cmd-alt-b", MenuViewBranchOnGitHub, None),
         KeyBinding::new("cmd-shift-backspace", MenuDiscardAllChanges, None),
@@ -345,6 +353,7 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
                 MenuItem::action("New Branch…", MenuNewBranch),
                 MenuItem::action("Rename…", MenuRenameBranch),
                 MenuItem::action("Delete…", MenuDeleteBranch),
+                MenuItem::action("Compare to Branch", MenuCompareBranch),
                 MenuItem::action("Merge into Current Branch…", MenuMergeBranch),
                 MenuItem::action("View Branch on GitHub", MenuViewBranchOnGitHub),
                 MenuItem::separator(),
