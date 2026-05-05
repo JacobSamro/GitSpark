@@ -162,6 +162,9 @@ pub fn render_settings_window(
                                                         action = Some(a);
                                                     }
                                                 }
+                                                SettingsSection::Remote
+                                                | SettingsSection::Appearance
+                                                | SettingsSection::Integrations => {}
                                             }
                                         });
                                 },

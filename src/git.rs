@@ -646,6 +646,41 @@ impl GitClient {
         Ok(normalize_github_remote_url(remote_url.trim()))
     }
 
+    pub fn primary_remote(&self, repo_path: &Path) -> Result<Option<(String, String)>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let Some(remote_name) = self.read_primary_remote(&repo_path)? else {
+            return Ok(None);
+        };
+
+        let remote_url = self
+            .run_git(&repo_path, &["remote", "get-url", &remote_name])
+            .with_context(|| format!("failed to read remote URL for '{remote_name}'"))?;
+
+        Ok(Some((remote_name, remote_url.trim().to_string())))
+    }
+
+    pub fn set_remote_url(
+        &self,
+        repo_path: &Path,
+        remote_name: &str,
+        remote_url: &str,
+    ) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let remote_name = remote_name.trim();
+        let remote_url = remote_url.trim();
+        if remote_name.is_empty() {
+            bail!("remote name cannot be empty");
+        }
+        if remote_url.is_empty() {
+            bail!("remote URL cannot be empty");
+        }
+
+        self.run_git(&repo_path, &["remote", "set-url", remote_name, remote_url])
+            .with_context(|| format!("failed to set URL for remote '{remote_name}'"))?;
+
+        self.snapshot(&repo_path)
+    }
+
     pub fn github_file_url(&self, repo_path: &Path, relative_path: &str) -> Result<Option<String>> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let relative_path = relative_path.trim();
@@ -2172,6 +2207,49 @@ mod tests {
         let identity = GitClient::new().read_identity(&repo).unwrap();
         assert_eq!(identity.user_name, "Visual Identity");
         assert_eq!(identity.user_email, "");
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn reads_and_updates_primary_remote_url() {
+        let repo = temp_repo("remote-settings");
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(
+            &repo,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/example/old.git",
+            ],
+        );
+
+        let git = GitClient::new();
+        assert_eq!(
+            git.primary_remote(&repo).unwrap(),
+            Some((
+                "origin".to_string(),
+                "https://github.com/example/old.git".to_string(),
+            ))
+        );
+
+        let snapshot = git
+            .set_remote_url(&repo, "origin", "https://github.com/example/new.git")
+            .unwrap();
+
+        assert_eq!(snapshot.repo.remote_name.as_deref(), Some("origin"));
+        assert_eq!(
+            git.primary_remote(&repo).unwrap(),
+            Some((
+                "origin".to_string(),
+                "https://github.com/example/new.git".to_string(),
+            ))
+        );
+        assert_eq!(
+            run_git(&repo, &["remote", "get-url", "origin"]).trim(),
+            "https://github.com/example/new.git"
+        );
 
         let _ = fs::remove_dir_all(repo);
     }

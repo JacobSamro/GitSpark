@@ -134,6 +134,7 @@ pub enum SidebarAction {
 // Settings
 #[derive(Clone)]
 pub enum SettingsAction {
+    SaveRemote,
     SaveGitConfig,
     SaveAiSettings,
     SetGitConfigScope(bool),
@@ -682,6 +683,7 @@ impl GitSparkApp {
 
     pub fn handle_settings_action(&mut self, action: SettingsAction, cx: &mut Context<Self>) {
         match action {
+            SettingsAction::SaveRemote => self.save_remote_settings(cx),
             SettingsAction::SaveGitConfig => self.save_git_config(),
             SettingsAction::SaveAiSettings => {
                 if self.settings.ai.provider == AiProvider::OpenRouter {
@@ -1758,6 +1760,39 @@ impl GitSparkApp {
         }
     }
 
+    fn save_remote_settings(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            self.messages.status_message.clear();
+            return;
+        };
+        let Some(remote_name) = self.repo.remote_name.clone() else {
+            self.messages.error_message = "This repository does not have a remote.".to_string();
+            self.messages.status_message.clear();
+            return;
+        };
+        let remote_url = self.repo.remote_url.trim().to_string();
+        if remote_url.is_empty() {
+            self.messages.error_message = "Remote URL cannot be empty.".to_string();
+            self.messages.status_message.clear();
+            return;
+        }
+
+        match self.git.set_remote_url(&path, &remote_name, &remote_url) {
+            Ok(snapshot) => {
+                self.add_recent_repo(snapshot.repo.path.clone());
+                self.adopt_snapshot(snapshot);
+                self.messages.status_message = "Remote settings saved.".to_string();
+                self.messages.error_message.clear();
+            }
+            Err(err) => {
+                self.messages.error_message = format!("Failed to save remote settings: {err}");
+                self.messages.status_message.clear();
+            }
+        }
+        cx.notify();
+    }
+
     fn load_identity(&mut self, path: &Path) {
         self.load_global_identity();
         match self.git.read_identity(path) {
@@ -1802,6 +1837,30 @@ impl GitSparkApp {
             Err(err) => {
                 self.repo.global_identity = GitIdentity::default();
                 self.messages.error_message = format!("Could not load global Git config: {err}");
+            }
+        }
+    }
+
+    fn load_remote_settings(&mut self, path: &Path) {
+        match self.git.primary_remote(path) {
+            Ok(Some((name, url))) => {
+                self.repo.remote_name = Some(name);
+                self.repo.remote_url = url;
+                self.settings_modal.remote_url_cursor = self.repo.remote_url.len();
+                self.settings_modal.remote_url_selection = None;
+            }
+            Ok(None) => {
+                self.repo.remote_name = None;
+                self.repo.remote_url.clear();
+                self.settings_modal.remote_url_cursor = 0;
+                self.settings_modal.remote_url_selection = None;
+            }
+            Err(err) => {
+                self.repo.remote_name = None;
+                self.repo.remote_url.clear();
+                self.settings_modal.remote_url_cursor = 0;
+                self.settings_modal.remote_url_selection = None;
+                self.messages.error_message = format!("Could not load remote settings: {err}");
             }
         }
     }
@@ -2543,6 +2602,7 @@ impl GitSparkApp {
             .map(|branch| branch.name.clone())
             .unwrap_or_default();
         self.load_identity(&snapshot.repo.path);
+        self.load_remote_settings(&snapshot.repo.path);
         self.ensure_repo_watch(&snapshot.repo.path);
         self.repo.has_stash = has_stash;
         if has_stash {
@@ -3363,7 +3423,7 @@ impl GitSparkApp {
             return;
         }
 
-        self.open_repository_settings_modal(Some(crate::ui::ui_state::SettingsSection::Git), cx);
+        self.open_repository_settings_modal(Some(crate::ui::ui_state::SettingsSection::Remote), cx);
         cx.notify();
     }
 
@@ -4815,12 +4875,24 @@ impl GitSparkApp {
     ) {
         if let Some(section) = section {
             self.nav.settings_section = section;
+        } else if scope == SettingsScope::Global
+            && self.nav.settings_section == crate::ui::ui_state::SettingsSection::Remote
+        {
+            self.nav.settings_section = crate::ui::ui_state::SettingsSection::Git;
+        } else if scope == SettingsScope::Repository
+            && self.nav.settings_section == crate::ui::ui_state::SettingsSection::Ai
+        {
+            self.nav.settings_section = crate::ui::ui_state::SettingsSection::Remote;
         }
 
         self.close_history_context_menu();
         self.nav.settings_scope = scope;
         self.nav.show_settings = true;
-        if self.nav.settings_section == crate::ui::ui_state::SettingsSection::Git {
+        if self.nav.settings_section == crate::ui::ui_state::SettingsSection::Remote
+            && let Some(path) = self.repo_path().map(PathBuf::from)
+        {
+            self.load_remote_settings(&path);
+        } else if self.nav.settings_section == crate::ui::ui_state::SettingsSection::Git {
             if self.settings_has_repository_scope()
                 && let Some(path) = self.repo_path().map(PathBuf::from)
             {
@@ -4848,6 +4920,7 @@ impl GitSparkApp {
 
     pub(crate) fn settings_field_value(&self, field: SettingsField) -> &str {
         match field {
+            SettingsField::RemoteUrl => self.repo.remote_url.as_str(),
             SettingsField::GitUserName => self.active_git_settings_identity().user_name.as_str(),
             SettingsField::GitUserEmail => self.active_git_settings_identity().user_email.as_str(),
             SettingsField::GitDefaultBranch => self
@@ -4902,6 +4975,7 @@ impl GitSparkApp {
 
     pub(crate) fn settings_field_cursor(&self, field: SettingsField) -> usize {
         match field {
+            SettingsField::RemoteUrl => self.settings_modal.remote_url_cursor,
             SettingsField::GitUserName => self.settings_modal.git_user_name_cursor,
             SettingsField::GitUserEmail => self.settings_modal.git_user_email_cursor,
             SettingsField::GitDefaultBranch => self.settings_modal.git_default_branch_cursor,
@@ -4917,6 +4991,7 @@ impl GitSparkApp {
 
     pub(crate) fn settings_field_selection(&self, field: SettingsField) -> Option<usize> {
         match field {
+            SettingsField::RemoteUrl => self.settings_modal.remote_url_selection,
             SettingsField::GitUserName => self.settings_modal.git_user_name_selection,
             SettingsField::GitUserEmail => self.settings_modal.git_user_email_selection,
             SettingsField::GitDefaultBranch => self.settings_modal.git_default_branch_selection,
@@ -4971,6 +5046,22 @@ impl GitSparkApp {
 
         // Get mutable references to the value, cursor, and selection for the active field
         let handled = match field {
+            SettingsField::RemoteUrl => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.settings_modal.remote_url_cursor,
+                    selection: self.settings_modal.remote_url_selection,
+                };
+                let h = crate::ui::text_field::handle_text_key(
+                    &mut self.repo.remote_url,
+                    &mut state,
+                    multiline,
+                    event,
+                    cx,
+                );
+                self.settings_modal.remote_url_cursor = state.cursor;
+                self.settings_modal.remote_url_selection = state.selection;
+                h
+            }
             SettingsField::GitUserName => {
                 let mut state = crate::ui::text_field::TextFieldState {
                     cursor: self.settings_modal.git_user_name_cursor,
@@ -5110,6 +5201,7 @@ impl GitSparkApp {
 
     fn set_settings_field_cursor(&mut self, field: SettingsField, cursor: usize) {
         match field {
+            SettingsField::RemoteUrl => self.settings_modal.remote_url_cursor = cursor,
             SettingsField::GitUserName => self.settings_modal.git_user_name_cursor = cursor,
             SettingsField::GitUserEmail => self.settings_modal.git_user_email_cursor = cursor,
             SettingsField::GitDefaultBranch => {

@@ -9,7 +9,7 @@ use gpui_component::switch::Switch;
 use gpui_component::{Disableable, Icon, IconName, h_flex, v_flex};
 
 use crate::models::{AiProvider, RemoteModelOption};
-use crate::ui::app::{GitSparkApp, SettingsAction};
+use crate::ui::app::{GitSparkApp, SettingsAction, ToolbarAction};
 use crate::ui::ids::stable_id_slug;
 use crate::ui::theme;
 use crate::ui::ui_state::{OpenRouterModelsState, SettingsSection};
@@ -22,6 +22,7 @@ const SETTINGS_MODAL_MAX_HEIGHT: f32 = 760.0;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SettingsField {
+    RemoteUrl,
     GitUserName,
     GitUserEmail,
     GitDefaultBranch,
@@ -36,6 +37,7 @@ pub(crate) struct SettingsModalState {
     pub focus: FocusHandle,
     pub active_field: Option<SettingsField>,
     pub git_user_name_cursor: usize,
+    pub remote_url_cursor: usize,
     pub git_user_email_cursor: usize,
     pub git_default_branch_cursor: usize,
     pub ai_model_cursor: usize,
@@ -46,6 +48,7 @@ pub(crate) struct SettingsModalState {
     pub show_model_picker: bool,
     // Per-field selection anchors
     pub git_user_name_selection: Option<usize>,
+    pub remote_url_selection: Option<usize>,
     pub git_user_email_selection: Option<usize>,
     pub git_default_branch_selection: Option<usize>,
     pub ai_model_selection: Option<usize>,
@@ -60,6 +63,7 @@ impl SettingsModalState {
         Self {
             focus: cx.focus_handle(),
             active_field: Some(default_settings_field(SettingsSection::Git)),
+            remote_url_cursor: 0,
             git_user_name_cursor: 0,
             git_user_email_cursor: 0,
             git_default_branch_cursor: 0,
@@ -69,6 +73,7 @@ impl SettingsModalState {
             ai_system_prompt_cursor: 0,
             openrouter_model_filter_cursor: 0,
             show_model_picker: false,
+            remote_url_selection: None,
             git_user_name_selection: None,
             git_user_email_selection: None,
             git_default_branch_selection: None,
@@ -83,6 +88,7 @@ impl SettingsModalState {
 
 pub(crate) fn default_settings_field(section: SettingsSection) -> SettingsField {
     match section {
+        SettingsSection::Remote => SettingsField::RemoteUrl,
         SettingsSection::Git => SettingsField::GitUserName,
         SettingsSection::Ai => SettingsField::AiModel,
         SettingsSection::Appearance | SettingsSection::Integrations => SettingsField::GitUserName,
@@ -112,6 +118,13 @@ pub(crate) fn render_settings_modal(
     let status_text = settings_status_text(app);
 
     let section_action = match app.nav.settings_section {
+        SettingsSection::Remote => app.repo.remote_name.as_ref().map(|_| {
+            render_primary_button("settings-save-remote", "Save Remote", true, cx)
+                .on_click(cx.listener(|app, _evt, _window, cx| {
+                    app.handle_settings_action(SettingsAction::SaveRemote, cx);
+                }))
+                .into_any_element()
+        }),
         SettingsSection::Git => Some(
             render_primary_button("settings-save-git", "Save Git Config", true, cx)
                 .on_click(cx.listener(|app, _evt, _window, cx| {
@@ -130,6 +143,7 @@ pub(crate) fn render_settings_modal(
     };
 
     let content = match app.nav.settings_section {
+        SettingsSection::Remote => render_remote_section(app, window, cx).into_any_element(),
         SettingsSection::Git => {
             render_git_section(app, window, repo_scope.as_deref(), cx).into_any_element()
         }
@@ -299,7 +313,7 @@ fn settings_status_text(app: &GitSparkApp) -> Option<(&str, Hsla)> {
     }
 
     match app.messages.status_message.as_str() {
-        "AI settings saved." | "Git config saved." => {
+        "AI settings saved." | "Git config saved." | "Remote settings saved." => {
             Some((app.messages.status_message.as_str(), theme::text_muted()))
         }
         _ => None,
@@ -307,7 +321,16 @@ fn settings_status_text(app: &GitSparkApp) -> Option<(&str, Hsla)> {
 }
 
 fn render_nav(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElement {
-    let sections = [
+    let mut sections = Vec::new();
+    if app.settings_has_repository_scope() {
+        sections.push((
+            SettingsSection::Remote,
+            "settings-tab-remote",
+            "Remote",
+            IconName::GitHub,
+        ));
+    }
+    sections.extend([
         (
             SettingsSection::Git,
             "settings-tab-git",
@@ -332,7 +355,7 @@ fn render_nav(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElem
             "Integrations",
             IconName::SquareTerminal,
         ),
-    ];
+    ]);
 
     let mut rail = v_flex()
         .id("settings-nav")
@@ -402,6 +425,87 @@ fn render_nav(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElem
     }
 
     rail
+}
+
+fn render_remote_section(
+    app: &GitSparkApp,
+    window: &Window,
+    cx: &mut Context<GitSparkApp>,
+) -> impl IntoElement {
+    let Some(remote_name) = app.repo.remote_name.as_deref() else {
+        return v_flex()
+            .w_full()
+            .gap(theme::z(18.0))
+            .child(render_section_header(
+                "Remote",
+                "No remote configured",
+                "Publish this repository to GitHub or add a remote from the command line.",
+            ))
+            .child(
+                div()
+                    .id("settings-remote-empty")
+                    .w_full()
+                    .p(theme::z(14.0))
+                    .rounded(theme::z(theme::CORNER_RADIUS))
+                    .border_1()
+                    .border_color(theme::border())
+                    .bg(theme::bg())
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .items_center()
+                            .justify_between()
+                            .gap(theme::z(12.0))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_size(theme::z(12.0))
+                                    .text_color(theme::text_muted())
+                                    .child("This repository does not have a remote URL yet."),
+                            )
+                            .child(
+                                render_primary_button(
+                                    "settings-remote-publish",
+                                    "Publish Repository",
+                                    true,
+                                    cx,
+                                )
+                                .on_click(cx.listener(|app, _evt, _window, cx| {
+                                    app.handle_toolbar_action(
+                                        ToolbarAction::RunNetworkAction(
+                                            crate::ui::domain_state::NetworkAction::PublishRepository,
+                                        ),
+                                        cx,
+                                    );
+                                })),
+                            ),
+                    ),
+            )
+            .into_any_element();
+    };
+
+    v_flex()
+        .w_full()
+        .gap(theme::z(18.0))
+        .child(render_section_header(
+            "Remote",
+            "Primary remote repository",
+            &format!("Edit the URL used for the `{remote_name}` remote."),
+        ))
+        .child(render_text_input(
+            app,
+            window,
+            cx,
+            "settings-remote-url",
+            SettingsField::RemoteUrl,
+            &format!("Primary Remote Repository ({remote_name}) URL"),
+            "Remote URL",
+            false,
+            false,
+            false,
+            Some("Used by fetch, pull, push, and GitHub links."),
+        ))
+        .into_any_element()
 }
 
 fn render_git_section(

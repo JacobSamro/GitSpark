@@ -193,6 +193,7 @@ impl From<AutomationNetworkAction> for NetworkAction {
 #[derive(Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum AutomationSettingsSection {
+    Remote,
     Git,
     Ai,
     Appearance,
@@ -202,6 +203,7 @@ pub(crate) enum AutomationSettingsSection {
 impl From<AutomationSettingsSection> for SettingsSection {
     fn from(section: AutomationSettingsSection) -> Self {
         match section {
+            AutomationSettingsSection::Remote => Self::Remote,
             AutomationSettingsSection::Git => Self::Git,
             AutomationSettingsSection::Ai => Self::Ai,
             AutomationSettingsSection::Appearance => Self::Appearance,
@@ -213,6 +215,7 @@ impl From<AutomationSettingsSection> for SettingsSection {
 impl From<SettingsSection> for AutomationSettingsSection {
     fn from(section: SettingsSection) -> Self {
         match section {
+            SettingsSection::Remote => Self::Remote,
             SettingsSection::Git => Self::Git,
             SettingsSection::Ai => Self::Ai,
             SettingsSection::Appearance => Self::Appearance,
@@ -224,6 +227,7 @@ impl From<SettingsSection> for AutomationSettingsSection {
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum AutomationSettingsField {
+    RemoteUrl,
     GitUserName,
     GitUserEmail,
     GitDefaultBranch,
@@ -237,6 +241,7 @@ pub(crate) enum AutomationSettingsField {
 impl From<AutomationSettingsField> for SettingsField {
     fn from(field: AutomationSettingsField) -> Self {
         match field {
+            AutomationSettingsField::RemoteUrl => Self::RemoteUrl,
             AutomationSettingsField::GitUserName => Self::GitUserName,
             AutomationSettingsField::GitUserEmail => Self::GitUserEmail,
             AutomationSettingsField::GitDefaultBranch => Self::GitDefaultBranch,
@@ -365,6 +370,8 @@ struct AutomationSnapshot {
     ai_model: String,
     ai_endpoint: String,
     ai_system_prompt: String,
+    repo_remote_name: Option<String>,
+    repo_remote_url: String,
 }
 
 #[derive(Serialize)]
@@ -481,6 +488,7 @@ enum AutomationNodeAction {
     SetPublishDescription,
     TogglePublishPrivate,
     ConfirmPublishRepository,
+    SaveRemoteSettings,
     SaveGitSettings,
     SaveAiSettings,
     SetGitConfigScope(bool),
@@ -641,6 +649,9 @@ impl GitSparkApp {
                     AutomationSettingsSection::Git => {
                         self.handle_settings_action(SettingsAction::SaveGitConfig, cx);
                     }
+                    AutomationSettingsSection::Remote => {
+                        self.handle_settings_action(SettingsAction::SaveRemote, cx);
+                    }
                     AutomationSettingsSection::Ai => {
                         self.handle_settings_action(SettingsAction::SaveAiSettings, cx);
                     }
@@ -766,6 +777,8 @@ impl GitSparkApp {
             ai_model: self.settings.ai.model.clone(),
             ai_endpoint: self.settings.ai.endpoint.clone(),
             ai_system_prompt: self.settings.ai.system_prompt.clone(),
+            repo_remote_name: self.repo.remote_name.clone(),
+            repo_remote_url: self.repo.remote_url.clone(),
         }
     }
 
@@ -2058,6 +2071,9 @@ impl GitSparkApp {
             AutomationNodeAction::SaveGitSettings => {
                 self.handle_settings_action(SettingsAction::SaveGitConfig, cx);
             }
+            AutomationNodeAction::SaveRemoteSettings => {
+                self.handle_settings_action(SettingsAction::SaveRemote, cx);
+            }
             AutomationNodeAction::SaveAiSettings => {
                 self.handle_settings_action(SettingsAction::SaveAiSettings, cx);
             }
@@ -2124,6 +2140,10 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         match field {
+            SettingsField::RemoteUrl => {
+                self.repo.remote_url = text;
+                self.settings_modal.remote_url_selection = None;
+            }
             SettingsField::GitUserName => {
                 self.active_git_settings_identity_mut().user_name = text;
                 self.settings_modal.git_user_name_selection = None;
@@ -2168,6 +2188,7 @@ impl GitSparkApp {
 
     fn set_automation_settings_cursor(&mut self, field: SettingsField, cursor: usize) {
         match field {
+            SettingsField::RemoteUrl => self.settings_modal.remote_url_cursor = cursor,
             SettingsField::GitUserName => self.settings_modal.git_user_name_cursor = cursor,
             SettingsField::GitUserEmail => self.settings_modal.git_user_email_cursor = cursor,
             SettingsField::GitDefaultBranch => {
@@ -2480,7 +2501,11 @@ fn branch_selector_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
 }
 
 fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
-    let sections = [
+    let mut sections = Vec::new();
+    if app.settings_has_repository_scope() {
+        sections.push((SettingsSection::Remote, "settings-tab-remote", "Remote"));
+    }
+    sections.extend([
         (SettingsSection::Git, "settings-tab-git", "Git"),
         (SettingsSection::Ai, "settings-tab-ai", "AI Commit"),
         (
@@ -2493,7 +2518,7 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
             "settings-tab-integrations",
             "Integrations",
         ),
-    ];
+    ]);
 
     let mut nodes = sections
         .into_iter()
@@ -2510,6 +2535,45 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
         .collect::<Vec<_>>();
 
     match app.nav.settings_section {
+        SettingsSection::Remote => {
+            if app.repo.remote_name.is_some() {
+                nodes.extend([
+                    settings_field_node(
+                        app,
+                        "settings-remote-url",
+                        "Primary Remote Repository URL",
+                        SettingsField::RemoteUrl,
+                        app.repo.remote_url.as_str(),
+                    ),
+                    automation_node(
+                        "settings-save-remote",
+                        AutomationRole::Button,
+                        Some("settings-save-remote"),
+                        Some("Save Remote"),
+                        Some(AutomationNodeAction::SaveRemoteSettings),
+                    ),
+                ]);
+            } else {
+                nodes.extend([
+                    automation_node(
+                        "settings-remote-empty",
+                        AutomationRole::Status,
+                        Some("settings-remote-empty"),
+                        Some("No remote configured"),
+                        None::<AutomationNodeAction>,
+                    ),
+                    automation_node(
+                        "settings-remote-publish",
+                        AutomationRole::Button,
+                        Some("settings-remote-publish"),
+                        Some("Publish Repository"),
+                        Some(AutomationNodeAction::Network(
+                            NetworkAction::PublishRepository,
+                        )),
+                    ),
+                ]);
+            }
+        }
         SettingsSection::Git => {
             nodes.extend([
                 automation_node(
