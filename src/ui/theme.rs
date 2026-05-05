@@ -94,6 +94,10 @@ pub fn warning() -> Hsla {
     gpui::rgb(0xd29922).into()
 }
 
+pub fn warning_bg() -> Hsla {
+    gpui::rgb(0x2d2307).into()
+}
+
 pub fn danger() -> Hsla {
     gpui::rgb(0xf85149).into()
 }

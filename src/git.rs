@@ -21,6 +21,7 @@ pub struct GitClient;
 
 struct StashEntry {
     ref_name: String,
+    sha: String,
     subject: String,
 }
 
@@ -342,9 +343,20 @@ impl GitClient {
     pub fn stash_all(&self, repo_path: &Path) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let branch_name = self.current_stash_branch_name(&repo_path)?;
+        let previous_stash_shas = self
+            .list_stashes(&repo_path)?
+            .into_iter()
+            .filter(|stash| stash.is_gitspark_stash_for(&branch_name))
+            .map(|stash| stash.sha)
+            .collect::<Vec<_>>();
         let message = format!("{GITSPARK_STASH_MESSAGE_PREFIX}{branch_name}");
         self.run_git(&repo_path, &["stash", "push", "-u", "-m", message.as_str()])
             .context("failed to stash changes")?;
+
+        for sha in previous_stash_shas {
+            self.drop_stash_by_sha(&repo_path, &sha)?;
+        }
+
         self.snapshot(&repo_path)
     }
 
@@ -1258,21 +1270,39 @@ impl GitClient {
     }
 
     fn list_stashes(&self, repo_path: &Path) -> Result<Vec<StashEntry>> {
-        let output = self.run_git(repo_path, &["stash", "list", "--format=%gd%x1f%s"])?;
+        let output = self.run_git(repo_path, &["stash", "list", "--format=%gd%x1f%H%x1f%s"])?;
         Ok(output
             .lines()
             .filter_map(|line| {
-                let (ref_name, subject) = line.split_once('\u{1f}')?;
+                let mut parts = line.splitn(3, '\u{1f}');
+                let ref_name = parts.next()?.trim();
+                let sha = parts.next()?.trim();
+                let subject = parts.next()?.trim();
                 let ref_name = ref_name.trim();
-                if ref_name.is_empty() {
+                if ref_name.is_empty() || sha.is_empty() {
                     return None;
                 }
                 Some(StashEntry {
                     ref_name: ref_name.to_string(),
-                    subject: subject.trim().to_string(),
+                    sha: sha.to_string(),
+                    subject: subject.to_string(),
                 })
             })
             .collect())
+    }
+
+    fn drop_stash_by_sha(&self, repo_path: &Path, sha: &str) -> Result<()> {
+        let Some(stash) = self
+            .list_stashes(repo_path)?
+            .into_iter()
+            .find(|stash| stash.sha == sha)
+        else {
+            return Ok(());
+        };
+
+        self.run_git(repo_path, &["stash", "drop", stash.ref_name.as_str()])
+            .map(|_| ())
+            .with_context(|| format!("failed to drop previous stash '{}'", stash.ref_name))
     }
 
     fn resolve_repo_root(&self, path: &Path) -> Result<PathBuf> {
@@ -2279,6 +2309,37 @@ mod tests {
         let stash_list = run_git(&repo, &["stash", "list", "--format=%s"]);
         assert!(stash_list.contains("User stash"));
         assert!(!stash_list.contains(GITSPARK_STASH_MESSAGE_PREFIX));
+        let snapshot = GitClient::new().open_repo(&repo).unwrap();
+        assert_eq!(snapshot.stash_count, 0);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn replaces_existing_gitspark_branch_stash_when_stashing_again() {
+        let repo = temp_repo("replace-branch-stash");
+        fs::write(repo.join("README.md"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+
+        fs::write(repo.join("README.md"), "first stash\n").unwrap();
+        let snapshot = GitClient::new().stash_all(&repo).unwrap();
+        assert_eq!(snapshot.stash_count, 1);
+
+        fs::write(repo.join("README.md"), "second stash\n").unwrap();
+        let snapshot = GitClient::new().stash_all(&repo).unwrap();
+        assert_eq!(snapshot.stash_count, 1);
+
+        let stash_list = run_git(&repo, &["stash", "list", "--format=%s"]);
+        assert_eq!(stash_list.matches(GITSPARK_STASH_MESSAGE_PREFIX).count(), 1);
+
+        GitClient::new().stash_pop(&repo).unwrap();
+        let readme = fs::read_to_string(repo.join("README.md")).unwrap();
+        assert_eq!(readme, "second stash\n");
+
         let snapshot = GitClient::new().open_repo(&repo).unwrap();
         assert_eq!(snapshot.stash_count, 0);
 

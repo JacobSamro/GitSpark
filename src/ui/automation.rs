@@ -1229,6 +1229,16 @@ impl GitSparkApp {
                 Some("Files to stash"),
                 None,
             ));
+            children.push(
+                automation_node(
+                    "stash-changes-replace-warning",
+                    AutomationRole::Status,
+                    Some("stash-changes-replace-warning"),
+                    Some("Stashing will replace the existing GitSpark stash for this branch."),
+                    None::<AutomationNodeAction>,
+                )
+                .visible(self.repo.has_stash),
+            );
             if let Some(snapshot) = &self.repo.snapshot {
                 children.extend(snapshot.changes.iter().map(|file| {
                     let id = format!("stash-changes-file-{}", stable_test_slug(&file.path));

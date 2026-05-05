@@ -14,6 +14,7 @@ use crate::ui::ui_state::ActiveDialog;
 
 pub(crate) fn render_stash_changes_dialog(
     files: Arc<Vec<ChangeEntry>>,
+    replaces_existing_stash: bool,
     cx: &mut Context<GitSparkApp>,
 ) -> Div {
     v_flex()
@@ -84,6 +85,30 @@ pub(crate) fn render_stash_changes_dialog(
                         .text_color(theme::text_muted())
                         .child("These files will be saved in a new stash and removed from the working tree."),
                 )
+                .children(replaces_existing_stash.then(|| {
+                    h_flex()
+                        .id("stash-changes-replace-warning")
+                        .w_full()
+                        .gap(theme::z(8.0))
+                        .items_start()
+                        .p(theme::z(10.0))
+                        .rounded(theme::z(theme::CORNER_RADIUS))
+                        .border_1()
+                        .border_color(theme::warning())
+                        .bg(theme::warning_bg())
+                        .child(
+                            Icon::new(IconName::TriangleAlert)
+                                .size(px(14.0))
+                                .text_color(theme::warning()),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .text_size(theme::z(12.0))
+                                .text_color(theme::text_main())
+                                .child("Stashing will replace the existing GitSpark stash for this branch."),
+                        )
+                }))
                 .child(render_stash_file_list(
                     "stash-changes-file-list",
                     "stash-changes-files",

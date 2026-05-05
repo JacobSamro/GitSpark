@@ -6924,7 +6924,11 @@ impl GitSparkApp {
                     .as_ref()
                     .map(|snapshot| snapshot.changes.clone())
                     .unwrap_or_default();
-                crate::ui::stash_changes_dialog::render_stash_changes_dialog(Arc::new(files), cx)
+                crate::ui::stash_changes_dialog::render_stash_changes_dialog(
+                    Arc::new(files),
+                    self.repo.has_stash,
+                    cx,
+                )
             }
             ActiveDialog::DiscardStash => {
                 crate::ui::discard_stash_dialog::render_discard_stash_dialog(
