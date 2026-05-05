@@ -19,7 +19,19 @@ export async function testAiValidation(app) {
 }
 
 export async function testSettingsPersistence(app, fixture) {
-  await app.getByTestId("button-settings").click();
+  await app.command({ command: "show_repository_settings", show: true });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.show_settings === true &&
+      snapshot.settings_scope === "repository" &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "settings-tab-remote",
+      ) &&
+      !snapshot.test_tree?.children?.some(
+        (node) => node.id === "settings-tab-ai",
+      ),
+    { timeoutMs: 10_000 },
+  );
   await app.getByTestId("settings-tab-git").click();
   await app.getByTestId("settings-git-user-name").fill(".");
   await app.getByTestId("settings-git-user-email").fill("precise@gitspark.local");
@@ -100,8 +112,12 @@ export async function testSettingsPersistence(app, fixture) {
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.show_settings === true &&
+      snapshot.settings_scope === "global" &&
       snapshot.test_tree?.children?.some(
         (node) => node.id === "settings-git-user-name" && node.enabled === true,
+      ) &&
+      !snapshot.test_tree?.children?.some(
+        (node) => node.id === "settings-tab-remote",
       ) &&
       snapshot.test_tree?.children?.some(
         (node) => node.id === "settings-git-user-email" && node.enabled === true,
@@ -142,8 +158,12 @@ export async function testSettingsPersistence(app, fixture) {
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.show_settings === true &&
+      snapshot.settings_scope === "repository" &&
       snapshot.test_tree?.children?.some(
         (node) => node.id === "settings-git-scope-global" && node.visible === true,
+      ) &&
+      !snapshot.test_tree?.children?.some(
+        (node) => node.id === "settings-tab-ai",
       ) &&
       snapshot.test_tree?.children?.some(
         (node) => node.id === "settings-pull-rebase" && node.visible === true,
@@ -151,6 +171,7 @@ export async function testSettingsPersistence(app, fixture) {
     { timeoutMs: 10_000 },
   );
 
+  await app.command({ command: "show_global_settings", show: true });
   await app.getByTestId("settings-tab-ai").click();
   await app.getByTestId("settings-provider-openai-compatible").click();
   await app.getByTestId("settings-ai-model").fill("gpt-e2e-precise");

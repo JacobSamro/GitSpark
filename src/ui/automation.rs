@@ -23,7 +23,7 @@ use crate::ui::history_context_menu::HistoryContextMenuAction;
 use crate::ui::ids::stable_id_slug;
 use crate::ui::settings_modal::SettingsField;
 use crate::ui::ui_state::{ActiveDialog, BranchSelectorMode, SidebarTab};
-use crate::ui::ui_state::{OpenRouterModelsState, SettingsSection};
+use crate::ui::ui_state::{OpenRouterModelsState, SettingsScope, SettingsSection};
 
 const DEFAULT_ADDR: &str = "127.0.0.1:7878";
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -375,6 +375,7 @@ struct AutomationSnapshot {
     branch_filter_text: String,
     status_message: String,
     error_message: String,
+    settings_scope: AutomationSettingsScope,
     settings_section: AutomationSettingsSection,
     git_user_name: String,
     git_user_email: String,
@@ -387,6 +388,22 @@ struct AutomationSnapshot {
     repo_remote_name: Option<String>,
     repo_remote_url: String,
     repo_ignored_files_text: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+enum AutomationSettingsScope {
+    Global,
+    Repository,
+}
+
+impl From<SettingsScope> for AutomationSettingsScope {
+    fn from(scope: SettingsScope) -> Self {
+        match scope {
+            SettingsScope::Global => Self::Global,
+            SettingsScope::Repository => Self::Repository,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -607,7 +624,7 @@ impl GitSparkApp {
             }
             AutomationCommand::ShowSettings { show } => {
                 if show {
-                    self.open_settings_modal(None, cx);
+                    self.open_global_settings_modal(None, cx);
                 } else {
                     self.close_settings_modal();
                 }
@@ -805,6 +822,7 @@ impl GitSparkApp {
             branch_filter_text: self.filters.branch_filter_text.clone(),
             status_message: self.messages.status_message.clone(),
             error_message: self.messages.error_message.clone(),
+            settings_scope: self.nav.settings_scope.into(),
             settings_section: self.nav.settings_section.into(),
             git_user_name: self.active_git_settings_identity().user_name.clone(),
             git_user_email: self.active_git_settings_identity().user_email.clone(),
@@ -891,7 +909,7 @@ impl GitSparkApp {
                 "settings-toggle",
                 AutomationRole::Button,
                 Some("button-settings"),
-                Some("Settings"),
+                Some("Global Settings"),
                 Some(AutomationNodeAction::ShowSettings(!self.nav.show_settings)),
             ),
             automation_node(
@@ -1979,7 +1997,7 @@ impl GitSparkApp {
             }
             AutomationNodeAction::ShowSettings(show) => {
                 if show {
-                    self.open_settings_modal(None, cx);
+                    self.open_global_settings_modal(None, cx);
                 } else {
                     self.close_settings_modal();
                 }
@@ -2220,8 +2238,8 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         self.nav.show_settings = true;
-        self.nav.settings_section = section;
-        let field = crate::ui::settings_modal::default_settings_field(section);
+        self.nav.settings_section = self.nav.settings_scope.normalize_section(section);
+        let field = crate::ui::settings_modal::default_settings_field(self.nav.settings_section);
         self.settings_modal.active_field = Some(field);
         self.set_automation_settings_cursor(field, self.settings_field_value(field).len());
         cx.notify();
@@ -2601,29 +2619,32 @@ fn branch_selector_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
 }
 
 fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
-    let mut sections = Vec::new();
-    if app.settings_has_repository_scope() {
-        sections.push((SettingsSection::Remote, "settings-tab-remote", "Remote"));
-        sections.push((
-            SettingsSection::IgnoredFiles,
-            "settings-tab-ignored-files",
-            "Ignored Files",
-        ));
-    }
-    sections.extend([
-        (SettingsSection::Git, "settings-tab-git", "Git"),
-        (SettingsSection::Ai, "settings-tab-ai", "AI Commit"),
-        (
-            SettingsSection::Appearance,
-            "settings-tab-appearance",
-            "Appearance",
-        ),
-        (
-            SettingsSection::Integrations,
-            "settings-tab-integrations",
-            "Integrations",
-        ),
-    ]);
+    let sections = if app.settings_has_repository_scope() {
+        vec![
+            (SettingsSection::Remote, "settings-tab-remote", "Remote"),
+            (
+                SettingsSection::IgnoredFiles,
+                "settings-tab-ignored-files",
+                "Ignored Files",
+            ),
+            (SettingsSection::Git, "settings-tab-git", "Git"),
+        ]
+    } else {
+        vec![
+            (SettingsSection::Git, "settings-tab-git", "Git"),
+            (SettingsSection::Ai, "settings-tab-ai", "AI Commit"),
+            (
+                SettingsSection::Appearance,
+                "settings-tab-appearance",
+                "Appearance",
+            ),
+            (
+                SettingsSection::Integrations,
+                "settings-tab-integrations",
+                "Integrations",
+            ),
+        ]
+    };
 
     let mut nodes = sections
         .into_iter()

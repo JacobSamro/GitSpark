@@ -668,7 +668,7 @@ impl GitSparkApp {
             SidebarAction::OpenWithDefault(path) => self.open_with_default_program(&path),
             SidebarAction::SelectCommit(oid) => self.select_commit(oid, cx),
             SidebarAction::GenerateAiCommit => self.generate_ai_commit(cx),
-            SidebarAction::ShowSettings => self.open_settings_modal(None, cx),
+            SidebarAction::ShowSettings => self.open_global_settings_modal(None, cx),
             SidebarAction::CommitAll => self.commit_all(cx),
         }
         cx.notify();
@@ -5153,12 +5153,7 @@ impl GitSparkApp {
         section: Option<crate::ui::ui_state::SettingsSection>,
         cx: &mut Context<Self>,
     ) {
-        let scope = if self.repo.snapshot.is_some() {
-            SettingsScope::Repository
-        } else {
-            SettingsScope::Global
-        };
-        self.open_settings_modal_with_scope(section, scope, cx);
+        self.open_global_settings_modal(section, cx);
     }
 
     pub(crate) fn open_global_settings_modal(
@@ -5183,21 +5178,13 @@ impl GitSparkApp {
         scope: SettingsScope,
         cx: &mut Context<Self>,
     ) {
-        if let Some(section) = section {
-            self.nav.settings_section = section;
-        } else if scope == SettingsScope::Global
-            && matches!(
-                self.nav.settings_section,
-                crate::ui::ui_state::SettingsSection::Remote
-                    | crate::ui::ui_state::SettingsSection::IgnoredFiles
-            )
-        {
-            self.nav.settings_section = crate::ui::ui_state::SettingsSection::Git;
-        } else if scope == SettingsScope::Repository
-            && self.nav.settings_section == crate::ui::ui_state::SettingsSection::Ai
-        {
-            self.nav.settings_section = crate::ui::ui_state::SettingsSection::Remote;
-        }
+        let scope = if scope == SettingsScope::Repository && self.repo.snapshot.is_none() {
+            SettingsScope::Global
+        } else {
+            scope
+        };
+        self.nav.settings_section =
+            scope.normalize_section(section.unwrap_or(self.nav.settings_section));
 
         self.close_history_context_menu();
         self.nav.settings_scope = scope;

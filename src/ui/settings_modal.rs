@@ -195,7 +195,7 @@ pub(crate) fn render_settings_modal(
         .rounded(theme::z(theme::CORNER_RADIUS))
         .shadow_lg()
         .overflow_hidden()
-        .child(render_header(cx))
+        .child(render_header(app, cx))
         .child(
             h_flex()
                 .flex_1()
@@ -286,7 +286,13 @@ fn settings_modal_geometry(window_width: f32, window_height: f32) -> (f32, f32, 
     (panel_width, panel_height, panel_left, panel_top)
 }
 
-fn render_header(cx: &mut Context<GitSparkApp>) -> impl IntoElement {
+fn render_header(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElement {
+    let title = if app.settings_has_repository_scope() {
+        "Repository Settings"
+    } else {
+        "Global Settings"
+    };
+
     h_flex()
         .w_full()
         .h(theme::z(50.0))
@@ -301,7 +307,7 @@ fn render_header(cx: &mut Context<GitSparkApp>) -> impl IntoElement {
                 .text_size(theme::z(14.0))
                 .text_color(theme::text_main())
                 .font_weight(FontWeight::BOLD)
-                .child("Settings"),
+                .child(title),
         )
         .child(
             div()
@@ -340,47 +346,55 @@ fn settings_status_text(app: &GitSparkApp) -> Option<(&str, Hsla)> {
 }
 
 fn render_nav(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElement {
-    let mut sections = Vec::new();
-    if app.settings_has_repository_scope() {
-        sections.push((
-            SettingsSection::Remote,
-            "settings-tab-remote",
-            "Remote",
-            IconName::GitHub,
-        ));
-        sections.push((
-            SettingsSection::IgnoredFiles,
-            "settings-tab-ignored-files",
-            "Ignored Files",
-            IconName::FolderClosed,
-        ));
-    }
-    sections.extend([
-        (
-            SettingsSection::Git,
-            "settings-tab-git",
-            "Git",
-            IconName::Settings2,
-        ),
-        (
-            SettingsSection::Ai,
-            "settings-tab-ai",
-            "AI Commit",
-            IconName::Bot,
-        ),
-        (
-            SettingsSection::Appearance,
-            "settings-tab-appearance",
-            "Appearance",
-            IconName::Palette,
-        ),
-        (
-            SettingsSection::Integrations,
-            "settings-tab-integrations",
-            "Integrations",
-            IconName::SquareTerminal,
-        ),
-    ]);
+    let sections = if app.settings_has_repository_scope() {
+        vec![
+            (
+                SettingsSection::Remote,
+                "settings-tab-remote",
+                "Remote",
+                IconName::GitHub,
+            ),
+            (
+                SettingsSection::IgnoredFiles,
+                "settings-tab-ignored-files",
+                "Ignored Files",
+                IconName::FolderClosed,
+            ),
+            (
+                SettingsSection::Git,
+                "settings-tab-git",
+                "Git",
+                IconName::Settings2,
+            ),
+        ]
+    } else {
+        vec![
+            (
+                SettingsSection::Git,
+                "settings-tab-git",
+                "Git",
+                IconName::Settings2,
+            ),
+            (
+                SettingsSection::Ai,
+                "settings-tab-ai",
+                "AI Commit",
+                IconName::Bot,
+            ),
+            (
+                SettingsSection::Appearance,
+                "settings-tab-appearance",
+                "Appearance",
+                IconName::Palette,
+            ),
+            (
+                SettingsSection::Integrations,
+                "settings-tab-integrations",
+                "Integrations",
+                IconName::SquareTerminal,
+            ),
+        ]
+    };
 
     let mut rail = v_flex()
         .id("settings-nav")
@@ -437,6 +451,10 @@ fn render_nav(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElem
                 )
                 .on_click(cx.listener(move |app, _evt, window, cx| {
                     app.nav.settings_section = section;
+                    app.nav.settings_section = app
+                        .nav
+                        .settings_scope
+                        .normalize_section(app.nav.settings_section);
                     let field = if section == SettingsSection::Ai
                         && app.settings.ai.provider == AiProvider::OpenRouter
                     {

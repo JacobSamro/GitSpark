@@ -16,6 +16,19 @@ pub enum SettingsSection {
     Integrations,
 }
 
+impl SettingsSection {
+    pub fn is_repository_settings(self) -> bool {
+        matches!(self, Self::Remote | Self::IgnoredFiles | Self::Git)
+    }
+
+    pub fn is_global_settings(self) -> bool {
+        matches!(
+            self,
+            Self::Git | Self::Ai | Self::Appearance | Self::Integrations
+        )
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum MainTab {
     Workspace,
@@ -106,6 +119,23 @@ pub struct ChangeContextMenuState {
 pub enum SettingsScope {
     Global,
     Repository,
+}
+
+impl SettingsScope {
+    pub fn default_section(self) -> SettingsSection {
+        match self {
+            Self::Global => SettingsSection::Git,
+            Self::Repository => SettingsSection::Remote,
+        }
+    }
+
+    pub fn normalize_section(self, section: SettingsSection) -> SettingsSection {
+        match self {
+            Self::Global if section.is_global_settings() => section,
+            Self::Repository if section.is_repository_settings() => section,
+            _ => self.default_section(),
+        }
+    }
 }
 
 impl Default for NavState {
