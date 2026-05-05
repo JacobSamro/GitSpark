@@ -48,6 +48,7 @@ const app = await GitSparkAutomation.launch({
     GITSPARK_AI_ENDPOINT: aiServer.url,
     GITSPARK_CONFIG_DIR: fixture.configDir,
     GIT_CONFIG_GLOBAL: fixture.globalGitConfig,
+    GITSPARK_EDITOR_COMMAND: "/usr/bin/true",
     GITSPARK_OPEN_COMMAND: "/usr/bin/true",
     GITSPARK_OPEN_URL_COMMAND: fixture.openUrlCommand,
     GITSPARK_REVEAL_COMMAND: "/usr/bin/true",

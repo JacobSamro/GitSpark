@@ -2484,33 +2484,19 @@ impl GitSparkApp {
         };
 
         let full_path = repo_path.join(relative_path);
-        let configured_editor = self
-            .git
-            .read_config_value(&repo_path, "core.editor")
-            .ok()
-            .flatten()
-            .filter(|value| !value.trim().is_empty())
+        let configured_editor = external_command_from_env("GITSPARK_EDITOR_COMMAND")
             .or_else(|| {
-                env::var("VISUAL")
+                self.git
+                    .read_config_value(&repo_path, "core.editor")
                     .ok()
+                    .flatten()
                     .filter(|value| !value.trim().is_empty())
             })
-            .or_else(|| {
-                env::var("EDITOR")
-                    .ok()
-                    .filter(|value| !value.trim().is_empty())
-            });
+            .or_else(|| external_command_from_env("VISUAL"))
+            .or_else(|| external_command_from_env("EDITOR"));
 
         let result = if let Some(editor_cmd) = configured_editor {
-            Command::new("sh")
-                .arg("-lc")
-                .arg(format!(
-                    "{} {}",
-                    editor_cmd,
-                    shell_escape(&full_path.to_string_lossy())
-                ))
-                .spawn()
-                .map(|_| ())
+            spawn_shell_path_command(&editor_cmd, &full_path)
         } else {
             open::that_detached(&full_path)
         };
