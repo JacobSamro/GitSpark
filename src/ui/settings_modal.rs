@@ -14,6 +14,12 @@ use crate::ui::ids::stable_id_slug;
 use crate::ui::theme;
 use crate::ui::ui_state::{OpenRouterModelsState, SettingsSection};
 
+const SETTINGS_MODAL_MARGIN: f32 = 16.0;
+const SETTINGS_MODAL_MIN_WIDTH: f32 = 720.0;
+const SETTINGS_MODAL_MAX_WIDTH: f32 = 940.0;
+const SETTINGS_MODAL_MIN_HEIGHT: f32 = 540.0;
+const SETTINGS_MODAL_MAX_HEIGHT: f32 = 760.0;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SettingsField {
     GitUserName,
@@ -91,10 +97,8 @@ pub(crate) fn render_settings_modal(
     let bounds = window.bounds();
     let window_width = bounds.size.width / px(1.0);
     let window_height = bounds.size.height / px(1.0);
-    let panel_width = (window_width - 32.0).clamp(720.0, 940.0);
-    let panel_height = (window_height - 32.0).clamp(540.0, 760.0);
-    let panel_left = ((window_width - panel_width) / 2.0).max(16.0);
-    let panel_top = ((window_height - panel_height) / 2.0).max(16.0);
+    let (panel_width, panel_height, panel_left, panel_top) =
+        settings_modal_geometry(window_width, window_height);
 
     let repo_scope = app
         .settings_has_repository_scope()
@@ -235,6 +239,21 @@ pub(crate) fn render_settings_modal(
                 .on_click(|_evt, _window, cx| cx.stop_propagation())
                 .child(panel),
         )
+}
+
+fn settings_modal_geometry(window_width: f32, window_height: f32) -> (f32, f32, f32, f32) {
+    let available_width = (window_width - (SETTINGS_MODAL_MARGIN * 2.0)).max(0.0);
+    let available_height = (window_height - (SETTINGS_MODAL_MARGIN * 2.0)).max(0.0);
+    let panel_width = available_width
+        .min(SETTINGS_MODAL_MAX_WIDTH)
+        .max(SETTINGS_MODAL_MIN_WIDTH.min(available_width));
+    let panel_height = available_height
+        .min(SETTINGS_MODAL_MAX_HEIGHT)
+        .max(SETTINGS_MODAL_MIN_HEIGHT.min(available_height));
+    let panel_left = ((window_width - panel_width) / 2.0).max(SETTINGS_MODAL_MARGIN);
+    let panel_top = ((window_height - panel_height) / 2.0).max(SETTINGS_MODAL_MARGIN);
+
+    (panel_width, panel_height, panel_left, panel_top)
 }
 
 fn render_header(cx: &mut Context<GitSparkApp>) -> impl IntoElement {
@@ -1570,5 +1589,32 @@ fn truncate_single_line(text: &str, max_chars: usize) -> String {
         format!("{shortened}…")
     } else {
         shortened
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::settings_modal_geometry;
+
+    #[test]
+    fn settings_modal_fits_inside_minimum_window() {
+        let (width, height, left, top) = settings_modal_geometry(720.0, 480.0);
+
+        assert_eq!(width, 688.0);
+        assert_eq!(height, 448.0);
+        assert_eq!(left, 16.0);
+        assert_eq!(top, 16.0);
+        assert!(left + width <= 720.0);
+        assert!(top + height <= 480.0);
+    }
+
+    #[test]
+    fn settings_modal_uses_preferred_size_when_space_allows() {
+        let (width, height, left, top) = settings_modal_geometry(1000.0, 700.0);
+
+        assert_eq!(width, 940.0);
+        assert_eq!(height, 668.0);
+        assert_eq!(left, 30.0);
+        assert_eq!(top, 16.0);
     }
 }
