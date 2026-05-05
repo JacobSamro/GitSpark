@@ -13,6 +13,11 @@ use gpui::*;
 use crate::storage::load_settings;
 use crate::ui::GitSparkApp;
 
+const WINDOW_MIN_WIDTH: f32 = 960.0;
+const WINDOW_MIN_HEIGHT: f32 = 600.0;
+const DEFAULT_WINDOW_WIDTH: f32 = 1280.0;
+const DEFAULT_WINDOW_HEIGHT: f32 = 860.0;
+
 actions!(
     gitspark_menu,
     [
@@ -411,16 +416,23 @@ fn main() {
         //   60% of display width/height, capped to 16:9, min 960×600
         let (initial_width, initial_height) =
             if settings.window_size.width > 0.0 && settings.window_size.height > 0.0 {
-                (settings.window_size.width, settings.window_size.height)
+                (
+                    settings.window_size.width.max(WINDOW_MIN_WIDTH),
+                    settings.window_size.height.max(WINDOW_MIN_HEIGHT),
+                )
             } else if let Some(display) = cx.primary_display() {
                 let dw = display.bounds().size.width;
                 let dh = display.bounds().size.height;
                 let win_h = dh * 0.6;
-                let win_h = if win_h < px(600.0) { px(600.0) } else { win_h };
+                let win_h = if win_h < px(WINDOW_MIN_HEIGHT) {
+                    px(WINDOW_MIN_HEIGHT)
+                } else {
+                    win_h
+                };
                 let max_w = win_h * (16.0 / 9.0);
                 let win_w_raw = dw * 0.6;
-                let win_w = if win_w_raw < px(960.0) {
-                    px(960.0)
+                let win_w = if win_w_raw < px(WINDOW_MIN_WIDTH) {
+                    px(WINDOW_MIN_WIDTH)
                 } else if win_w_raw > max_w {
                     max_w
                 } else {
@@ -429,7 +441,7 @@ fn main() {
                 // Pixels / Pixels -> f32
                 (win_w / px(1.0), win_h / px(1.0))
             } else {
-                (1280.0, 860.0)
+                (DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)
             };
 
         let (window_bounds, restore_display_id) = if settings.window_size.has_position {
@@ -463,7 +475,7 @@ fn main() {
                 window_bounds: Some(window_bounds),
                 display_id: restore_display_id,
                 titlebar: Some(platform_titlebar_options()),
-                window_min_size: Some(size(px(720.0), px(480.0))),
+                window_min_size: Some(size(px(WINDOW_MIN_WIDTH), px(WINDOW_MIN_HEIGHT))),
                 ..Default::default()
             },
             move |_window, _cx| app_view.clone(),
