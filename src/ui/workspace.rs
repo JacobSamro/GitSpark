@@ -601,40 +601,6 @@ fn diff_line_selection_target(file_path: &str, line: &DiffLine) -> Option<DiffLi
     })
 }
 
-fn render_line_selection_cell(selected: bool, target: Option<&DiffLineSelection>) -> Div {
-    let mut cell = div()
-        .w(z(22.0))
-        .flex_shrink_0()
-        .items_center()
-        .justify_center();
-
-    if target.is_some() {
-        cell = cell.child(
-            div()
-                .size(z(13.0))
-                .items_center()
-                .justify_center()
-                .rounded(z(3.0))
-                .border_1()
-                .border_color(if selected {
-                    theme::accent()
-                } else {
-                    theme::line_num_color()
-                })
-                .bg(if selected {
-                    theme::accent()
-                } else {
-                    gpui::transparent_black()
-                })
-                .text_size(z(10.0))
-                .text_color(theme::text_main())
-                .child(if selected { "✓" } else { "" }),
-        );
-    }
-
-    cell
-}
-
 fn diff_row_id(file_path: &str, line: &DiffLine) -> String {
     if let Some(target) = diff_line_selection_target(file_path, line) {
         return target.id();
@@ -663,16 +629,6 @@ fn render_diff_line(
     view: Option<&Entity<GitSparkApp>>,
     selected_lines: &HashSet<DiffLineSelection>,
 ) -> Stateful<Div> {
-    // Format line number strings. Hunk headers show no numbers.
-    let old_num_str = match line.old_line {
-        Some(n) => format!("{n}"),
-        None => String::new(),
-    };
-    let new_num_str = match line.new_line {
-        Some(n) => format!("{n}"),
-        None => String::new(),
-    };
-
     let mut row = h_flex()
         .id(SharedString::from(diff_row_id(file_path, line)))
         .w_full()
@@ -698,29 +654,10 @@ fn render_diff_line(
         });
     }
 
-    // Old line number gutter
-    row = row.child(
-        div()
-            .w(z(theme::DIFF_LINE_NUM_WIDTH))
-            .flex_shrink_0()
-            .text_color(theme::line_num_color())
-            .px(z(4.0))
-            .child(old_num_str),
-    );
-
-    // New line number gutter
-    row = row.child(
-        div()
-            .w(z(theme::DIFF_LINE_NUM_WIDTH))
-            .flex_shrink_0()
-            .text_color(theme::line_num_color())
-            .px(z(4.0))
-            .child(new_num_str),
-    );
-
-    row = row.child(render_line_selection_cell(
+    row = row.child(render_unified_line_gutter(
+        line,
         line_selected,
-        selection_target.as_ref(),
+        selection_target.is_some(),
     ));
 
     // Content — varies by line kind
@@ -801,6 +738,94 @@ fn render_diff_line(
     }
 
     row
+}
+
+fn render_unified_line_gutter(line: &DiffLine, selected: bool, selectable: bool) -> Div {
+    let gutter_bg = if selected {
+        theme::diff_selected_bg()
+    } else {
+        match line.kind {
+            DiffLineKind::Added => theme::diff_add_gutter_bg(),
+            DiffLineKind::Deleted => theme::diff_del_gutter_bg(),
+            DiffLineKind::HunkHeader => theme::diff_hunk_bg(),
+            _ => theme::diff_gutter_bg(),
+        }
+    };
+
+    h_flex()
+        .w(z(112.0))
+        .flex_shrink_0()
+        .min_h(z(theme::DIFF_ROW_HEIGHT))
+        .items_center()
+        .bg(gutter_bg)
+        .text_size(z(12.0))
+        .text_color(if selected {
+            theme::text_main()
+        } else {
+            theme::line_num_color()
+        })
+        .child(render_unified_selection_mark(selected, selectable))
+        .child(
+            h_flex()
+                .w(z(46.0))
+                .flex_shrink_0()
+                .justify_end()
+                .pr(z(5.0))
+                .whitespace_nowrap()
+                .child(render_line_number_text(line.old_line)),
+        )
+        .child(
+            h_flex()
+                .w(z(46.0))
+                .flex_shrink_0()
+                .justify_end()
+                .pr(z(5.0))
+                .whitespace_nowrap()
+                .child(render_line_number_text(line.new_line)),
+        )
+}
+
+fn render_line_number_text(line: Option<usize>) -> Div {
+    let mut text = h_flex().items_center().justify_end().whitespace_nowrap();
+    if let Some(line) = line {
+        for ch in line.to_string().chars() {
+            text = text.child(ch.to_string());
+        }
+    }
+    text
+}
+
+fn render_unified_selection_mark(selected: bool, selectable: bool) -> Div {
+    if !selectable {
+        return div().w(z(20.0)).flex_shrink_0();
+    }
+
+    div()
+        .w(z(20.0))
+        .flex_shrink_0()
+        .items_center()
+        .justify_center()
+        .child(
+            div()
+                .size(z(13.0))
+                .items_center()
+                .justify_center()
+                .rounded(z(3.0))
+                .border_1()
+                .border_color(if selected {
+                    theme::text_main()
+                } else {
+                    theme::line_num_color()
+                })
+                .bg(if selected {
+                    theme::diff_selected_bg()
+                } else {
+                    gpui::transparent_black()
+                })
+                .text_size(z(10.0))
+                .text_color(theme::text_main())
+                .child(if selected { "✓" } else { "" }),
+        )
 }
 
 /// Render a hunk header row. The entire row is clickable to expand.
@@ -1056,8 +1081,6 @@ fn add_hunk_context_menu(
 fn render_diff_header(
     file_path: &str,
     is_image: bool,
-    hide_whitespace_changes: bool,
-    show_side_by_side: bool,
     selected_line_count: usize,
     view: Option<&Entity<GitSparkApp>>,
     diff_options_view: Option<&Entity<GitSparkApp>>,
@@ -1070,7 +1093,8 @@ fn render_diff_header(
         .border_b_1()
         .border_color(theme::border())
         .px(z(14.0))
-        .items_center();
+        .items_center()
+        .relative();
 
     let file_label = div()
         .flex_1()
@@ -1124,65 +1148,113 @@ fn render_diff_header(
             ));
         }
 
-        let vh_split = vh.clone();
-        header = header.child(
-            diff_header_button(
-                "diff-option-side-by-side",
-                "Split",
-                move |_evt, _win, cx| {
-                    vh_split.update(cx, |app, cx| {
-                        app.toggle_side_by_side_diff(cx);
-                    });
-                },
-            )
-            .border_color(if show_side_by_side {
-                theme::accent()
-            } else {
-                theme::border()
-            })
-            .bg(if show_side_by_side {
-                theme::toolbar_hover_bg()
-            } else {
-                theme::surface_bg()
-            })
-            .text_color(if show_side_by_side {
-                theme::text_main()
-            } else {
-                theme::text_muted()
-            }),
-        );
-
-        let vh_whitespace = vh.clone();
-        header = header.child(
-            diff_header_button(
-                "diff-option-hide-whitespace",
-                "Hide whitespace",
-                move |_evt, _win, cx| {
-                    vh_whitespace.update(cx, |app, cx| {
-                        app.toggle_hide_whitespace_changes(cx);
-                    });
-                },
-            )
-            .border_color(if hide_whitespace_changes {
-                theme::accent()
-            } else {
-                theme::border()
-            })
-            .bg(if hide_whitespace_changes {
-                theme::toolbar_hover_bg()
-            } else {
-                theme::surface_bg()
-            })
-            .text_size(z(11.0))
-            .text_color(if hide_whitespace_changes {
-                theme::text_main()
-            } else {
-                theme::text_muted()
-            }),
-        );
+        let menu_view = vh.clone();
+        header = header.child(diff_header_button(
+            "diff-options-menu",
+            "⚙ ▾",
+            move |_evt, _win, cx| {
+                menu_view.update(cx, |app, cx| {
+                    app.nav.show_diff_options_menu = !app.nav.show_diff_options_menu;
+                    cx.notify();
+                });
+            },
+        ));
     }
 
     header
+}
+
+fn render_diff_options_menu(
+    hide_whitespace_changes: bool,
+    show_side_by_side: bool,
+    view: &Entity<GitSparkApp>,
+) -> Stateful<Div> {
+    let unified_view = view.clone();
+    let split_view = view.clone();
+    let whitespace_view = view.clone();
+
+    v_flex()
+        .id("diff-options-popover")
+        .absolute()
+        .top(z(theme::DIFF_HEADER_HEIGHT + 4.0))
+        .right(z(12.0))
+        .w(z(230.0))
+        .p(z(12.0))
+        .gap(z(8.0))
+        .rounded(z(theme::CORNER_RADIUS))
+        .border_1()
+        .border_color(theme::border())
+        .bg(theme::surface_bg())
+        .shadow_md()
+        .text_size(z(12.0))
+        .text_color(theme::text_main())
+        .child(
+            div()
+                .text_size(z(13.0))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .child("Diff Settings"),
+        )
+        .child(div().text_color(theme::text_muted()).child("Diff display"))
+        .child(diff_option_row(
+            "diff-option-unified",
+            "Unified",
+            !show_side_by_side,
+            move |_evt, _win, cx| {
+                unified_view.update(cx, |app, cx| {
+                    app.nav.diff_options.show_side_by_side = false;
+                    app.nav.show_diff_options_menu = false;
+                    cx.notify();
+                });
+            },
+        ))
+        .child(diff_option_row(
+            "diff-option-side-by-side",
+            "Split",
+            show_side_by_side,
+            move |_evt, _win, cx| {
+                split_view.update(cx, |app, cx| {
+                    app.nav.diff_options.show_side_by_side = true;
+                    app.nav.show_diff_options_menu = false;
+                    cx.notify();
+                });
+            },
+        ))
+        .child(div().text_color(theme::text_muted()).child("Whitespace"))
+        .child(diff_option_row(
+            "diff-option-hide-whitespace",
+            "Hide Whitespace Changes",
+            hide_whitespace_changes,
+            move |_evt, _win, cx| {
+                whitespace_view.update(cx, |app, cx| {
+                    app.toggle_hide_whitespace_changes(cx);
+                    app.nav.show_diff_options_menu = false;
+                });
+            },
+        ))
+        .child(
+            div()
+                .text_size(z(11.0))
+                .text_color(theme::text_muted())
+                .child("Interacting with individual lines or hunks will be disabled while hiding whitespace."),
+        )
+}
+
+fn diff_option_row(
+    id: &'static str,
+    label: &'static str,
+    selected: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    h_flex()
+        .id(id)
+        .h(z(24.0))
+        .items_center()
+        .gap(z(8.0))
+        .cursor_pointer()
+        .text_color(theme::text_main())
+        .child(if selected { "●" } else { "○" })
+        .child(label)
+        .on_click(on_click)
 }
 
 fn diff_header_button(
@@ -1237,6 +1309,7 @@ pub fn render_workspace(
     diff: Option<&DiffEntry>,
     hide_whitespace_changes: bool,
     show_side_by_side: bool,
+    show_diff_options_menu: bool,
     selected_lines: &HashSet<DiffLineSelection>,
     view: Option<&Entity<GitSparkApp>>,
 ) -> Div {
@@ -1429,22 +1502,31 @@ pub fn render_workspace(
             .into_any_element(),
     };
 
-    v_flex()
+    let mut workspace = v_flex()
         .w_full()
         .flex_1()
         .min_h_0()
         .items_start()
         .bg(theme::bg())
+        .relative()
         .child(render_diff_header(
             file_path,
             diff.is_some_and(|entry| entry.is_image),
-            hide_whitespace_changes,
-            show_side_by_side,
             selected_lines.len(),
             view,
             diff_options_view,
         ))
-        .child(diff_content)
+        .child(diff_content);
+
+    if show_diff_options_menu && let Some(vh) = diff_options_view {
+        workspace = workspace.child(render_diff_options_menu(
+            hide_whitespace_changes,
+            show_side_by_side,
+            vh,
+        ));
+    }
+
+    workspace
 }
 
 pub fn visible_diff_line_count(diff_text: &str, hide_whitespace_changes: bool) -> usize {

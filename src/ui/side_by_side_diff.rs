@@ -261,22 +261,22 @@ fn render_side_by_side_row(
             .w_full()
             .min_h(z(theme::DIFF_ROW_HEIGHT))
             .flex_shrink_0()
-            .child(render_line_number(*old_line))
-            .child(render_side_cell(
+            .child(render_side_segment(
                 old_text.as_deref(),
                 *old_is_deleted,
                 false,
+                *old_line,
                 old_target.as_ref(),
                 old_target
                     .as_ref()
                     .is_some_and(|target| selected_lines.contains(target)),
                 view,
             ))
-            .child(render_line_number(*new_line))
-            .child(render_side_cell(
+            .child(render_side_segment(
                 new_text.as_deref(),
                 false,
                 *new_is_added,
+                *new_line,
                 new_target.as_ref(),
                 new_target
                     .as_ref()
@@ -287,22 +287,11 @@ fn render_side_by_side_row(
     }
 }
 
-fn render_line_number(line: Option<usize>) -> Div {
-    div()
-        .w(z(theme::DIFF_LINE_NUM_WIDTH))
-        .flex_shrink_0()
-        .h_full()
-        .px(z(6.0))
-        .text_align(gpui::TextAlign::Right)
-        .text_size(z(12.0))
-        .text_color(theme::line_num_color())
-        .child(line.map(|line| line.to_string()).unwrap_or_default())
-}
-
-fn render_side_cell(
+fn render_side_segment(
     text: Option<&str>,
     deleted: bool,
     added: bool,
+    line: Option<usize>,
     target: Option<&DiffLineSelection>,
     selected: bool,
     view: Option<&Entity<GitSparkApp>>,
@@ -322,7 +311,21 @@ fn render_side_cell(
         theme::text_main()
     };
 
-    let cell = h_flex()
+    h_flex()
+        .flex_1()
+        .min_w_0()
+        .min_h(z(theme::DIFF_ROW_HEIGHT))
+        .bg(bg)
+        .text_color(fg)
+        .child(render_side_line_number(
+            line, deleted, added, target, selected, view,
+        ))
+        .child(render_side_cell(text, bg, fg))
+        .into_any_element()
+}
+
+fn render_side_cell(text: Option<&str>, bg: Hsla, fg: Hsla) -> Div {
+    div()
         .flex_1()
         .min_w_0()
         .min_h(z(theme::DIFF_ROW_HEIGHT))
@@ -331,23 +334,60 @@ fn render_side_cell(
         .bg(bg)
         .text_size(z(12.0))
         .font_family("SF Mono, Monaco, Menlo, Consolas, monospace")
-        .text_color(fg);
+        .text_color(fg)
+        .child(text.unwrap_or("").to_string())
+}
 
-    let text_el = div()
-        .min_w_0()
-        .flex_1()
-        .child(text.unwrap_or("").to_string());
+fn render_side_line_number(
+    line: Option<usize>,
+    deleted: bool,
+    added: bool,
+    target: Option<&DiffLineSelection>,
+    selected: bool,
+    view: Option<&Entity<GitSparkApp>>,
+) -> AnyElement {
+    let gutter_bg = if selected {
+        theme::diff_selected_bg()
+    } else if deleted {
+        theme::diff_del_gutter_bg()
+    } else if added {
+        theme::diff_add_gutter_bg()
+    } else {
+        theme::diff_gutter_bg()
+    };
+
+    let fg = if selected {
+        theme::text_main()
+    } else {
+        theme::line_num_color()
+    };
+
+    let base = h_flex()
+        .w(z(55.0))
+        .flex_shrink_0()
+        .min_h(z(theme::DIFF_ROW_HEIGHT))
+        .items_center()
+        .bg(gutter_bg)
+        .text_size(z(12.0))
+        .text_color(fg)
+        .child(render_selection_mark(selected, target.is_some()))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .px(z(6.0))
+                .text_align(gpui::TextAlign::Right)
+                .whitespace_nowrap()
+                .child(render_line_number_text(line)),
+        );
 
     if let Some(target) = target {
-        let mut interactive_cell = cell
-            .id(SharedString::from(target.id()))
-            .cursor_pointer()
-            .child(render_selection_mark(selected));
+        let mut interactive_gutter = base.id(SharedString::from(target.id())).cursor_pointer();
 
         if let Some(vh) = view {
             let target_for_click = target.clone();
             let toggle_view = vh.clone();
-            interactive_cell = interactive_cell.on_click(move |_evt, _win, cx| {
+            interactive_gutter = interactive_gutter.on_click(move |_evt, _win, cx| {
                 let target = target_for_click.clone();
                 toggle_view.update(cx, |app, cx| {
                     app.toggle_diff_line_selection(target, cx);
@@ -355,17 +395,29 @@ fn render_side_cell(
             });
         }
 
-        return interactive_cell.child(text_el).into_any_element();
+        return interactive_gutter.into_any_element();
     }
 
-    cell.child(div().w(z(18.0)).flex_shrink_0())
-        .child(text_el)
-        .into_any_element()
+    base.into_any_element()
 }
 
-fn render_selection_mark(selected: bool) -> Div {
+fn render_line_number_text(line: Option<usize>) -> Div {
+    let mut text = h_flex().items_center().justify_end().whitespace_nowrap();
+    if let Some(line) = line {
+        for ch in line.to_string().chars() {
+            text = text.child(ch.to_string());
+        }
+    }
+    text
+}
+
+fn render_selection_mark(selected: bool, selectable: bool) -> Div {
+    if !selectable {
+        return div().w(z(20.0)).flex_shrink_0();
+    }
+
     div()
-        .w(z(18.0))
+        .w(z(20.0))
         .flex_shrink_0()
         .items_center()
         .justify_center()
@@ -377,12 +429,12 @@ fn render_selection_mark(selected: bool) -> Div {
                 .rounded(z(3.0))
                 .border_1()
                 .border_color(if selected {
-                    theme::accent()
+                    theme::text_main()
                 } else {
                     theme::line_num_color()
                 })
                 .bg(if selected {
-                    theme::accent()
+                    theme::diff_selected_bg()
                 } else {
                     gpui::transparent_black()
                 })

@@ -114,6 +114,10 @@ pub fn diff_add_bg() -> Hsla {
     gpui::rgb(0x0d3a1a).into()
 }
 
+pub fn diff_add_gutter_bg() -> Hsla {
+    gpui::rgb(0x072d14).into()
+}
+
 pub fn diff_add_fg() -> Hsla {
     gpui::rgb(0xc9d1d9).into() // --diff-add-text-color: var(--diff-text-color)
 }
@@ -122,12 +126,24 @@ pub fn diff_del_bg() -> Hsla {
     gpui::rgb(0x3d1f1a).into()
 }
 
+pub fn diff_del_gutter_bg() -> Hsla {
+    gpui::rgb(0x2a120f).into()
+}
+
 pub fn diff_del_fg() -> Hsla {
     gpui::rgb(0xffd7d5).into() // --diff-delete-text-color: $red-100 (soft pink)
 }
 
 pub fn diff_hunk_bg() -> Hsla {
     gpui::rgb(0x010409).into()
+}
+
+pub fn diff_gutter_bg() -> Hsla {
+    gpui::rgb(0x0a0e14).into()
+}
+
+pub fn diff_selected_bg() -> Hsla {
+    gpui::rgb(0x0969da).into()
 }
 
 // ---------------------------------------------------------------------------

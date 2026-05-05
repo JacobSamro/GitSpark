@@ -18,9 +18,7 @@ export async function testDiffOptions(app) {
       snapshot.selected_change === "code.txt" &&
       snapshot.selected_diff_visible_line_count > 0 &&
       snapshot.selected_diff_selectable_line_count === 4 &&
-      nodeById(snapshot.test_tree, "diff-option-side-by-side")?.selected ===
-        false &&
-      nodeById(snapshot.test_tree, "diff-option-hide-whitespace")?.selected === false,
+      nodeById(snapshot.test_tree, "diff-options-menu")?.visible === true,
     { timeoutMs: 10_000 },
   );
 
@@ -45,12 +43,11 @@ export async function testDiffOptions(app) {
     { timeoutMs: 10_000 },
   );
 
+  await app.getByTestId("diff-options-menu").click();
   await app.getByTestId("diff-option-side-by-side").click();
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.diff_show_side_by_side === true &&
-      nodeById(snapshot.test_tree, "diff-option-side-by-side")?.selected ===
-        true &&
       snapshot.selected_diff_visible_line_count ===
         before.selected_diff_visible_line_count,
     { timeoutMs: 10_000 },
@@ -72,12 +69,12 @@ export async function testDiffOptions(app) {
     { timeoutMs: 10_000 },
   );
 
+  await app.getByTestId("diff-options-menu").click();
   await app.getByTestId("diff-option-hide-whitespace").click();
   const hidden = await app.waitForSnapshot(
     (snapshot) =>
       snapshot.diff_hide_whitespace_changes === true &&
       snapshot.diff_show_side_by_side === true &&
-      nodeById(snapshot.test_tree, "diff-option-hide-whitespace")?.selected === true &&
       snapshot.selected_diff_visible_line_count <
         before.selected_diff_visible_line_count,
     { timeoutMs: 10_000 },
@@ -88,6 +85,7 @@ export async function testDiffOptions(app) {
     "non-whitespace diff lines remain visible when whitespace changes are hidden",
   );
 
+  await app.getByTestId("diff-options-menu").click();
   await app.getByTestId("diff-option-hide-whitespace").click();
   await app.waitForSnapshot(
     (snapshot) =>
@@ -97,12 +95,12 @@ export async function testDiffOptions(app) {
     { timeoutMs: 10_000 },
   );
 
-  await app.getByTestId("diff-option-side-by-side").click();
+  await app.getByTestId("diff-options-menu").click();
+  await app.getByTestId("diff-option-unified").click();
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.diff_show_side_by_side === false &&
-      nodeById(snapshot.test_tree, "diff-option-side-by-side")?.selected ===
-        false,
+      nodeById(snapshot.test_tree, "diff-options-menu")?.visible === true,
     { timeoutMs: 10_000 },
   );
 

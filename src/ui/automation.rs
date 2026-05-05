@@ -567,6 +567,8 @@ enum AutomationNodeAction {
     RevealSelectedSubmodule,
     ToggleDiffLine(DiffLineSelection),
     DiscardSelectedDiffLines,
+    ToggleDiffOptionsMenu,
+    ShowUnifiedDiff,
     ToggleSideBySideDiff,
     ToggleHideWhitespaceChanges,
     SetBranchFilter,
@@ -1162,6 +1164,36 @@ impl GitSparkApp {
             )
             .visible(self.nav.show_branch_selector),
             automation_node(
+                "diff-options-menu",
+                AutomationRole::Button,
+                Some("diff-options-menu"),
+                Some("Diff Settings"),
+                Some(AutomationNodeAction::ToggleDiffOptionsMenu),
+            )
+            .visible(
+                self.nav.sidebar_tab == SidebarTab::Changes
+                    && self.selection.selected_change.is_some()
+                    && self.selected_diff().is_some_and(|diff| {
+                        !diff.is_binary && !diff.is_image && !diff.is_submodule
+                    }),
+            ),
+            automation_node(
+                "diff-option-unified",
+                AutomationRole::Button,
+                Some("diff-option-unified"),
+                Some("Unified"),
+                Some(AutomationNodeAction::ShowUnifiedDiff),
+            )
+            .visible(
+                self.nav.sidebar_tab == SidebarTab::Changes
+                    && self.selection.selected_change.is_some()
+                    && self.nav.show_diff_options_menu
+                    && self.selected_diff().is_some_and(|diff| {
+                        !diff.is_binary && !diff.is_image && !diff.is_submodule
+                    }),
+            )
+            .selected(!self.nav.diff_options.show_side_by_side),
+            automation_node(
                 "diff-option-side-by-side",
                 AutomationRole::Button,
                 Some("diff-option-side-by-side"),
@@ -1171,6 +1203,7 @@ impl GitSparkApp {
             .visible(
                 self.nav.sidebar_tab == SidebarTab::Changes
                     && self.selection.selected_change.is_some()
+                    && self.nav.show_diff_options_menu
                     && self.selected_diff().is_some_and(|diff| {
                         !diff.is_binary && !diff.is_image && !diff.is_submodule
                     }),
@@ -1186,6 +1219,7 @@ impl GitSparkApp {
             .visible(
                 self.nav.sidebar_tab == SidebarTab::Changes
                     && self.selection.selected_change.is_some()
+                    && self.nav.show_diff_options_menu
                     && self
                         .selected_diff()
                         .is_some_and(|diff| !diff.is_image && !diff.is_submodule),
@@ -2785,11 +2819,22 @@ impl GitSparkApp {
             AutomationNodeAction::DiscardSelectedDiffLines => {
                 self.discard_selected_diff_lines(cx);
             }
+            AutomationNodeAction::ToggleDiffOptionsMenu => {
+                self.nav.show_diff_options_menu = !self.nav.show_diff_options_menu;
+                cx.notify();
+            }
+            AutomationNodeAction::ShowUnifiedDiff => {
+                self.nav.diff_options.show_side_by_side = false;
+                self.nav.show_diff_options_menu = false;
+                cx.notify();
+            }
             AutomationNodeAction::ToggleSideBySideDiff => {
                 self.toggle_side_by_side_diff(cx);
+                self.nav.show_diff_options_menu = false;
             }
             AutomationNodeAction::ToggleHideWhitespaceChanges => {
                 self.toggle_hide_whitespace_changes(cx);
+                self.nav.show_diff_options_menu = false;
             }
             AutomationNodeAction::SelectTab(tab) => {
                 self.nav.sidebar_tab = tab;
