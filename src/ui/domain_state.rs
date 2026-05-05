@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use crate::models::{ChangeEntry, CommitSuggestion, DiffEntry, GitIdentity, RepoSnapshot};
+use crate::models::{
+    BranchComparison, ChangeEntry, CommitSuggestion, DiffEntry, GitIdentity, RepoSnapshot,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NetworkAction {
@@ -74,6 +76,7 @@ pub struct RepoState {
     pub switch_branch_bring_changes: bool,
     pub has_stash: bool,
     pub stash_files: Vec<ChangeEntry>,
+    pub comparison: Option<BranchComparison>,
 }
 
 impl Default for RepoState {
@@ -100,6 +103,7 @@ impl Default for RepoState {
             switch_branch_bring_changes: false,
             has_stash: false,
             stash_files: Vec::new(),
+            comparison: None,
         }
     }
 }

@@ -375,6 +375,7 @@ struct AutomationSnapshot {
     branch_filter_text: String,
     status_message: String,
     error_message: String,
+    compare: Option<AutomationCompareSnapshot>,
     settings_scope: AutomationSettingsScope,
     settings_section: AutomationSettingsSection,
     git_user_name: String,
@@ -388,6 +389,16 @@ struct AutomationSnapshot {
     repo_remote_name: Option<String>,
     repo_remote_url: String,
     repo_ignored_files_text: String,
+}
+
+#[derive(Serialize)]
+struct AutomationCompareSnapshot {
+    current_branch: String,
+    target_branch: String,
+    ahead: usize,
+    behind: usize,
+    commits: Vec<AutomationCommit>,
+    files: Vec<AutomationChange>,
 }
 
 #[derive(Serialize)]
@@ -531,6 +542,8 @@ enum AutomationNodeAction {
     SelectOpenRouterModel(String),
     GenerateAiCommit,
     UndoLastCommit,
+    ExitCompare,
+    MergeComparedBranch,
     CancelDialog,
     ConfirmDiscardChanges,
     ChangeFile(String, AutomationChangeAction),
@@ -823,6 +836,37 @@ impl GitSparkApp {
             branch_filter_text: self.filters.branch_filter_text.clone(),
             status_message: self.messages.status_message.clone(),
             error_message: self.messages.error_message.clone(),
+            compare: self
+                .repo
+                .comparison
+                .as_ref()
+                .map(|comparison| AutomationCompareSnapshot {
+                    current_branch: comparison.current_branch.clone(),
+                    target_branch: comparison.target_branch.clone(),
+                    ahead: comparison.ahead,
+                    behind: comparison.behind,
+                    commits: comparison
+                        .commits
+                        .iter()
+                        .map(|commit| AutomationCommit {
+                            oid: commit.oid.clone(),
+                            short_oid: commit.short_oid.clone(),
+                            summary: commit.summary.clone(),
+                            author_name: commit.author_name.clone(),
+                            date: commit.date.clone(),
+                            is_head: commit.is_head,
+                            tags: commit.tags.clone(),
+                        })
+                        .collect(),
+                    files: comparison
+                        .diffs
+                        .iter()
+                        .map(|diff| AutomationChange {
+                            path: diff.path.clone(),
+                            status: String::new(),
+                        })
+                        .collect(),
+                }),
             settings_scope: self.nav.settings_scope.into(),
             settings_section: self.nav.settings_section.into(),
             git_user_name: self.active_git_settings_identity().user_name.clone(),
@@ -1651,8 +1695,11 @@ impl GitSparkApp {
                     None,
                 )
                 .children(
-                    snapshot
-                        .history
+                    self.repo
+                        .comparison
+                        .as_ref()
+                        .map(|comparison| comparison.commits.as_slice())
+                        .unwrap_or(snapshot.history.as_slice())
                         .iter()
                         .map(|commit| {
                             automation_node(
@@ -1671,7 +1718,13 @@ impl GitSparkApp {
                 ),
             );
 
-            for commit in &snapshot.history {
+            let history_actions = self
+                .repo
+                .comparison
+                .as_ref()
+                .map(|comparison| comparison.commits.as_slice())
+                .unwrap_or(snapshot.history.as_slice());
+            for commit in history_actions {
                 children.extend(history_action_nodes(
                     commit.short_oid.as_str(),
                     commit.oid.as_str(),
@@ -1682,6 +1735,25 @@ impl GitSparkApp {
             }
 
             if self.nav.sidebar_tab == SidebarTab::History {
+                if let Some(comparison) = self.repo.comparison.as_ref() {
+                    children.extend([
+                        automation_node(
+                            "compare-exit-button",
+                            AutomationRole::Button,
+                            Some("compare-exit-button"),
+                            Some("Exit Compare"),
+                            Some(AutomationNodeAction::ExitCompare),
+                        ),
+                        automation_node(
+                            "compare-merge-button",
+                            AutomationRole::Button,
+                            Some("compare-merge-button"),
+                            Some("Merge compared branch"),
+                            Some(AutomationNodeAction::MergeComparedBranch),
+                        )
+                        .enabled(comparison.ahead > 0),
+                    ]);
+                }
                 children.push(automation_node(
                     "commit-file-list-viewport",
                     AutomationRole::List,
@@ -1690,8 +1762,14 @@ impl GitSparkApp {
                     None::<AutomationNodeAction>,
                 ));
 
+                let visible_diffs = self
+                    .repo
+                    .comparison
+                    .as_ref()
+                    .map(|comparison| comparison.diffs.as_slice())
+                    .or_else(|| self.selection.commit_diffs.as_deref());
                 if self.selection.selected_commit.as_ref().is_some()
-                    && let Some(diffs) = self.selection.commit_diffs.as_ref()
+                    && let Some(diffs) = visible_diffs
                 {
                     children.extend(diffs.iter().map(|entry| {
                         let id = format!("commit-file-{}", stable_test_slug(&entry.path));
@@ -1954,6 +2032,9 @@ impl GitSparkApp {
             }
             AutomationNodeAction::SelectTab(tab) => {
                 self.nav.sidebar_tab = tab;
+                if tab == SidebarTab::Changes {
+                    self.repo.comparison = None;
+                }
                 cx.notify();
             }
             AutomationNodeAction::SetBranchFilter => {
@@ -2243,6 +2324,21 @@ impl GitSparkApp {
             }
             AutomationNodeAction::UndoLastCommit => {
                 self.undo_last_commit(cx);
+            }
+            AutomationNodeAction::ExitCompare => {
+                self.repo.comparison = None;
+                self.selection.selected_commit_file = None;
+                cx.notify();
+            }
+            AutomationNodeAction::MergeComparedBranch => {
+                let Some(comparison) = self.repo.comparison.as_ref() else {
+                    return AutomationResponse::failure("compare view is not active");
+                };
+                if comparison.ahead == 0 {
+                    return AutomationResponse::failure("compared branch has no commits to merge");
+                }
+                self.repo.merge_target = comparison.target_branch.clone();
+                self.merge_branch(cx);
             }
             AutomationNodeAction::CancelDialog => {
                 self.nav.active_dialog = ActiveDialog::None;

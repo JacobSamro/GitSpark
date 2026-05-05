@@ -450,12 +450,24 @@ impl GitClient {
             .next()
             .and_then(|value| value.parse::<usize>().ok())
             .unwrap_or(0);
+        let commits =
+            self.fetch_history_for_revision(&repo_path, &format!("{target_branch}..HEAD"), 100)?;
+        let status_output = self
+            .run_git(&repo_path, &["diff", "--name-status", &range])
+            .with_context(|| format!("failed to list files changed against '{target_branch}'"))?;
+        let files = status_output
+            .lines()
+            .filter_map(parse_name_status_line)
+            .collect::<Vec<_>>();
+        let diffs = self.build_compare_diffs(&repo_path, &range, &files)?;
 
         Ok(BranchComparison {
             current_branch,
             target_branch: target_branch.to_string(),
             ahead,
             behind,
+            commits,
+            diffs,
         })
     }
 
@@ -1173,11 +1185,21 @@ impl GitClient {
     }
 
     fn fetch_history(&self, repo_path: &Path, limit: usize) -> Result<Vec<CommitInfo>> {
+        self.fetch_history_for_revision(repo_path, "HEAD", limit)
+    }
+
+    fn fetch_history_for_revision(
+        &self,
+        repo_path: &Path,
+        revision: &str,
+        limit: usize,
+    ) -> Result<Vec<CommitInfo>> {
         let output = self.run_git_bytes(
             repo_path,
             &[
                 "log",
                 &format!("-n{limit}"),
+                revision,
                 "--pretty=format:%x1e%H%x1f%h%x1f%s%x1f%b%x1f%an%x1f%ae%x1f%ar%x1f%D",
             ],
         )?;
@@ -1507,6 +1529,41 @@ impl GitClient {
         changes
             .iter()
             .map(|change| self.build_diff_entry(repo_path, change))
+            .collect()
+    }
+
+    fn build_compare_diffs(
+        &self,
+        repo_path: &Path,
+        range: &str,
+        changes: &[ChangeEntry],
+    ) -> Result<Vec<DiffEntry>> {
+        changes
+            .iter()
+            .map(|change| {
+                let diff = self.run_git(
+                    repo_path,
+                    &[
+                        "diff",
+                        "--no-ext-diff",
+                        "--no-color",
+                        range,
+                        "--",
+                        &change.path,
+                    ],
+                )?;
+                Ok(DiffEntry {
+                    path: change.path.clone(),
+                    diff: if diff.trim().is_empty() {
+                        "No textual diff available".to_string()
+                    } else {
+                        diff
+                    },
+                    is_binary: false,
+                    original_diff: None,
+                    file_contents: None,
+                })
+            })
             .collect()
     }
 

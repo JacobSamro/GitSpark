@@ -123,8 +123,12 @@ pub fn render_sidebar_interactive(
     let changes = snapshot
         .map(|s| s.changes.as_slice())
         .unwrap_or(&empty_changes);
-    let history = snapshot
-        .map(|s| s.history.as_slice())
+    let history = app
+        .repo
+        .comparison
+        .as_ref()
+        .map(|comparison| comparison.commits.as_slice())
+        .or_else(|| snapshot.map(|s| s.history.as_slice()))
         .unwrap_or(&empty_history);
     let sidebar_tab = app.nav.sidebar_tab;
     let selected_change = app.selection.selected_change.clone();
@@ -442,6 +446,7 @@ fn render_interactive_tab_bar(
         .hover(|s| s.bg(theme::hover_bg()))
         .on_click(cx.listener(|app, _evt, _win, cx| {
             app.nav.sidebar_tab = SidebarTab::Changes;
+            app.repo.comparison = None;
             cx.notify();
         }))
         .child(changes_content);

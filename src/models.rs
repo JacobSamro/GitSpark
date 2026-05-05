@@ -43,12 +43,14 @@ pub struct BranchInfo {
     pub updated: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default)]
 pub struct BranchComparison {
     pub current_branch: String,
     pub target_branch: String,
     pub ahead: usize,
     pub behind: usize,
+    pub commits: Vec<CommitInfo>,
+    pub diffs: Vec<DiffEntry>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
