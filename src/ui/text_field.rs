@@ -235,7 +235,7 @@ pub fn render_text_content(
     multiline: bool,
 ) -> Div {
     let is_empty = value.is_empty();
-    let sel_bg: Hsla = gpui::rgb(0x264f78).into();
+    let sel_bg = theme::text_selection_bg();
 
     if is_empty && !focused {
         return div()

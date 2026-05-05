@@ -580,16 +580,16 @@ fn render_checkbox(checked: bool) -> Div {
             .w(z(size))
             .h(z(size))
             .rounded(z(3.0))
-            .bg(gpui::rgb(0x58a6ff)) // light blue background
+            .bg(theme::checkbox_selected_bg())
             .border_1()
-            .border_color(gpui::rgb(0x58a6ff))
+            .border_color(theme::checkbox_selected_bg())
             .flex_shrink_0()
             .items_center()
             .justify_center()
             .child(
                 Icon::new(IconName::Check)
                     .size(z(10.0))
-                    .text_color(gpui::rgb(0x0d1117)), // dark tick
+                    .text_color(theme::checkbox_selected_fg()),
             )
     } else {
         div()
@@ -611,8 +611,8 @@ enum CheckState {
 
 fn render_tristate_checkbox(state: CheckState) -> Div {
     let size = 14.0;
-    let check_bg: Hsla = gpui::rgb(0x58a6ff).into();
-    let check_fg: Hsla = gpui::rgb(0x0d1117).into();
+    let check_bg = theme::checkbox_selected_bg();
+    let check_fg = theme::checkbox_selected_fg();
     match state {
         CheckState::On => h_flex()
             .w(z(size))

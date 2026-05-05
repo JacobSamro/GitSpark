@@ -73,6 +73,18 @@ pub fn accent_muted() -> Hsla {
     gpui::rgb(0x0969da).into()
 }
 
+pub fn checkbox_selected_bg() -> Hsla {
+    gpui::rgb(0x58a6ff).into()
+}
+
+pub fn checkbox_selected_fg() -> Hsla {
+    bg()
+}
+
+pub fn text_selection_bg() -> Hsla {
+    gpui::rgb(0x264f78).into()
+}
+
 // Semantic
 pub fn success() -> Hsla {
     gpui::rgb(0x3fb950).into()
@@ -84,6 +96,10 @@ pub fn warning() -> Hsla {
 
 pub fn danger() -> Hsla {
     gpui::rgb(0xf85149).into()
+}
+
+pub fn danger_hover() -> Hsla {
+    gpui::rgb(0xff6961).into()
 }
 
 // ---------------------------------------------------------------------------

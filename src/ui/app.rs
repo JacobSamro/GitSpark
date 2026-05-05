@@ -4763,7 +4763,7 @@ impl GitSparkApp {
         } else if focused {
             // Editable: show text with cursor and optional selection highlight
             let cursor_pos = cursor.min(value.len());
-            let sel_highlight = gpui::rgb(0x264f78); // VS Code / GitHub selection blue
+            let sel_highlight = theme::text_selection_bg();
 
             if let Some(sel_anchor) = selection {
                 // Has selection: render before_sel + selected + after_sel with cursor
@@ -6369,7 +6369,7 @@ impl GitSparkApp {
                                     .rounded(theme::z(theme::CORNER_RADIUS))
                                     .bg(theme::danger())
                                     .cursor_pointer()
-                                    .hover(|s| s.bg(gpui::Hsla::from(gpui::rgb(0xff6961))))
+                                    .hover(|s| s.bg(theme::danger_hover()))
                                     .child(div().text_size(theme::z(12.0)).text_color(gpui::white()).child("Discard Changes"))
                                     .on_click(cx.listener(|app, _evt, _win, cx| {
                                         if let ActiveDialog::DiscardChanges { paths } = &app.nav.active_dialog {
