@@ -1852,6 +1852,42 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub(crate) fn open_conflict_in_editor(
+        &mut self,
+        relative_path: String,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_in_external_editor(&relative_path);
+        cx.notify();
+    }
+
+    pub(crate) fn reveal_conflict_file(&mut self, relative_path: String, cx: &mut Context<Self>) {
+        self.reveal_in_finder(&relative_path);
+        cx.notify();
+    }
+
+    pub(crate) fn mark_conflict_resolved(&mut self, relative_path: String, cx: &mut Context<Self>) {
+        let Some(repo_path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        match self.git.mark_conflict_resolved(&repo_path, &relative_path) {
+            Ok(operation) => {
+                self.repo.operation = operation;
+                self.messages.status_message = format!("Marked '{}' resolved.", relative_path);
+                self.messages.error_message.clear();
+                self.request_repo_refresh(RepoRefreshReason::Manual, cx);
+            }
+            Err(err) => {
+                self.messages.error_message =
+                    format!("Could not mark '{}' resolved: {err}", relative_path);
+                cx.notify();
+            }
+        }
+    }
+
     // ------------------------------------------------------------------
     // Commit operations
     // ------------------------------------------------------------------
@@ -6638,6 +6674,19 @@ impl GitSparkApp {
         } else {
             operation.kind.title().to_string()
         };
+        let next_step = if operation.can_continue {
+            match operation.kind {
+                GitOperationKind::Merge => {
+                    "All conflicted files are marked resolved. Continue the merge to finish."
+                }
+                GitOperationKind::Rebase => {
+                    "All conflicted files are marked resolved. Continue the rebase, skip this commit, or abort."
+                }
+            }
+        } else {
+            "Open each conflicted file, resolve the markers, then mark it resolved."
+        };
+        let view = cx.entity().clone();
 
         v_flex()
             .id("operation-conflict-banner")
@@ -6678,6 +6727,16 @@ impl GitSparkApp {
                                     .text_size(theme::z(12.0))
                                     .text_color(theme::text_muted())
                                     .child(operation.message.clone()),
+                            )
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!(
+                                        "operation-{}-next-step",
+                                        operation_name
+                                    )))
+                                    .text_size(theme::z(12.0))
+                                    .text_color(theme::text_main())
+                                    .child(next_step),
                             ),
                     )
                     .child(
@@ -6718,7 +6777,30 @@ impl GitSparkApp {
                     ),
             )
             .children(if files.is_empty() {
-                None
+                Some(
+                    h_flex()
+                        .id("operation-conflict-files-resolved")
+                        .w_full()
+                        .items_center()
+                        .gap(px(8.0))
+                        .px(px(10.0))
+                        .py(px(8.0))
+                        .rounded(theme::z(theme::CORNER_RADIUS))
+                        .bg(theme::surface_bg())
+                        .child(
+                            div()
+                                .text_size(theme::z(12.0))
+                                .text_color(theme::success())
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child("Resolved"),
+                        )
+                        .child(
+                            div()
+                                .text_size(theme::z(12.0))
+                                .text_color(theme::text_muted())
+                                .child("No conflicted files remain."),
+                        ),
+                )
             } else {
                 Some(
                     div()
@@ -6731,15 +6813,35 @@ impl GitSparkApp {
                                     range
                                         .map(|ix| {
                                             let file = &files[ix];
+                                            let row_slug = stable_id_slug(&file.path);
+                                            let editor_id = SharedString::from(format!(
+                                                "operation-conflict-open-editor-{}",
+                                                row_slug
+                                            ));
+                                            let reveal_id = SharedString::from(format!(
+                                                "operation-conflict-reveal-{}",
+                                                row_slug
+                                            ));
+                                            let resolved_id = SharedString::from(format!(
+                                                "operation-conflict-mark-resolved-{}",
+                                                row_slug
+                                            ));
+                                            let editor_path = file.path.clone();
+                                            let reveal_path = file.path.clone();
+                                            let resolved_path = file.path.clone();
+                                            let editor_view = view.clone();
+                                            let reveal_view = view.clone();
+                                            let resolved_view = view.clone();
                                             h_flex()
                                                 .id(SharedString::from(format!(
                                                     "operation-conflict-file-{}",
-                                                    stable_id_slug(&file.path)
+                                                    row_slug
                                                 )))
                                                 .w_full()
-                                                .h(px(24.0))
+                                                .h(px(32.0))
                                                 .items_center()
                                                 .gap(px(8.0))
+                                                .pr(px(4.0))
                                                 .child(
                                                     div()
                                                         .text_size(theme::z(11.0))
@@ -6756,6 +6858,36 @@ impl GitSparkApp {
                                                         .whitespace_nowrap()
                                                         .child(file.path.clone()),
                                                 )
+                                                .child(operation_row_button(
+                                                    editor_id,
+                                                    "Open",
+                                                    move |_evt, _win, cx| {
+                                                        let path = editor_path.clone();
+                                                        editor_view.update(cx, |app, cx| {
+                                                            app.open_conflict_in_editor(path, cx);
+                                                        });
+                                                    },
+                                                ))
+                                                .child(operation_row_button(
+                                                    reveal_id,
+                                                    "Reveal",
+                                                    move |_evt, _win, cx| {
+                                                        let path = reveal_path.clone();
+                                                        reveal_view.update(cx, |app, cx| {
+                                                            app.reveal_conflict_file(path, cx);
+                                                        });
+                                                    },
+                                                ))
+                                                .child(operation_row_button(
+                                                    resolved_id,
+                                                    "Mark Resolved",
+                                                    move |_evt, _win, cx| {
+                                                        let path = resolved_path.clone();
+                                                        resolved_view.update(cx, |app, cx| {
+                                                            app.mark_conflict_resolved(path, cx);
+                                                        });
+                                                    },
+                                                ))
                                                 .into_any_element()
                                         })
                                         .collect()
@@ -9638,6 +9770,31 @@ fn identity_settings_focus_field_for(identity: &GitIdentity) -> SettingsField {
     } else {
         SettingsField::GitUserEmail
     }
+}
+
+fn operation_row_button(
+    id: SharedString,
+    label: &'static str,
+    handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> AnyElement {
+    div()
+        .id(id)
+        .px(theme::z(8.0))
+        .py(theme::z(4.0))
+        .rounded(theme::z(theme::CORNER_RADIUS))
+        .bg(theme::surface_bg())
+        .border_1()
+        .border_color(theme::surface_bg_alt())
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::toolbar_hover_bg()))
+        .on_click(handler)
+        .child(
+            div()
+                .text_size(theme::z(11.0))
+                .text_color(theme::text_main())
+                .child(label),
+        )
+        .into_any_element()
 }
 
 fn reveal_path(path: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

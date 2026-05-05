@@ -564,6 +564,9 @@ enum AutomationNodeAction {
     ContinueGitOperation,
     SkipRebaseOperation,
     AbortGitOperation,
+    OpenConflictInEditor(String),
+    RevealConflictFile(String),
+    MarkConflictResolved(String),
     CancelDialog,
     ConfirmDiscardChanges,
     ChangeFile(String, AutomationChangeAction),
@@ -1118,16 +1121,43 @@ impl GitSparkApp {
                         .conflicted_files
                         .iter()
                         .map(|file| {
+                            let slug = stable_test_slug(&file.path);
                             automation_node(
-                                format!("operation-conflict-file-{}", stable_test_slug(&file.path)),
+                                format!("operation-conflict-file-{slug}"),
                                 AutomationRole::ListItem,
-                                Some(format!(
-                                    "operation-conflict-file-{}",
-                                    stable_test_slug(&file.path)
-                                )),
+                                Some(format!("operation-conflict-file-{slug}")),
                                 Some(file.path.as_str()),
                                 None,
                             )
+                            .children(vec![
+                                automation_node(
+                                    format!("operation-conflict-open-editor-{slug}"),
+                                    AutomationRole::Button,
+                                    Some(format!("operation-conflict-open-editor-{slug}")),
+                                    Some("Open"),
+                                    Some(AutomationNodeAction::OpenConflictInEditor(
+                                        file.path.clone(),
+                                    )),
+                                ),
+                                automation_node(
+                                    format!("operation-conflict-reveal-{slug}"),
+                                    AutomationRole::Button,
+                                    Some(format!("operation-conflict-reveal-{slug}")),
+                                    Some("Reveal"),
+                                    Some(AutomationNodeAction::RevealConflictFile(
+                                        file.path.clone(),
+                                    )),
+                                ),
+                                automation_node(
+                                    format!("operation-conflict-mark-resolved-{slug}"),
+                                    AutomationRole::Button,
+                                    Some(format!("operation-conflict-mark-resolved-{slug}")),
+                                    Some("Mark Resolved"),
+                                    Some(AutomationNodeAction::MarkConflictResolved(
+                                        file.path.clone(),
+                                    )),
+                                ),
+                            ])
                         })
                         .collect(),
                 ),
@@ -2517,6 +2547,15 @@ impl GitSparkApp {
             }
             AutomationNodeAction::AbortGitOperation => {
                 self.abort_git_operation(cx);
+            }
+            AutomationNodeAction::OpenConflictInEditor(path) => {
+                self.open_conflict_in_editor(path, cx);
+            }
+            AutomationNodeAction::RevealConflictFile(path) => {
+                self.reveal_conflict_file(path, cx);
+            }
+            AutomationNodeAction::MarkConflictResolved(path) => {
+                self.mark_conflict_resolved(path, cx);
             }
             AutomationNodeAction::CancelDialog => {
                 self.nav.active_dialog = ActiveDialog::None;

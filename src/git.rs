@@ -784,6 +784,7 @@ impl GitClient {
         if branch_name.is_empty() {
             bail!("merge target cannot be empty");
         }
+        self.ensure_merge_preflight_clean(&repo_path, branch_name, "merge")?;
 
         self.run_git(&repo_path, &["merge", "--no-ff", branch_name])
             .with_context(|| format!("failed to merge branch '{branch_name}'"))?;
@@ -842,6 +843,7 @@ impl GitClient {
             ],
         )
         .with_context(|| format!("default branch '{default_branch}' does not exist"))?;
+        self.ensure_merge_preflight_clean(&repo_path, default_branch, "update")?;
 
         self.run_git(&repo_path, &["merge", "--no-ff", default_branch])
             .with_context(|| format!("failed to update from '{default_branch}'"))?;
@@ -874,6 +876,7 @@ impl GitClient {
             ],
         )
         .with_context(|| format!("branch '{target_branch}' does not exist"))?;
+        self.ensure_rebase_preflight_clean(&repo_path, target_branch)?;
 
         self.run_git(&repo_path, &["rebase", target_branch])
             .with_context(|| format!("failed to rebase onto '{target_branch}'"))?;
@@ -906,6 +909,25 @@ impl GitClient {
             .context("failed to abort rebase")?;
 
         self.snapshot(&repo_path)
+    }
+
+    pub fn mark_conflict_resolved(
+        &self,
+        repo_path: &Path,
+        relative_path: &str,
+    ) -> Result<Option<GitOperationState>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let relative_path = relative_path.trim();
+        if relative_path.is_empty() {
+            bail!("conflict path cannot be empty");
+        }
+        if self.operation_state(&repo_path)?.is_none() {
+            bail!("no merge or rebase is in progress");
+        }
+
+        self.run_git(&repo_path, &["add", "--", relative_path])
+            .with_context(|| format!("failed to mark '{relative_path}' resolved"))?;
+        self.operation_state(&repo_path)
     }
 
     pub fn operation_state(&self, repo_path: &Path) -> Result<Option<GitOperationState>> {
@@ -1741,6 +1763,92 @@ impl GitClient {
         }
     }
 
+    fn ensure_merge_preflight_clean(
+        &self,
+        repo_path: &Path,
+        branch_name: &str,
+        action: &str,
+    ) -> Result<()> {
+        let conflicts = self.merge_tree_conflicted_files(repo_path, "HEAD", branch_name)?;
+        if conflicts.is_empty() {
+            return Ok(());
+        }
+
+        bail!(
+            "{} would conflict in {}. Resolve or merge manually before continuing.",
+            action,
+            summarize_paths(&conflicts)
+        )
+    }
+
+    fn ensure_rebase_preflight_clean(&self, repo_path: &Path, target_branch: &str) -> Result<()> {
+        let commits = self.run_git(
+            repo_path,
+            &["rev-list", "--reverse", &format!("{target_branch}..HEAD")],
+        )?;
+        let mut conflicts = Vec::new();
+        for commit in commits.lines().filter(|line| !line.trim().is_empty()) {
+            conflicts.extend(self.merge_tree_conflicted_files(repo_path, target_branch, commit)?);
+        }
+        conflicts.sort();
+        conflicts.dedup();
+        if conflicts.is_empty() {
+            return Ok(());
+        }
+
+        bail!(
+            "rebase would conflict in {}. Resolve or rebase manually before continuing.",
+            summarize_paths(&conflicts)
+        )
+    }
+
+    fn merge_tree_conflicted_files(
+        &self,
+        repo_path: &Path,
+        left: &str,
+        right: &str,
+    ) -> Result<Vec<String>> {
+        let output = Command::new("git")
+            .args(["merge-tree", "--write-tree", "--name-only", left, right])
+            .current_dir(repo_path)
+            .output()
+            .with_context(|| {
+                format!(
+                    "failed to launch git merge-tree in '{}'",
+                    repo_path.display()
+                )
+            })?;
+
+        if output.status.success() {
+            return Ok(Vec::new());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut conflicts = Vec::new();
+        for (ix, line) in stdout.lines().enumerate() {
+            let line = line.trim();
+            if line.is_empty() {
+                break;
+            }
+            if ix == 0 && line.chars().all(|ch| ch.is_ascii_hexdigit()) && line.len() >= 40 {
+                continue;
+            }
+            conflicts.push(line.to_string());
+        }
+
+        if conflicts.is_empty() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let message = if stderr.is_empty() {
+                String::from_utf8_lossy(&output.stdout).trim().to_string()
+            } else {
+                stderr
+            };
+            bail!("git merge-tree failed: {message}");
+        }
+
+        Ok(conflicts)
+    }
+
     fn list_branches(&self, repo_path: &Path) -> Result<Vec<BranchInfo>> {
         let output = self.run_git(
             repo_path,
@@ -2360,6 +2468,17 @@ fn safe_branch_name(name: &str) -> String {
         .collect::<String>()
         .trim_matches(|ch| matches!(ch, '/' | '.'))
         .to_string()
+}
+
+fn summarize_paths(paths: &[String]) -> String {
+    match paths {
+        [] => "unknown files".to_string(),
+        [path] => format!("'{path}'"),
+        [first, second] => format!("'{first}' and '{second}'"),
+        [first, second, rest @ ..] => {
+            format!("'{first}', '{second}', and {} more files", rest.len())
+        }
+    }
 }
 
 fn gitignore_template_contents(template: &str) -> Option<&'static str> {
@@ -3116,11 +3235,9 @@ mod tests {
         let repo = temp_repo("merge-conflict-operation");
         setup_conflict_repo(&repo);
         run_git(&repo, &["switch", "feature"]);
+        run_git_expect(&repo, &["merge", "--no-ff", "main"], false);
 
         let git = GitClient::new();
-        let result = git.merge_branch(&repo, "main");
-        assert!(result.is_err());
-
         let operation = git.operation_state(&repo).unwrap().unwrap();
         assert_eq!(operation.kind, crate::models::GitOperationKind::Merge);
         assert_eq!(operation.current_branch, "feature");
@@ -3140,11 +3257,9 @@ mod tests {
         let repo = temp_repo("rebase-conflict-operation");
         setup_conflict_repo(&repo);
         run_git(&repo, &["switch", "feature"]);
+        run_git_expect(&repo, &["rebase", "main"], false);
 
         let git = GitClient::new();
-        let result = git.rebase_current_branch_onto(&repo, "main");
-        assert!(result.is_err());
-
         let operation = git.operation_state(&repo).unwrap().unwrap();
         assert_eq!(operation.kind, crate::models::GitOperationKind::Rebase);
         assert_eq!(operation.current_branch, "feature");
@@ -3154,6 +3269,69 @@ mod tests {
         let snapshot = git.abort_rebase(&repo).unwrap();
         assert_eq!(snapshot.repo.current_branch, "feature");
         assert!(git.operation_state(&repo).unwrap().is_none());
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn merge_preflight_blocks_predictable_conflicts_without_starting_merge() {
+        let repo = temp_repo("merge-preflight-conflict");
+        setup_conflict_repo(&repo);
+        run_git(&repo, &["switch", "feature"]);
+
+        let git = GitClient::new();
+        let result = git.merge_branch(&repo, "main").unwrap_err().to_string();
+
+        assert!(result.contains("merge would conflict in 'conflict.txt'"));
+        assert!(git.operation_state(&repo).unwrap().is_none());
+        assert!(
+            !fs::read_to_string(repo.join("conflict.txt"))
+                .unwrap()
+                .contains("<<<<<<<")
+        );
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn rebase_preflight_blocks_predictable_conflicts_without_starting_rebase() {
+        let repo = temp_repo("rebase-preflight-conflict");
+        setup_conflict_repo(&repo);
+        run_git(&repo, &["switch", "feature"]);
+
+        let git = GitClient::new();
+        let result = git
+            .rebase_current_branch_onto(&repo, "main")
+            .unwrap_err()
+            .to_string();
+
+        assert!(result.contains("rebase would conflict in 'conflict.txt'"));
+        assert!(git.operation_state(&repo).unwrap().is_none());
+        assert!(
+            !fs::read_to_string(repo.join("conflict.txt"))
+                .unwrap()
+                .contains("<<<<<<<")
+        );
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn marks_conflicted_file_resolved_after_external_edit() {
+        let repo = temp_repo("mark-conflict-resolved");
+        setup_conflict_repo(&repo);
+        run_git(&repo, &["switch", "feature"]);
+        run_git_expect(&repo, &["merge", "--no-ff", "main"], false);
+
+        fs::write(repo.join("conflict.txt"), "resolved\n").unwrap();
+        let operation = GitClient::new()
+            .mark_conflict_resolved(&repo, "conflict.txt")
+            .unwrap()
+            .unwrap();
+
+        assert!(operation.can_continue);
+        assert!(operation.conflicted_files.is_empty());
+        run_git(&repo, &["merge", "--abort"]);
 
         let _ = fs::remove_dir_all(repo);
     }
@@ -3184,14 +3362,18 @@ mod tests {
     }
 
     fn run_git(repo: &Path, args: &[&str]) -> String {
+        run_git_expect(repo, args, true)
+    }
+
+    fn run_git_expect(repo: &Path, args: &[&str], expect_success: bool) -> String {
         let output = Command::new("git")
             .args(args)
             .current_dir(repo)
             .output()
             .unwrap();
         assert!(
-            output.status.success(),
-            "git {:?} failed: {}",
+            output.status.success() == expect_success,
+            "git {:?} returned unexpected status: {}",
             args,
             String::from_utf8_lossy(&output.stderr)
         );
