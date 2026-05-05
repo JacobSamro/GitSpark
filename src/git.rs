@@ -731,12 +731,13 @@ impl GitClient {
     pub fn write_global_identity(&self, identity: &GitIdentity) -> Result<()> {
         self.write_global_string_config("user.name", &identity.user_name)?;
         self.write_global_string_config("user.email", &identity.user_email)?;
-        self.write_optional_global_string_config(
-            "init.defaultBranch",
-            identity.default_branch.as_deref(),
-        )?;
+        self.write_global_default_branch(identity.default_branch.as_deref())?;
 
         Ok(())
+    }
+
+    pub fn write_global_default_branch(&self, branch: Option<&str>) -> Result<()> {
+        self.write_optional_global_string_config("init.defaultBranch", branch)
     }
 
     pub fn write_identity(&self, repo_path: &Path, identity: &GitIdentity) -> Result<()> {

@@ -13,6 +13,7 @@ export async function makeFreshSampleRepo() {
   const remoteClone = path.join(root, "remote-clone");
   const configDir = path.join(root, "config");
   const settingsPath = path.join(configDir, "settings.toml");
+  const globalGitConfig = path.join(root, "global.gitconfig");
   const openUrlLog = path.join(root, "opened-urls.log");
   const openUrlScript = path.join(root, "open-url.sh");
   const githubBaseUrl = "https://github.com/gitspark/e2e-fixture";
@@ -89,6 +90,7 @@ export async function makeFreshSampleRepo() {
     remoteClone: await fs.realpath(remoteClone),
     configDir,
     settingsPath,
+    globalGitConfig,
     cherryPickOid,
     githubBaseUrl,
     githubRemote,
@@ -114,6 +116,14 @@ export async function createRemoteOnlyCommit(remoteClone) {
 
 export async function gitOutput(repo, args) {
   const { stdout } = await exec("git", args, { cwd: repo });
+  return stdout.trim();
+}
+
+export async function gitOutputWithEnv(repo, args, env) {
+  const { stdout } = await exec("git", args, {
+    cwd: repo,
+    env: { ...process.env, ...env },
+  });
   return stdout.trim();
 }
 

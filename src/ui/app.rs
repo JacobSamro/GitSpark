@@ -1495,7 +1495,11 @@ impl GitSparkApp {
                 }
                 self.git.write_identity(&path, &self.repo.local_identity)
             } else {
-                self.git.clear_local_author_identity(&path)
+                self.git.clear_local_author_identity(&path).and_then(|_| {
+                    self.git.write_global_default_branch(
+                        self.repo.global_identity.default_branch.as_deref(),
+                    )
+                })
             };
 
             match write_result {

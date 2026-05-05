@@ -2,7 +2,11 @@ import { promises as fs } from "node:fs";
 
 import { expect } from "../gitspark.mjs";
 import { assert } from "../support/assertions.mjs";
-import { gitOptionalOutput, gitOutput } from "../support/fixtures.mjs";
+import {
+  gitOptionalOutput,
+  gitOutput,
+  gitOutputWithEnv,
+} from "../support/fixtures.mjs";
 
 export async function testAiValidation(app) {
   await app.command({ command: "generate_ai_commit" });
@@ -81,6 +85,14 @@ export async function testSettingsPersistence(app, fixture) {
     (await gitOptionalOutput(fixture.workRepo, ["config", "--local", "--get", "user.email"])) ===
       null,
     "global scope clears repository user.email override",
+  );
+  assert(
+    (await gitOutputWithEnv(
+      fixture.workRepo,
+      ["config", "--global", "--get", "init.defaultBranch"],
+      { GIT_CONFIG_GLOBAL: fixture.globalGitConfig },
+    )) === "trunk",
+    "global scope persists default branch to isolated global git config",
   );
 
   await app.getByTestId("settings-tab-ai").click();
