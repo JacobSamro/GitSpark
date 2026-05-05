@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 
 use crate::models::{
-    BranchComparison, ChangeEntry, CommitSuggestion, DiffEntry, GitIdentity, RepoSnapshot,
+    BranchComparison, ChangeEntry, CommitSuggestion, DiffEntry, GitIdentity, GitOperationState,
+    RepoSnapshot,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -77,6 +78,7 @@ pub struct RepoState {
     pub has_stash: bool,
     pub stash_files: Vec<ChangeEntry>,
     pub comparison: Option<BranchComparison>,
+    pub operation: Option<GitOperationState>,
 }
 
 impl Default for RepoState {
@@ -104,6 +106,7 @@ impl Default for RepoState {
             has_stash: false,
             stash_files: Vec::new(),
             comparison: None,
+            operation: None,
         }
     }
 }

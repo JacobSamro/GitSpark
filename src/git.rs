@@ -8,8 +8,8 @@ use std::{env, fs, io};
 use anyhow::{Context, Result, anyhow, bail};
 
 use crate::models::{
-    BranchComparison, BranchInfo, ChangeEntry, CommitInfo, DiffEntry, GitIdentity, RepoSnapshot,
-    RepoSummary,
+    BranchComparison, BranchInfo, ChangeEntry, CommitInfo, DiffEntry, GitIdentity,
+    GitOperationKind, GitOperationState, RepoSnapshot, RepoSummary,
 };
 
 #[cfg(windows)]
@@ -685,6 +685,32 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn continue_merge(&self, repo_path: &Path) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let Some(operation) = self.operation_state(&repo_path)? else {
+            bail!("no merge is in progress");
+        };
+        if operation.kind != GitOperationKind::Merge {
+            bail!("no merge is in progress");
+        }
+        if !operation.conflicted_files.is_empty() {
+            bail!("resolve all conflicted files before continuing the merge");
+        }
+
+        self.run_git(&repo_path, &["commit", "--no-edit"])
+            .context("failed to complete merge commit")?;
+
+        self.snapshot(&repo_path)
+    }
+
+    pub fn abort_merge(&self, repo_path: &Path) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        self.run_git(&repo_path, &["merge", "--abort"])
+            .context("failed to abort merge")?;
+
+        self.snapshot(&repo_path)
+    }
+
     pub fn update_current_branch_from(
         &self,
         repo_path: &Path,
@@ -747,6 +773,104 @@ impl GitClient {
             .with_context(|| format!("failed to rebase onto '{target_branch}'"))?;
 
         self.snapshot(&repo_path)
+    }
+
+    pub fn continue_rebase(&self, repo_path: &Path) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        self.run_git(
+            &repo_path,
+            &["-c", "core.editor=true", "rebase", "--continue"],
+        )
+        .context("failed to continue rebase")?;
+
+        self.snapshot(&repo_path)
+    }
+
+    pub fn skip_rebase(&self, repo_path: &Path) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        self.run_git(&repo_path, &["rebase", "--skip"])
+            .context("failed to skip rebase commit")?;
+
+        self.snapshot(&repo_path)
+    }
+
+    pub fn abort_rebase(&self, repo_path: &Path) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        self.run_git(&repo_path, &["rebase", "--abort"])
+            .context("failed to abort rebase")?;
+
+        self.snapshot(&repo_path)
+    }
+
+    pub fn operation_state(&self, repo_path: &Path) -> Result<Option<GitOperationState>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let git_dir = self.git_dir(&repo_path)?;
+        let current_branch = self
+            .current_stash_branch_name(&repo_path)
+            .unwrap_or_default();
+        let conflicted_files = self.conflicted_files(&repo_path)?;
+        let can_continue = conflicted_files.is_empty();
+
+        if git_dir.join("MERGE_HEAD").exists() {
+            let target_branch = self.merge_target_branch(&repo_path).ok().flatten();
+            let message = if can_continue {
+                "All conflicts are resolved. Continue the merge to create the merge commit."
+                    .to_string()
+            } else {
+                format!(
+                    "Resolve {} conflicted file{} before continuing.",
+                    conflicted_files.len(),
+                    if conflicted_files.len() == 1 { "" } else { "s" }
+                )
+            };
+            return Ok(Some(GitOperationState {
+                kind: GitOperationKind::Merge,
+                current_branch,
+                target_branch,
+                conflicted_files,
+                can_continue,
+                message,
+            }));
+        }
+
+        let rebase_dir = if git_dir.join("rebase-merge").exists() {
+            Some(git_dir.join("rebase-merge"))
+        } else if git_dir.join("rebase-apply").exists() {
+            Some(git_dir.join("rebase-apply"))
+        } else {
+            None
+        };
+
+        if let Some(rebase_dir) = rebase_dir {
+            let target_branch = self
+                .read_git_state_file(&rebase_dir.join("onto_name"))
+                .map(clean_git_ref_name);
+            let current_branch = self
+                .read_git_state_file(&rebase_dir.join("head-name"))
+                .map(clean_git_ref_name)
+                .filter(|name| !name.is_empty())
+                .unwrap_or(current_branch);
+            let message = if can_continue {
+                "All conflicts are resolved. Continue, skip this commit, or abort the rebase."
+                    .to_string()
+            } else {
+                format!(
+                    "Resolve {} conflicted file{} before continuing or skipping.",
+                    conflicted_files.len(),
+                    if conflicted_files.len() == 1 { "" } else { "s" }
+                )
+            };
+            return Ok(Some(GitOperationState {
+                kind: GitOperationKind::Rebase,
+                current_branch,
+                target_branch,
+                conflicted_files,
+                can_continue,
+                message,
+            }));
+        }
+
+        Ok(None)
     }
 
     pub fn github_commit_url(&self, repo_path: &Path, oid: &str) -> Result<Option<String>> {
@@ -1467,6 +1591,48 @@ impl GitClient {
         )?;
 
         parse_status_porcelain_v2(&output)
+    }
+
+    fn git_dir(&self, repo_path: &Path) -> Result<PathBuf> {
+        let output = self.run_git(repo_path, &["rev-parse", "--git-dir"])?;
+        let git_dir = PathBuf::from(output.trim());
+        if git_dir.is_absolute() {
+            Ok(git_dir)
+        } else {
+            Ok(repo_path.join(git_dir))
+        }
+    }
+
+    fn read_git_state_file(&self, path: &Path) -> Option<String> {
+        fs::read_to_string(path)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    }
+
+    fn conflicted_files(&self, repo_path: &Path) -> Result<Vec<ChangeEntry>> {
+        let output = self.run_git(
+            repo_path,
+            &["diff", "--name-status", "--diff-filter=U", "--"],
+        )?;
+        Ok(output.lines().filter_map(parse_name_status_line).collect())
+    }
+
+    fn merge_target_branch(&self, repo_path: &Path) -> Result<Option<String>> {
+        let git_dir = self.git_dir(repo_path)?;
+        let Some(merge_head) = self.read_git_state_file(&git_dir.join("MERGE_HEAD")) else {
+            return Ok(None);
+        };
+        let output = self.run_git(
+            repo_path,
+            &["name-rev", "--name-only", "--exclude=tags/*", &merge_head],
+        )?;
+        let name = output.trim();
+        if name.is_empty() || name == "undefined" {
+            Ok(None)
+        } else {
+            Ok(Some(clean_git_ref_name(name.to_string())))
+        }
     }
 
     fn list_branches(&self, repo_path: &Path) -> Result<Vec<BranchInfo>> {
@@ -2725,6 +2891,53 @@ mod tests {
         let _ = fs::remove_dir_all(repo);
     }
 
+    #[test]
+    fn detects_and_aborts_conflicted_merge_operation() {
+        let repo = temp_repo("merge-conflict-operation");
+        setup_conflict_repo(&repo);
+        run_git(&repo, &["switch", "feature"]);
+
+        let git = GitClient::new();
+        let result = git.merge_branch(&repo, "main");
+        assert!(result.is_err());
+
+        let operation = git.operation_state(&repo).unwrap().unwrap();
+        assert_eq!(operation.kind, crate::models::GitOperationKind::Merge);
+        assert_eq!(operation.current_branch, "feature");
+        assert_eq!(operation.target_branch.as_deref(), Some("main"));
+        assert!(!operation.can_continue);
+        assert_eq!(operation.conflicted_files[0].path, "conflict.txt");
+
+        let snapshot = git.abort_merge(&repo).unwrap();
+        assert_eq!(snapshot.repo.current_branch, "feature");
+        assert!(git.operation_state(&repo).unwrap().is_none());
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn detects_and_aborts_conflicted_rebase_operation() {
+        let repo = temp_repo("rebase-conflict-operation");
+        setup_conflict_repo(&repo);
+        run_git(&repo, &["switch", "feature"]);
+
+        let git = GitClient::new();
+        let result = git.rebase_current_branch_onto(&repo, "main");
+        assert!(result.is_err());
+
+        let operation = git.operation_state(&repo).unwrap().unwrap();
+        assert_eq!(operation.kind, crate::models::GitOperationKind::Rebase);
+        assert_eq!(operation.current_branch, "feature");
+        assert!(!operation.can_continue);
+        assert_eq!(operation.conflicted_files[0].path, "conflict.txt");
+
+        let snapshot = git.abort_rebase(&repo).unwrap();
+        assert_eq!(snapshot.repo.current_branch, "feature");
+        assert!(git.operation_state(&repo).unwrap().is_none());
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
     fn temp_repo(name: &str) -> std::path::PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -2733,6 +2946,21 @@ mod tests {
         let path = std::env::temp_dir().join(format!("gitspark-{name}-{unique}"));
         fs::create_dir_all(&path).unwrap();
         path
+    }
+
+    fn setup_conflict_repo(repo: &Path) {
+        fs::write(repo.join("conflict.txt"), "base\n").unwrap();
+        run_git(repo, &["init", "-b", "main"]);
+        run_git(repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(repo, &["add", "--all"]);
+        run_git(repo, &["commit", "-m", "initial"]);
+        run_git(repo, &["switch", "-c", "feature"]);
+        fs::write(repo.join("conflict.txt"), "feature\n").unwrap();
+        run_git(repo, &["commit", "-am", "feature change"]);
+        run_git(repo, &["switch", "main"]);
+        fs::write(repo.join("conflict.txt"), "main\n").unwrap();
+        run_git(repo, &["commit", "-am", "main change"]);
     }
 
     fn run_git(repo: &Path, args: &[&str]) -> String {
@@ -2805,6 +3033,15 @@ fn parse_name_status_line(line: &str) -> Option<ChangeEntry> {
         path: path.to_string(),
         status: status.to_string(),
     })
+}
+
+fn clean_git_ref_name(name: String) -> String {
+    name.trim()
+        .strip_prefix("refs/heads/")
+        .or_else(|| name.trim().strip_prefix("remotes/"))
+        .unwrap_or(name.trim())
+        .trim_end_matches("^0")
+        .to_string()
 }
 
 fn looks_binary_diff(diff: &str) -> bool {

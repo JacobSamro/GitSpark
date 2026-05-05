@@ -53,6 +53,38 @@ pub struct BranchComparison {
     pub diffs: Vec<DiffEntry>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GitOperationKind {
+    Merge,
+    Rebase,
+}
+
+impl GitOperationKind {
+    pub fn title(&self) -> &'static str {
+        match self {
+            Self::Merge => "Merge in progress",
+            Self::Rebase => "Rebase in progress",
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Merge => "merge",
+            Self::Rebase => "rebase",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct GitOperationState {
+    pub kind: GitOperationKind,
+    pub current_branch: String,
+    pub target_branch: Option<String>,
+    pub conflicted_files: Vec<ChangeEntry>,
+    pub can_continue: bool,
+    pub message: String,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GitIdentity {
     pub user_name: String,

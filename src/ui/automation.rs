@@ -13,7 +13,7 @@ use gpui::Context;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::models::AiProvider;
+use crate::models::{AiProvider, GitOperationKind};
 use crate::ui::app::SettingsAction;
 use crate::ui::app::{AppEvent, GitSparkApp, NotifySender, SidebarAction, ToolbarAction};
 use crate::ui::branch_context_menu::BranchContextAction;
@@ -144,6 +144,9 @@ pub(crate) enum AutomationCommand {
     NetworkAction {
         action: AutomationNetworkAction,
     },
+    ContinueGitOperation,
+    SkipRebaseOperation,
+    AbortGitOperation,
 }
 
 #[derive(Clone, Deserialize)]
@@ -376,6 +379,7 @@ struct AutomationSnapshot {
     status_message: String,
     error_message: String,
     compare: Option<AutomationCompareSnapshot>,
+    operation: Option<AutomationOperationSnapshot>,
     settings_scope: AutomationSettingsScope,
     settings_section: AutomationSettingsSection,
     git_user_name: String,
@@ -399,6 +403,16 @@ struct AutomationCompareSnapshot {
     behind: usize,
     commits: Vec<AutomationCommit>,
     files: Vec<AutomationChange>,
+}
+
+#[derive(Serialize)]
+struct AutomationOperationSnapshot {
+    kind: String,
+    current_branch: String,
+    target_branch: Option<String>,
+    conflicted_files: Vec<AutomationChange>,
+    can_continue: bool,
+    message: String,
 }
 
 #[derive(Serialize)]
@@ -544,6 +558,9 @@ enum AutomationNodeAction {
     UndoLastCommit,
     ExitCompare,
     MergeComparedBranch,
+    ContinueGitOperation,
+    SkipRebaseOperation,
+    AbortGitOperation,
     CancelDialog,
     ConfirmDiscardChanges,
     ChangeFile(String, AutomationChangeAction),
@@ -766,6 +783,18 @@ impl GitSparkApp {
                 self.handle_toolbar_action(ToolbarAction::RunNetworkAction(action.into()), cx);
                 AutomationResponse::success(self.automation_snapshot())
             }
+            AutomationCommand::ContinueGitOperation => {
+                self.continue_git_operation(cx);
+                AutomationResponse::success(self.automation_snapshot())
+            }
+            AutomationCommand::SkipRebaseOperation => {
+                self.skip_rebase_operation(cx);
+                AutomationResponse::success(self.automation_snapshot())
+            }
+            AutomationCommand::AbortGitOperation => {
+                self.abort_git_operation(cx);
+                AutomationResponse::success(self.automation_snapshot())
+            }
         }
     }
 
@@ -866,6 +895,25 @@ impl GitSparkApp {
                             status: String::new(),
                         })
                         .collect(),
+                }),
+            operation: self
+                .repo
+                .operation
+                .as_ref()
+                .map(|operation| AutomationOperationSnapshot {
+                    kind: git_operation_kind_name(&operation.kind).to_string(),
+                    current_branch: operation.current_branch.clone(),
+                    target_branch: operation.target_branch.clone(),
+                    conflicted_files: operation
+                        .conflicted_files
+                        .iter()
+                        .map(|file| AutomationChange {
+                            path: file.path.clone(),
+                            status: file.status.clone(),
+                        })
+                        .collect(),
+                    can_continue: operation.can_continue,
+                    message: operation.message.clone(),
                 }),
             settings_scope: self.nav.settings_scope.into(),
             settings_section: self.nav.settings_section.into(),
@@ -1025,6 +1073,72 @@ impl GitSparkApp {
                 Some(self.messages.error_message.as_str()),
                 None,
             ));
+        }
+
+        if let Some(operation) = self.repo.operation.as_ref() {
+            let mut operation_children = vec![
+                automation_node(
+                    "operation-continue",
+                    AutomationRole::Button,
+                    Some("operation-continue"),
+                    Some("Continue operation"),
+                    Some(AutomationNodeAction::ContinueGitOperation),
+                )
+                .enabled(operation.can_continue),
+                automation_node(
+                    "operation-abort",
+                    AutomationRole::Button,
+                    Some("operation-abort"),
+                    Some("Abort operation"),
+                    Some(AutomationNodeAction::AbortGitOperation),
+                ),
+            ];
+            if operation.kind == GitOperationKind::Rebase {
+                operation_children.push(automation_node(
+                    "operation-skip",
+                    AutomationRole::Button,
+                    Some("operation-skip"),
+                    Some("Skip rebase commit"),
+                    Some(AutomationNodeAction::SkipRebaseOperation),
+                ));
+            }
+            operation_children.push(
+                automation_node(
+                    "operation-conflict-files",
+                    AutomationRole::List,
+                    Some("operation-conflict-files"),
+                    Some("Conflicted files"),
+                    None,
+                )
+                .children(
+                    operation
+                        .conflicted_files
+                        .iter()
+                        .map(|file| {
+                            automation_node(
+                                format!("operation-conflict-file-{}", stable_test_slug(&file.path)),
+                                AutomationRole::ListItem,
+                                Some(format!(
+                                    "operation-conflict-file-{}",
+                                    stable_test_slug(&file.path)
+                                )),
+                                Some(file.path.as_str()),
+                                None,
+                            )
+                        })
+                        .collect(),
+                ),
+            );
+            children.push(
+                automation_node(
+                    "operation-conflict-banner",
+                    AutomationRole::Status,
+                    Some("operation-conflict-banner"),
+                    Some(operation.kind.title()),
+                    None,
+                )
+                .children(operation_children),
+            );
         }
 
         if self.repo.snapshot.is_none() {
@@ -2340,6 +2454,15 @@ impl GitSparkApp {
                 self.repo.merge_target = comparison.target_branch.clone();
                 self.merge_branch(cx);
             }
+            AutomationNodeAction::ContinueGitOperation => {
+                self.continue_git_operation(cx);
+            }
+            AutomationNodeAction::SkipRebaseOperation => {
+                self.skip_rebase_operation(cx);
+            }
+            AutomationNodeAction::AbortGitOperation => {
+                self.abort_git_operation(cx);
+            }
             AutomationNodeAction::CancelDialog => {
                 self.nav.active_dialog = ActiveDialog::None;
                 cx.notify();
@@ -3571,6 +3694,13 @@ fn network_action_name(action: NetworkAction) -> String {
         NetworkAction::PublishRepository => "publish_repository",
     }
     .to_string()
+}
+
+fn git_operation_kind_name(kind: &GitOperationKind) -> &'static str {
+    match kind {
+        GitOperationKind::Merge => "merge",
+        GitOperationKind::Rebase => "rebase",
+    }
 }
 
 fn ai_provider_name(provider: &AiProvider) -> &'static str {

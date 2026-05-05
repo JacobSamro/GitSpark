@@ -19,8 +19,8 @@ use crate::ai::AiClient;
 use crate::git::{GitClient, safe_repository_directory_name};
 use crate::models::{
     AiProvider, AppSettings, BranchComparison, BranchInfo, ChangeEntry, CommitInfo,
-    CommitSuggestion, DiffEntry, GitIdentity, INVALID_GIT_AUTHOR_NAME_MESSAGE, RemoteModelOption,
-    RepoSnapshot, git_author_name_is_valid,
+    CommitSuggestion, DiffEntry, GitIdentity, GitOperationKind, GitOperationState,
+    INVALID_GIT_AUTHOR_NAME_MESSAGE, RemoteModelOption, RepoSnapshot, git_author_name_is_valid,
 };
 use crate::storage::{push_recent_repo, save_settings};
 use crate::ui::automation;
@@ -65,6 +65,7 @@ pub(crate) enum AppEvent {
     /// A single file's diff was refreshed (path, updated entry).
     FileDiffRefreshed(String, Result<DiffEntry, String>),
     RepoOperationCompleted(Result<RepoSnapshot, String>, String, String),
+    GitOperationControlCompleted(Result<RepoSnapshot, String>, String),
     CommitDiffCopied(String, Result<String, String>),
     Automation(automation::AutomationRequest),
 }
@@ -487,7 +488,12 @@ impl GitSparkApp {
                     self.messages.status_message = format!("Merged '{branch}'.");
                     self.messages.error_message.clear();
                 }
-                AppEvent::BranchMerged(Err(err), _) => {
+                AppEvent::BranchMerged(Err(err), branch) => {
+                    self.refresh_git_operation_state(Some(branch));
+                    if self.repo.operation.is_some() {
+                        self.messages.status_message =
+                            "Merge stopped because conflicts need attention.".to_string();
+                    }
                     self.messages.error_message = format!("Merge failed: {err}");
                 }
                 AppEvent::CommitCreated(Ok(snapshot), summary) => {
@@ -578,6 +584,29 @@ impl GitSparkApp {
                     self.messages.error_message.clear();
                 }
                 AppEvent::RepoOperationCompleted(Err(err), action_label, _success_message) => {
+                    let target_hint = self.repo.merge_target.trim().to_string();
+                    self.refresh_git_operation_state(
+                        (!target_hint.is_empty()).then_some(target_hint),
+                    );
+                    if self.repo.operation.is_some() {
+                        self.messages.status_message =
+                            format!("{action_label} stopped because conflicts need attention.");
+                    }
+                    self.messages.error_message = format!("{action_label} failed: {err}");
+                }
+                AppEvent::GitOperationControlCompleted(Ok(snapshot), action_label) => {
+                    self.add_recent_repo(snapshot.repo.path.clone());
+                    self.adopt_snapshot(snapshot);
+                    self.messages.status_message = format!("{action_label} complete.");
+                    self.messages.error_message.clear();
+                }
+                AppEvent::GitOperationControlCompleted(Err(err), action_label) => {
+                    let target_hint = self
+                        .repo
+                        .operation
+                        .as_ref()
+                        .and_then(|operation| operation.target_branch.clone());
+                    self.refresh_git_operation_state(target_hint);
                     self.messages.error_message = format!("{action_label} failed: {err}");
                 }
                 AppEvent::CommitDiffCopied(oid, Ok(diff_text)) => {
@@ -1677,6 +1706,101 @@ impl GitSparkApp {
                 "Rebase branch".to_string(),
                 format!("Rebased '{current_branch}' onto '{target}'."),
             ));
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn continue_git_operation(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+        let Some(operation) = self.repo.operation.as_ref().cloned() else {
+            self.messages.error_message = "No merge or rebase is in progress.".to_string();
+            cx.notify();
+            return;
+        };
+
+        let action_label = match operation.kind {
+            GitOperationKind::Merge => "Continue merge",
+            GitOperationKind::Rebase => "Continue rebase",
+        }
+        .to_string();
+        self.messages.status_message = format!("{action_label}...");
+        self.messages.error_message.clear();
+        let tx = self.event_tx.clone();
+        thread::spawn(move || {
+            let git = GitClient::new();
+            let res = match operation.kind {
+                GitOperationKind::Merge => git.continue_merge(&path),
+                GitOperationKind::Rebase => git.continue_rebase(&path),
+            }
+            .map_err(|err| err.to_string());
+            let _ = tx.send(AppEvent::GitOperationControlCompleted(res, action_label));
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn skip_rebase_operation(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+        if self
+            .repo
+            .operation
+            .as_ref()
+            .is_none_or(|operation| operation.kind != GitOperationKind::Rebase)
+        {
+            self.messages.error_message = "No rebase is in progress.".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.messages.status_message = "Skipping rebase commit...".to_string();
+        self.messages.error_message.clear();
+        let tx = self.event_tx.clone();
+        thread::spawn(move || {
+            let git = GitClient::new();
+            let res = git.skip_rebase(&path).map_err(|err| err.to_string());
+            let _ = tx.send(AppEvent::GitOperationControlCompleted(
+                res,
+                "Skip rebase".to_string(),
+            ));
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn abort_git_operation(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+        let Some(operation) = self.repo.operation.as_ref().cloned() else {
+            self.messages.error_message = "No merge or rebase is in progress.".to_string();
+            cx.notify();
+            return;
+        };
+
+        let action_label = match operation.kind {
+            GitOperationKind::Merge => "Abort merge",
+            GitOperationKind::Rebase => "Abort rebase",
+        }
+        .to_string();
+        self.messages.status_message = format!("{action_label}...");
+        self.messages.error_message.clear();
+        let tx = self.event_tx.clone();
+        thread::spawn(move || {
+            let git = GitClient::new();
+            let res = match operation.kind {
+                GitOperationKind::Merge => git.abort_merge(&path),
+                GitOperationKind::Rebase => git.abort_rebase(&path),
+            }
+            .map_err(|err| err.to_string());
+            let _ = tx.send(AppEvent::GitOperationControlCompleted(res, action_label));
         });
         cx.notify();
     }
@@ -2787,6 +2911,11 @@ impl GitSparkApp {
 
     fn adopt_snapshot(&mut self, snapshot: RepoSnapshot) {
         let previous_commit = self.selection.selected_commit.clone();
+        let previous_operation_target = self
+            .repo
+            .operation
+            .as_ref()
+            .and_then(|operation| operation.target_branch.clone());
         let current_branch = snapshot.repo.current_branch.clone();
         let has_stash = snapshot.stash_count > 0;
         let changed_paths: Vec<String> = snapshot
@@ -2796,6 +2925,16 @@ impl GitSparkApp {
             .collect();
         self.close_history_context_menu();
         self.repo.comparison = None;
+        self.repo.operation = self
+            .git
+            .operation_state(&snapshot.repo.path)
+            .unwrap_or(None)
+            .map(|mut operation| {
+                if operation.target_branch.is_none() {
+                    operation.target_branch = previous_operation_target;
+                }
+                operation
+            });
         self.selection.selected_change = snapshot.changes.first().map(|change| change.path.clone());
         self.repo.branch_target = current_branch;
         self.repo.merge_target = snapshot
@@ -2833,6 +2972,24 @@ impl GitSparkApp {
         if let Some(oid) = next_selected_commit {
             self.load_commit_diff(oid);
         }
+    }
+
+    fn refresh_git_operation_state(&mut self, target_hint: Option<String>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.repo.operation = None;
+            return;
+        };
+
+        self.repo.operation =
+            self.git
+                .operation_state(&path)
+                .unwrap_or(None)
+                .map(|mut operation| {
+                    if operation.target_branch.is_none() {
+                        operation.target_branch = target_hint;
+                    }
+                    operation
+                });
     }
 
     // ------------------------------------------------------------------
@@ -6161,7 +6318,7 @@ impl GitSparkApp {
             let behind = snapshot.map(|s| s.repo.behind).unwrap_or(0);
             let remote = snapshot.and_then(|s| s.repo.remote_name.as_deref());
             let has_github_remote = snapshot.map(|s| s.repo.has_github_remote).unwrap_or(false);
-            return h_resizable("workspace-panels")
+            let content = h_resizable("workspace-panels")
                 .child(
                     resizable_panel().child(crate::ui::sidebar::render_no_changes_state(
                         &view,
@@ -6173,6 +6330,7 @@ impl GitSparkApp {
                     )),
                 )
                 .into_any_element();
+            return self.render_workspace_with_operation(content, cx);
         }
 
         // Show file list panel on History tab (Changes tab has sidebar file list)
@@ -6190,7 +6348,7 @@ impl GitSparkApp {
             };
             let file_list = self.render_commit_file_list(diffs, selected_file, sidebar_tab, cx);
 
-            v_flex()
+            let content = v_flex()
                 .size_full()
                 .min_h_0()
                 .child(commit_header)
@@ -6212,9 +6370,10 @@ impl GitSparkApp {
                             )),
                     ),
                 )
-                .into_any_element()
+                .into_any_element();
+            self.render_workspace_with_operation(content, cx)
         } else {
-            h_resizable("workspace-panels")
+            let content = h_resizable("workspace-panels")
                 .child(
                     resizable_panel().child(crate::ui::workspace::render_workspace(
                         selected_file,
@@ -6222,8 +6381,230 @@ impl GitSparkApp {
                         Some(&view),
                     )),
                 )
-                .into_any_element()
+                .into_any_element();
+            self.render_workspace_with_operation(content, cx)
         }
+    }
+
+    fn render_workspace_with_operation(
+        &self,
+        content: AnyElement,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        if let Some(operation) = self.repo.operation.as_ref() {
+            v_flex()
+                .size_full()
+                .min_h_0()
+                .child(self.render_git_operation_banner(operation, cx))
+                .child(div().flex_1().min_h_0().child(content))
+                .into_any_element()
+        } else {
+            content
+        }
+    }
+
+    fn render_git_operation_banner(
+        &self,
+        operation: &GitOperationState,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let files = operation.conflicted_files.clone();
+        let operation_name = operation.kind.name().to_string();
+        let continue_text = match operation.kind {
+            GitOperationKind::Merge => "Continue Merge",
+            GitOperationKind::Rebase => "Continue Rebase",
+        };
+        let abort_text = match operation.kind {
+            GitOperationKind::Merge => "Abort Merge",
+            GitOperationKind::Rebase => "Abort Rebase",
+        };
+        let title = if let Some(target) = operation.target_branch.as_deref() {
+            format!(
+                "{}: {} → {}",
+                operation.kind.title(),
+                target,
+                operation.current_branch
+            )
+        } else {
+            operation.kind.title().to_string()
+        };
+
+        v_flex()
+            .id("operation-conflict-banner")
+            .w_full()
+            .flex_shrink_0()
+            .gap(px(10.0))
+            .px(px(14.0))
+            .py(px(12.0))
+            .bg(theme::warning_bg())
+            .border_b_1()
+            .border_color(theme::warning())
+            .child(
+                h_flex()
+                    .items_start()
+                    .justify_between()
+                    .gap(px(16.0))
+                    .child(
+                        v_flex()
+                            .min_w_0()
+                            .gap(px(4.0))
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!(
+                                        "operation-{}-title",
+                                        operation_name
+                                    )))
+                                    .text_size(theme::z(13.0))
+                                    .text_color(theme::text_main())
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(title),
+                            )
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!(
+                                        "operation-{}-message",
+                                        operation_name
+                                    )))
+                                    .text_size(theme::z(12.0))
+                                    .text_color(theme::text_muted())
+                                    .child(operation.message.clone()),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .flex_shrink_0()
+                            .gap(px(8.0))
+                            .child(self.render_operation_button(
+                                "operation-continue",
+                                continue_text,
+                                operation.can_continue,
+                                true,
+                                cx.listener(|app, _evt, _win, cx| {
+                                    app.continue_git_operation(cx);
+                                }),
+                            ))
+                            .children(if operation.kind == GitOperationKind::Rebase {
+                                Some(self.render_operation_button(
+                                    "operation-skip",
+                                    "Skip",
+                                    true,
+                                    false,
+                                    cx.listener(|app, _evt, _win, cx| {
+                                        app.skip_rebase_operation(cx);
+                                    }),
+                                ))
+                            } else {
+                                None
+                            })
+                            .child(self.render_operation_button(
+                                "operation-abort",
+                                abort_text,
+                                true,
+                                false,
+                                cx.listener(|app, _evt, _win, cx| {
+                                    app.abort_git_operation(cx);
+                                }),
+                            )),
+                    ),
+            )
+            .children(if files.is_empty() {
+                None
+            } else {
+                Some(
+                    div()
+                        .id("operation-conflict-files")
+                        .max_h(px(96.0))
+                        .overflow_y_scroll()
+                        .child(
+                            uniform_list("operation-conflict-file-list", files.len(), {
+                                move |range, _win, _cx| {
+                                    range
+                                        .map(|ix| {
+                                            let file = &files[ix];
+                                            h_flex()
+                                                .id(SharedString::from(format!(
+                                                    "operation-conflict-file-{}",
+                                                    stable_id_slug(&file.path)
+                                                )))
+                                                .w_full()
+                                                .h(px(24.0))
+                                                .items_center()
+                                                .gap(px(8.0))
+                                                .child(
+                                                    div()
+                                                        .text_size(theme::z(11.0))
+                                                        .text_color(theme::warning())
+                                                        .font_weight(FontWeight::SEMIBOLD)
+                                                        .child(file.status.clone()),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .min_w_0()
+                                                        .text_size(theme::z(12.0))
+                                                        .text_color(theme::text_main())
+                                                        .overflow_x_hidden()
+                                                        .whitespace_nowrap()
+                                                        .child(file.path.clone()),
+                                                )
+                                                .into_any_element()
+                                        })
+                                        .collect()
+                                }
+                            })
+                            .with_sizing_behavior(ListSizingBehavior::Infer),
+                        ),
+                )
+            })
+            .into_any_element()
+    }
+
+    fn render_operation_button(
+        &self,
+        id: &'static str,
+        label: &'static str,
+        enabled: bool,
+        primary: bool,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> AnyElement {
+        div()
+            .id(id)
+            .px(theme::z(12.0))
+            .py(theme::z(6.0))
+            .rounded(theme::z(theme::CORNER_RADIUS))
+            .bg(if primary && enabled {
+                theme::commit_button_bg()
+            } else {
+                theme::surface_bg()
+            })
+            .border_1()
+            .border_color(if primary && enabled {
+                theme::commit_button_bg()
+            } else {
+                theme::surface_bg_alt()
+            })
+            .when(enabled, |el| {
+                el.cursor_pointer().hover(|s| {
+                    if primary {
+                        s.bg(theme::commit_button_hover_bg())
+                    } else {
+                        s.bg(theme::toolbar_hover_bg())
+                    }
+                })
+            })
+            .when(enabled, |el| el.on_click(handler))
+            .child(
+                div()
+                    .text_size(theme::z(12.0))
+                    .text_color(if primary && enabled {
+                        theme::commit_button_text()
+                    } else if enabled {
+                        theme::text_main()
+                    } else {
+                        theme::text_muted()
+                    })
+                    .child(label),
+            )
+            .into_any_element()
     }
 
     fn render_commit_detail_header(
