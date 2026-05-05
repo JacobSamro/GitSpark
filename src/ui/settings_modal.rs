@@ -148,9 +148,6 @@ pub(crate) fn render_settings_modal(
         .track_focus(&app.settings_modal.focus)
         .key_context("settings-modal")
         .occlude()
-        .absolute()
-        .left(px(panel_left))
-        .top(px(panel_top))
         .w(px(panel_width))
         .h(px(panel_height))
         .bg(theme::panel_bg())
@@ -224,7 +221,15 @@ pub(crate) fn render_settings_modal(
                     app.handle_settings_action(SettingsAction::Close, cx);
                 })),
         )
-        .child(panel)
+        .child(
+            div()
+                .id("settings-modal-container")
+                .absolute()
+                .left(px(panel_left))
+                .top(px(panel_top))
+                .on_click(|_evt, _window, cx| cx.stop_propagation())
+                .child(panel),
+        )
 }
 
 fn render_header(cx: &mut Context<GitSparkApp>) -> impl IntoElement {
