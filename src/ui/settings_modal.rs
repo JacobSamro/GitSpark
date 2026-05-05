@@ -569,6 +569,13 @@ fn render_git_scope_radio(
         })
         .cursor_pointer()
         .hover(|style| style.bg(theme::hover_bg()))
+        .on_click(cx.listener(move |app, _evt, window, cx| {
+            app.handle_settings_action(SettingsAction::SetGitConfigScope(use_local), cx);
+            if use_local {
+                app.activate_settings_field(SettingsField::GitUserName, window, cx);
+            }
+            cx.stop_propagation();
+        }))
         .child(
             v_flex().gap(theme::z(4.0)).child(radio).child(
                 div()
