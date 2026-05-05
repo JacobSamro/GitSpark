@@ -299,6 +299,7 @@ pub(crate) enum AutomationHistoryAction {
     RevertChangesInCommit,
     CreateBranchFromCommit,
     CreateTag,
+    DeleteTag,
     CherryPickCommit,
     CopySha,
     CopyDiff,
@@ -476,6 +477,7 @@ enum AutomationNodeAction {
     ConfirmRenameBranch,
     ConfirmDeleteBranch,
     ConfirmCreateTag,
+    ConfirmDeleteTag,
     ConfirmResetToCommit,
     ConfirmStashChanges,
     ConfirmStashAndSwitch,
@@ -1414,6 +1416,32 @@ impl GitSparkApp {
             }
         }
 
+        if matches!(self.nav.active_dialog, ActiveDialog::DeleteTag { .. }) {
+            children.extend([
+                automation_node(
+                    "delete-tag-confirmation",
+                    AutomationRole::Status,
+                    Some("delete-tag-confirmation"),
+                    Some("Delete tag confirmation"),
+                    None::<AutomationNodeAction>,
+                ),
+                automation_node(
+                    "delete-tag-cancel",
+                    AutomationRole::Button,
+                    Some("delete-tag-cancel"),
+                    Some("Cancel"),
+                    Some(AutomationNodeAction::CancelDialog),
+                ),
+                automation_node(
+                    "delete-tag-confirm",
+                    AutomationRole::Button,
+                    Some("delete-tag-confirm"),
+                    Some("Delete"),
+                    Some(AutomationNodeAction::ConfirmDeleteTag),
+                ),
+            ]);
+        }
+
         if matches!(self.nav.active_dialog, ActiveDialog::PublishRepository) {
             let publish_enabled = !self.network.publish_name.trim().is_empty()
                 && self.network.active_action.is_none();
@@ -1960,6 +1988,13 @@ impl GitSparkApp {
                 };
                 self.create_tag(target_oid, cx);
             }
+            AutomationNodeAction::ConfirmDeleteTag => {
+                let tag_name = match &self.nav.active_dialog {
+                    ActiveDialog::DeleteTag { tag_name } => tag_name.clone(),
+                    _ => return AutomationResponse::failure("delete tag dialog is not active"),
+                };
+                self.delete_tag(tag_name, cx);
+            }
             AutomationNodeAction::ConfirmResetToCommit => {
                 let target_oid = match &self.nav.active_dialog {
                     ActiveDialog::ResetToCommit { target_oid } => target_oid.clone(),
@@ -2276,6 +2311,7 @@ impl GitSparkApp {
                 HistoryContextMenuAction::CreateBranchFromCommit
             }
             AutomationHistoryAction::CreateTag => HistoryContextMenuAction::CreateTag,
+            AutomationHistoryAction::DeleteTag => HistoryContextMenuAction::DeleteTag,
             AutomationHistoryAction::CherryPickCommit => HistoryContextMenuAction::CherryPickCommit,
             AutomationHistoryAction::CopySha => HistoryContextMenuAction::CopySha,
             AutomationHistoryAction::CopyDiff => HistoryContextMenuAction::CopyDiff,
@@ -3021,36 +3057,44 @@ fn history_action_nodes(
     let mut actions = vec![
         (
             "reset",
-            crate::ui::labels::reset_to_commit_menu(),
+            crate::ui::labels::reset_to_commit_menu().to_string(),
             AutomationHistoryAction::ResetToCommit,
         ),
         (
             "checkout",
-            crate::ui::labels::checkout_commit_menu(),
+            crate::ui::labels::checkout_commit_menu().to_string(),
             AutomationHistoryAction::CheckoutCommit,
         ),
         (
             "revert",
-            crate::ui::labels::revert_changes_in_commit_menu(),
+            crate::ui::labels::revert_changes_in_commit_menu().to_string(),
             AutomationHistoryAction::RevertChangesInCommit,
         ),
         (
             "cherry-pick",
-            crate::ui::labels::cherry_pick_commit_menu(),
+            crate::ui::labels::cherry_pick_commit_menu().to_string(),
             AutomationHistoryAction::CherryPickCommit,
         ),
         (
             "create-branch",
-            crate::ui::labels::create_branch_from_commit_menu(),
+            crate::ui::labels::create_branch_from_commit_menu().to_string(),
             AutomationHistoryAction::CreateBranchFromCommit,
         ),
         (
             "create-tag",
-            crate::ui::labels::create_tag_menu(),
+            crate::ui::labels::create_tag_menu().to_string(),
             AutomationHistoryAction::CreateTag,
         ),
-        ("copy-sha", "Copy SHA", AutomationHistoryAction::CopySha),
-        ("copy-diff", "Copy diff", AutomationHistoryAction::CopyDiff),
+        (
+            "copy-sha",
+            "Copy SHA".to_string(),
+            AutomationHistoryAction::CopySha,
+        ),
+        (
+            "copy-diff",
+            "Copy diff".to_string(),
+            AutomationHistoryAction::CopyDiff,
+        ),
     ];
 
     let copy_tag_label = if tags.len() > 1 {
@@ -3058,12 +3102,21 @@ fn history_action_nodes(
     } else {
         "Copy Tag"
     };
-    actions.push(("copy-tag", copy_tag_label, AutomationHistoryAction::CopyTag));
+    actions.push((
+        "copy-tag",
+        copy_tag_label.to_string(),
+        AutomationHistoryAction::CopyTag,
+    ));
+    actions.push((
+        "delete-tag",
+        crate::ui::history_context_menu::delete_tag_label(tags),
+        AutomationHistoryAction::DeleteTag,
+    ));
 
     if has_github_remote {
         actions.push((
             "view-on-github",
-            "View on GitHub",
+            "View on GitHub".to_string(),
             AutomationHistoryAction::ViewOnGithub,
         ));
     }
@@ -3073,6 +3126,7 @@ fn history_action_nodes(
         .map(|(suffix, label, action)| {
             let enabled = match action {
                 AutomationHistoryAction::CopyTag => !tags.is_empty(),
+                AutomationHistoryAction::DeleteTag => tags.len() == 1,
                 AutomationHistoryAction::ResetToCommit => can_reset_to_commit,
                 _ => true,
             };
@@ -3080,7 +3134,7 @@ fn history_action_nodes(
                 format!("commit-{slug}-{suffix}"),
                 AutomationRole::Button,
                 Some(format!("commit-{slug}-{suffix}")),
-                Some(label),
+                Some(label.as_str()),
                 Some(AutomationNodeAction::History(oid.to_string(), action)),
             )
             .enabled(enabled)
@@ -3295,6 +3349,7 @@ fn active_dialog_name(dialog: &ActiveDialog) -> &'static str {
         ActiveDialog::RenameBranch { .. } => "rename_branch",
         ActiveDialog::DeleteBranch { .. } => "delete_branch",
         ActiveDialog::CreateTag { .. } => "create_tag",
+        ActiveDialog::DeleteTag { .. } => "delete_tag",
         ActiveDialog::ResetToCommit { .. } => "reset_to_commit",
         ActiveDialog::CreateRepository => "create_repository",
         ActiveDialog::CloneRepository => "clone_repository",
@@ -3549,6 +3604,18 @@ mod tests {
             cherry_pick,
             AutomationCommand::HistoryAction {
                 action: AutomationHistoryAction::CherryPickCommit,
+                ..
+            }
+        ));
+
+        let delete_tag: AutomationCommand = serde_json::from_str(
+            r#"{"command":"history_action","oid":"abc123","action":"delete_tag"}"#,
+        )
+        .expect("delete tag command parses");
+        assert!(matches!(
+            delete_tag,
+            AutomationCommand::HistoryAction {
+                action: AutomationHistoryAction::DeleteTag,
                 ..
             }
         ));

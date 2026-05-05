@@ -56,6 +56,9 @@ pub enum ActiveDialog {
     CreateTag {
         target_oid: String,
     },
+    DeleteTag {
+        tag_name: String,
+    },
     ResetToCommit {
         target_oid: String,
     },

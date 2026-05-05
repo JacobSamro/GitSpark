@@ -227,6 +227,34 @@ export async function testHistoryAndBranchFlows(app, fixture) {
       ),
     { timeoutMs: 15_000 },
   );
+  const e2eTaggedCommit = await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.repo?.history.find((commit) => commit.tags.includes("e2e-tag")),
+    { timeoutMs: 10_000 },
+  );
+  const e2eTaggedHistoryCommit = e2eTaggedCommit.repo.history.find((commit) =>
+    commit.tags.includes("e2e-tag"),
+  );
+  assert(
+    e2eTaggedCommit.test_tree.children.some(
+      (node) =>
+        node.id === `commit-${e2eTaggedHistoryCommit.short_oid}-delete-tag` &&
+        node.text === "Delete tag e2e-tag" &&
+        node.enabled === true,
+    ),
+    "delete tag action shows the target tag name and is enabled",
+  );
+  await app
+    .getByTestId(`commit-${e2eTaggedHistoryCommit.short_oid}-delete-tag`)
+    .click();
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.active_dialog === "delete_tag",
+    { timeoutMs: 10_000 },
+  );
+  await expect(app.getByTestId("delete-tag-confirm")).toBeVisible({
+    timeoutMs: 10_000,
+  });
+  await app.getByTestId("delete-tag-cancel").click();
 
   await app
     .getByTestId(`commit-${selectedCommit.short_oid}-create-tag`)

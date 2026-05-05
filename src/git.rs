@@ -476,6 +476,18 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn delete_tag(&self, repo_path: &Path, tag_name: &str) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let tag_name = tag_name.trim();
+        if tag_name.is_empty() {
+            bail!("tag name cannot be empty");
+        }
+
+        self.run_git(&repo_path, &["tag", "-d", tag_name])
+            .with_context(|| format!("failed to delete tag '{tag_name}'"))?;
+        self.snapshot(&repo_path)
+    }
+
     pub fn create_branch(&self, repo_path: &Path, branch_name: &str) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let branch_name = branch_name.trim();
@@ -1986,6 +1998,27 @@ mod tests {
 
         let snapshot = GitClient::new().open_repo(&repo).unwrap();
         assert_eq!(snapshot.history[0].tags, vec!["release,one".to_string()]);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn deletes_local_tag() {
+        let repo = temp_repo("delete-tag");
+        fs::write(repo.join("README.md"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+        let oid = run_git(&repo, &["rev-parse", "HEAD"]).trim().to_string();
+
+        let git = GitClient::new();
+        git.create_tag(&repo, &oid, "v1.0.0").unwrap();
+        let snapshot = git.delete_tag(&repo, "v1.0.0").unwrap();
+
+        assert!(!snapshot.tags.iter().any(|tag| tag == "v1.0.0"));
+        assert!(run_git(&repo, &["tag", "--list"]).trim().is_empty());
 
         let _ = fs::remove_dir_all(repo);
     }

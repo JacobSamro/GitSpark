@@ -12,6 +12,7 @@ pub(crate) enum HistoryContextMenuAction {
     RevertChangesInCommit,
     CreateBranchFromCommit,
     CreateTag,
+    DeleteTag,
     CherryPickCommit,
     CopySha,
     CopyDiff,
@@ -81,6 +82,13 @@ pub(crate) fn build_history_context_menu(
             HistoryContextMenuAction::CreateTag,
         ))
         .item(menu_item(
+            delete_tag_label(&commit_tags),
+            commit_tags.len() == 1,
+            view.clone(),
+            oid.clone(),
+            HistoryContextMenuAction::DeleteTag,
+        ))
+        .item(menu_item(
             labels::cherry_pick_commit_menu(),
             true,
             view.clone(),
@@ -118,14 +126,22 @@ pub(crate) fn build_history_context_menu(
         ))
 }
 
+pub(crate) fn delete_tag_label(tags: &[String]) -> String {
+    match tags {
+        [tag] => format!("Delete tag {tag}"),
+        [] => "Delete tag".to_string(),
+        _ => "Delete Tag\u{2026}".to_string(),
+    }
+}
+
 fn menu_item(
-    label: &str,
+    label: impl Into<String>,
     enabled: bool,
     view: Entity<GitSparkApp>,
     oid: String,
     action: HistoryContextMenuAction,
 ) -> PopupMenuItem {
-    PopupMenuItem::new(label.to_string())
+    PopupMenuItem::new(label.into())
         .disabled(!enabled)
         .on_click(move |_event, _window, cx| {
             let oid = oid.clone();

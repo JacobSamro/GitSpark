@@ -1531,6 +1531,35 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub(crate) fn delete_tag(&mut self, tag_name: String, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            return;
+        };
+
+        let tag_name = tag_name.trim().to_string();
+        if tag_name.is_empty() {
+            self.messages.error_message = "Tag name cannot be empty.".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.messages.status_message = format!("Deleting tag '{tag_name}'...");
+        self.messages.error_message.clear();
+        let tx = self.event_tx.clone();
+        let tag_name_for_event = tag_name.clone();
+        thread::spawn(move || {
+            let git = GitClient::new();
+            let res = git.delete_tag(&path, &tag_name).map_err(|e| e.to_string());
+            tx.send(AppEvent::NetworkActionCompleted(
+                res,
+                format!("Deleted tag '{tag_name_for_event}'"),
+            ));
+        });
+        self.nav.active_dialog = ActiveDialog::None;
+        cx.notify();
+    }
+
     pub fn merge_branch(&mut self, cx: &mut Context<Self>) {
         let Some(path) = self.repo_path().map(PathBuf::from) else {
             self.messages.error_message = "No repository selected.".to_string();
@@ -2058,6 +2087,21 @@ impl GitSparkApp {
                 self.new_branch_selection = None;
                 self.nav.active_dialog = ActiveDialog::CreateTag { target_oid: oid };
                 self.messages.error_message.clear();
+            }
+            HistoryContextMenuAction::DeleteTag => {
+                let tags = self.commit_tags_for_oid(&oid);
+                if let [tag_name] = tags.as_slice() {
+                    self.nav.active_dialog = ActiveDialog::DeleteTag {
+                        tag_name: tag_name.clone(),
+                    };
+                    self.messages.error_message.clear();
+                } else if tags.is_empty() {
+                    self.messages.error_message =
+                        format!("Commit {} has no tags.", short_commit_label(&oid));
+                } else {
+                    self.messages.error_message =
+                        "Choose a commit with a single tag to delete it.".to_string();
+                }
             }
             HistoryContextMenuAction::ResetToCommit => {
                 if self.can_reset_to_commit(&oid) {
@@ -6209,6 +6253,7 @@ impl GitSparkApp {
             ActiveDialog::RenameBranch { .. } => (400.0, 230.0),
             ActiveDialog::DeleteBranch { .. } => (440.0, 220.0),
             ActiveDialog::CreateTag { .. } => (400.0, 230.0),
+            ActiveDialog::DeleteTag { .. } => (420.0, 220.0),
             ActiveDialog::ResetToCommit { .. } => (500.0, 240.0),
             ActiveDialog::CreateRepository => (560.0, 390.0),
             ActiveDialog::CloneRepository => (560.0, 330.0),
@@ -6840,6 +6885,125 @@ impl GitSparkApp {
                                             return;
                                         }
                                         app.create_tag(target_oid_for_click.clone(), cx);
+                                    })),
+                            ),
+                    )
+            }
+            ActiveDialog::DeleteTag { tag_name } => {
+                let tag_name_for_click = tag_name.clone();
+                v_flex()
+                    .w(px(420.0))
+                    .bg(theme::panel_bg())
+                    .rounded(theme::z(theme::CORNER_RADIUS))
+                    .border_1()
+                    .border_color(theme::border())
+                    .shadow_lg()
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .px(theme::z(16.0))
+                            .py(theme::z(12.0))
+                            .items_center()
+                            .justify_between()
+                            .border_b_1()
+                            .border_color(theme::border())
+                            .child(
+                                div()
+                                    .text_size(theme::z(14.0))
+                                    .text_color(theme::text_main())
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child("Delete Tag"),
+                            )
+                            .child(
+                                div()
+                                    .id("delete-tag-close")
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::hover_bg()))
+                                    .rounded(px(4.0))
+                                    .p(px(4.0))
+                                    .child(
+                                        Icon::new(IconName::Close)
+                                            .size(px(14.0))
+                                            .text_color(theme::text_muted()),
+                                    )
+                                    .on_click(cx.listener(|app, _evt, _win, cx| {
+                                        app.nav.active_dialog = ActiveDialog::None;
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .p(theme::z(16.0))
+                            .gap(theme::z(10.0))
+                            .child(
+                                div()
+                                    .id("delete-tag-confirmation")
+                                    .text_size(theme::z(12.0))
+                                    .line_height(theme::z(18.0))
+                                    .text_color(theme::text_main())
+                                    .child(format!(
+                                        "Are you sure you want to delete the tag '{tag_name}'?"
+                                    )),
+                            )
+                            .child(
+                                div()
+                                    .text_size(theme::z(11.0))
+                                    .text_color(theme::text_muted())
+                                    .child("This removes the local tag from this repository."),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .px(theme::z(16.0))
+                            .py(theme::z(12.0))
+                            .justify_end()
+                            .gap(theme::z(8.0))
+                            .border_t_1()
+                            .border_color(theme::border())
+                            .child(
+                                div()
+                                    .id("delete-tag-cancel")
+                                    .px(theme::z(12.0))
+                                    .py(theme::z(6.0))
+                                    .rounded(theme::z(theme::CORNER_RADIUS))
+                                    .bg(theme::surface_bg())
+                                    .border_1()
+                                    .border_color(theme::surface_bg_alt())
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::toolbar_hover_bg()))
+                                    .child(
+                                        div()
+                                            .text_size(theme::z(12.0))
+                                            .text_color(theme::text_main())
+                                            .child("Cancel"),
+                                    )
+                                    .on_click(cx.listener(|app, _evt, _win, cx| {
+                                        app.nav.active_dialog = ActiveDialog::None;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .id("delete-tag-confirm")
+                                    .px(theme::z(12.0))
+                                    .py(theme::z(6.0))
+                                    .rounded(theme::z(theme::CORNER_RADIUS))
+                                    .bg(theme::danger())
+                                    .border_1()
+                                    .border_color(theme::danger())
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::danger_hover()))
+                                    .child(
+                                        div()
+                                            .text_size(theme::z(12.0))
+                                            .text_color(theme::commit_button_text())
+                                            .child("Delete"),
+                                    )
+                                    .on_click(cx.listener(move |app, _evt, _win, cx| {
+                                        app.delete_tag(tag_name_for_click.clone(), cx);
                                     })),
                             ),
                     )
