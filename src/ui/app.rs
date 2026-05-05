@@ -2822,6 +2822,7 @@ impl Render for GitSparkApp {
             .on_action(cx.listener(Self::handle_menu_rename_branch))
             .on_action(cx.listener(Self::handle_menu_delete_branch))
             .on_action(cx.listener(Self::handle_menu_merge_branch))
+            .on_action(cx.listener(Self::handle_menu_view_branch_on_github))
             .on_action(cx.listener(Self::handle_menu_discard_all_changes))
             .on_action(cx.listener(Self::handle_menu_stash_changes))
             .on_action(cx.listener(Self::handle_menu_zoom_in))
@@ -3148,6 +3149,20 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub fn menu_view_current_branch_on_github(&mut self, cx: &mut Context<Self>) {
+        let Some(snapshot) = self.repo.snapshot.as_ref() else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        self.handle_branch_context_action(
+            snapshot.repo.current_branch.clone(),
+            BranchContextAction::ViewOnGitHub,
+            cx,
+        );
+    }
+
     pub fn menu_discard_all_changes(&mut self, cx: &mut Context<Self>) {
         let Some(snapshot) = self.repo.snapshot.as_ref() else {
             self.messages.error_message = "No repository selected.".to_string();
@@ -3390,6 +3405,15 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         self.menu_merge_branch(cx);
+    }
+
+    fn handle_menu_view_branch_on_github(
+        &mut self,
+        _: &crate::MenuViewBranchOnGitHub,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_view_current_branch_on_github(cx);
     }
 
     fn handle_menu_discard_all_changes(
