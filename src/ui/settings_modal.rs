@@ -458,102 +458,105 @@ fn render_git_defaults_section(
     inherited_global_identity: bool,
     cx: &mut Context<GitSparkApp>,
 ) -> impl IntoElement {
+    let default_branch = render_text_input(
+        app,
+        window,
+        cx,
+        "settings-git-default-branch",
+        SettingsField::GitDefaultBranch,
+        "Default Branch",
+        "main",
+        false,
+        false,
+        inherited_global_identity,
+        None,
+    );
+
+    let default_branch_row = if has_repo {
+        h_flex()
+            .w_full()
+            .gap(theme::z(14.0))
+            .items_start()
+            .child(div().flex_1().min_w_0().child(default_branch))
+            .child(
+                v_flex()
+                    .id("settings-pull-rebase-card")
+                    .flex_1()
+                    .min_w_0()
+                    .gap(theme::z(6.0))
+                    .child(
+                        div()
+                            .text_size(theme::z(11.0))
+                            .text_color(theme::text_muted())
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child("Pull Behavior"),
+                    )
+                    .child(
+                        div()
+                            .w_full()
+                            .min_h(theme::z(36.0))
+                            .px(theme::z(12.0))
+                            .py(theme::z(8.0))
+                            .rounded(theme::z(theme::CORNER_RADIUS))
+                            .border_1()
+                            .border_color(theme::border())
+                            .bg(theme::bg())
+                            .child(
+                                h_flex()
+                                    .gap(theme::z(10.0))
+                                    .items_center()
+                                    .child(
+                                        Switch::new("settings-pull-rebase")
+                                            .checked(app.repo.identity.pull_rebase.unwrap_or(false))
+                                            .on_click(cx.listener(
+                                                |app, checked: &bool, _window, cx| {
+                                                    app.repo.identity.pull_rebase = Some(*checked);
+                                                    cx.notify();
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(theme::z(12.0))
+                                            .text_color(theme::text_main())
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .child("Use pull.rebase"),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(theme::z(11.0))
+                            .text_color(theme::text_muted())
+                            .child("Rebase when pulling instead of creating merge commits."),
+                    ),
+            )
+            .into_any_element()
+    } else {
+        div()
+            .w_full()
+            .max_w(theme::z(424.0))
+            .child(default_branch)
+            .into_any_element()
+    };
+
     v_flex()
         .w_full()
         .gap(theme::z(8.0))
         .pt(theme::z(2.0))
         .child(render_section_subhead(
-            "Defaults and pull behavior",
+            if has_repo {
+                "Defaults and pull behavior"
+            } else {
+                "Default branch"
+            },
             if has_repo {
                 "These settings are separate from the author identity above."
             } else {
-                "These defaults apply when GitSpark works without a selected repository."
+                "Used for new repositories created from this global Git configuration."
             },
         ))
-        .child(
-            h_flex()
-                .w_full()
-                .gap(theme::z(14.0))
-                .items_start()
-                .child(div().flex_1().min_w_0().child(render_text_input(
-                    app,
-                    window,
-                    cx,
-                    "settings-git-default-branch",
-                    SettingsField::GitDefaultBranch,
-                    "Default Branch",
-                    "main",
-                    false,
-                    false,
-                    inherited_global_identity,
-                    None,
-                )))
-                .child(
-                    v_flex()
-                        .id("settings-pull-rebase-card")
-                        .flex_1()
-                        .min_w_0()
-                        .gap(theme::z(6.0))
-                        .child(
-                            div()
-                                .text_size(theme::z(11.0))
-                                .text_color(theme::text_muted())
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child("Pull Behavior"),
-                        )
-                        .child(
-                            div()
-                                .w_full()
-                                .min_h(theme::z(36.0))
-                                .px(theme::z(12.0))
-                                .py(theme::z(8.0))
-                                .rounded(theme::z(theme::CORNER_RADIUS))
-                                .border_1()
-                                .border_color(theme::border())
-                                .bg(theme::bg())
-                                .child(
-                                    h_flex()
-                                        .gap(theme::z(10.0))
-                                        .items_center()
-                                        .child(
-                                            Switch::new("settings-pull-rebase")
-                                                .checked(
-                                                    app.repo.identity.pull_rebase.unwrap_or(false),
-                                                )
-                                                .disabled(!has_repo)
-                                                .on_click(cx.listener(
-                                                    |app, checked: &bool, _window, cx| {
-                                                        app.repo.identity.pull_rebase =
-                                                            Some(*checked);
-                                                        cx.notify();
-                                                    },
-                                                )),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_size(theme::z(12.0))
-                                                .text_color(if has_repo {
-                                                    theme::text_main()
-                                                } else {
-                                                    theme::text_muted()
-                                                })
-                                                .font_weight(FontWeight::SEMIBOLD)
-                                                .child("Use pull.rebase"),
-                                        ),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .text_size(theme::z(11.0))
-                                .text_color(theme::text_muted())
-                                .child(if has_repo {
-                                    "Rebase when pulling instead of creating merge commits."
-                                } else {
-                                    "Open a repository to configure pull behavior."
-                                }),
-                        ),
-                ),
-        )
+        .child(default_branch_row)
 }
 
 fn render_git_config_scope(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElement {

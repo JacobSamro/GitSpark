@@ -2275,6 +2275,7 @@ fn settings_automation_nodes(app: &GitSparkApp) -> Vec<AutomationNode> {
                     Some("Use pull.rebase"),
                     None::<AutomationNodeAction>,
                 )
+                .visible(app.repo.snapshot.is_some())
                 .enabled(app.repo.snapshot.is_some())
                 .selected(app.repo.identity.pull_rebase.unwrap_or(false)),
                 automation_node(
