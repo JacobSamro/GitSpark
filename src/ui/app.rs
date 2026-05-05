@@ -1583,6 +1583,44 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub fn update_from_default_branch(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        let Some(snapshot) = self.repo.snapshot.as_ref() else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        let current_branch = snapshot.repo.current_branch.clone();
+        let default_branch = self.default_branch_name();
+        if current_branch == default_branch {
+            self.messages.error_message = format!("Current branch is already '{default_branch}'.");
+            cx.notify();
+            return;
+        }
+
+        self.messages.status_message = format!("Updating from '{default_branch}'...");
+        self.messages.error_message.clear();
+        let tx = self.event_tx.clone();
+        let git = GitClient::new();
+        thread::spawn(move || {
+            let res = git
+                .update_current_branch_from(&path, &default_branch)
+                .map_err(|e| e.to_string());
+            let _ = tx.send(AppEvent::RepoOperationCompleted(
+                res,
+                "Update from default branch".to_string(),
+                format!("Updated '{current_branch}' from '{default_branch}'."),
+            ));
+        });
+        cx.notify();
+    }
+
     // ------------------------------------------------------------------
     // Commit operations
     // ------------------------------------------------------------------
@@ -3264,6 +3302,7 @@ impl Render for GitSparkApp {
             .on_action(cx.listener(Self::handle_menu_new_branch))
             .on_action(cx.listener(Self::handle_menu_rename_branch))
             .on_action(cx.listener(Self::handle_menu_delete_branch))
+            .on_action(cx.listener(Self::handle_menu_update_from_default_branch))
             .on_action(cx.listener(Self::handle_menu_compare_branch))
             .on_action(cx.listener(Self::handle_menu_merge_branch))
             .on_action(cx.listener(Self::handle_menu_compare_on_github))
@@ -3561,13 +3600,7 @@ impl GitSparkApp {
         };
 
         let branch_name = snapshot.repo.current_branch.clone();
-        let default_branch = self
-            .repo
-            .identity
-            .default_branch
-            .as_deref()
-            .or(self.settings.default_branch.as_deref())
-            .unwrap_or("main");
+        let default_branch = self.default_branch_name();
         if branch_name == default_branch || branch_name == "main" || branch_name == "master" {
             self.messages.error_message =
                 "Cannot delete the default branch from the Branch menu.".to_string();
@@ -3591,6 +3624,10 @@ impl GitSparkApp {
         self.nav.active_dialog = ActiveDialog::DeleteBranch { branch_name };
         self.messages.error_message.clear();
         cx.notify();
+    }
+
+    pub fn menu_update_from_default_branch(&mut self, cx: &mut Context<Self>) {
+        self.update_from_default_branch(cx);
     }
 
     pub fn menu_merge_branch(&mut self, cx: &mut Context<Self>) {
@@ -3644,6 +3681,16 @@ impl GitSparkApp {
             }
         }
         cx.notify();
+    }
+
+    fn default_branch_name(&self) -> String {
+        self.repo
+            .identity
+            .default_branch
+            .as_deref()
+            .or(self.settings.default_branch.as_deref())
+            .unwrap_or("main")
+            .to_string()
     }
 
     pub fn menu_view_current_branch_on_github(&mut self, cx: &mut Context<Self>) {
@@ -3951,6 +3998,15 @@ impl GitSparkApp {
         cx: &mut Context<Self>,
     ) {
         self.menu_delete_current_branch(cx);
+    }
+
+    fn handle_menu_update_from_default_branch(
+        &mut self,
+        _: &crate::MenuUpdateFromDefaultBranch,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.menu_update_from_default_branch(cx);
     }
 
     fn handle_menu_compare_branch(

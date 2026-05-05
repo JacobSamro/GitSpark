@@ -133,6 +133,7 @@ pub(crate) enum AutomationCommand {
     MergeBranch {
         name: String,
     },
+    UpdateFromDefaultBranch,
     CompareBranch {
         name: String,
     },
@@ -708,6 +709,10 @@ impl GitSparkApp {
             AutomationCommand::MergeBranch { name } => {
                 self.repo.merge_target = name;
                 self.merge_branch(cx);
+                AutomationResponse::success(self.automation_snapshot())
+            }
+            AutomationCommand::UpdateFromDefaultBranch => {
+                self.update_from_default_branch(cx);
                 AutomationResponse::success(self.automation_snapshot())
             }
             AutomationCommand::CompareBranch { name } => {
@@ -3696,6 +3701,11 @@ mod tests {
             AutomationCommand::MergeBranch { name } => assert_eq!(name, "merge/source"),
             _ => panic!("expected merge_branch command"),
         }
+
+        let update: AutomationCommand =
+            serde_json::from_str(r#"{"command":"update_from_default_branch"}"#)
+                .expect("update from default branch command parses");
+        assert!(matches!(update, AutomationCommand::UpdateFromDefaultBranch));
 
         let compare: AutomationCommand =
             serde_json::from_str(r#"{"command":"compare_branch","name":"main"}"#)

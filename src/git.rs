@@ -661,6 +661,38 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
+    pub fn update_current_branch_from(
+        &self,
+        repo_path: &Path,
+        default_branch: &str,
+    ) -> Result<RepoSnapshot> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let default_branch = default_branch.trim();
+        if default_branch.is_empty() {
+            bail!("default branch cannot be empty");
+        }
+
+        let current_branch = self.current_stash_branch_name(&repo_path)?;
+        if current_branch == default_branch {
+            bail!("current branch is already '{default_branch}'");
+        }
+
+        self.run_git(
+            &repo_path,
+            &[
+                "rev-parse",
+                "--verify",
+                &format!("refs/heads/{default_branch}^{{commit}}"),
+            ],
+        )
+        .with_context(|| format!("default branch '{default_branch}' does not exist"))?;
+
+        self.run_git(&repo_path, &["merge", "--no-ff", default_branch])
+            .with_context(|| format!("failed to update from '{default_branch}'"))?;
+
+        self.snapshot(&repo_path)
+    }
+
     pub fn github_commit_url(&self, repo_path: &Path, oid: &str) -> Result<Option<String>> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         let oid = self.verify_commit_oid(&repo_path, oid)?;
@@ -2250,6 +2282,41 @@ mod tests {
         assert_eq!(comparison.target_branch, "main");
         assert_eq!(comparison.ahead, 1);
         assert_eq!(comparison.behind, 1);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn updates_current_branch_from_default_branch() {
+        let repo = temp_repo("update-from-default");
+        fs::write(repo.join("README.md"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+
+        run_git(&repo, &["switch", "-c", "feature"]);
+        fs::write(repo.join("feature.txt"), "feature\n").unwrap();
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "feature"]);
+
+        run_git(&repo, &["switch", "main"]);
+        fs::write(repo.join("main.txt"), "main\n").unwrap();
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "main"]);
+
+        run_git(&repo, &["switch", "feature"]);
+        let snapshot = GitClient::new()
+            .update_current_branch_from(&repo, "main")
+            .unwrap();
+
+        assert_eq!(snapshot.repo.current_branch, "feature");
+        assert_eq!(
+            snapshot.history[0].summary,
+            "Merge branch 'main' into feature"
+        );
+        assert!(repo.join("main.txt").exists());
 
         let _ = fs::remove_dir_all(repo);
     }

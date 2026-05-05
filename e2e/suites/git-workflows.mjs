@@ -408,6 +408,15 @@ export async function testHistoryAndBranchFlows(app, fixture) {
     { timeoutMs: 10_000 },
   );
 
+  await app.command({ command: "update_from_default_branch" });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Updated 'e2e-created' from 'main'." &&
+      snapshot.repo?.current_branch === "e2e-created" &&
+      snapshot.error_message === "",
+    { timeoutMs: 15_000 },
+  );
+
   await app.getByTestId("branch-main").click();
   await app.waitForSnapshot(
     (snapshot) => snapshot.repo?.current_branch === "main",
