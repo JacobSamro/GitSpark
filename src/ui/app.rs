@@ -1209,14 +1209,18 @@ impl GitSparkApp {
         };
 
         // Use filter text as branch name if new_branch_name is empty
-        let name = if self.repo.new_branch_name.trim().is_empty() {
-            self.filters.branch_filter_text.trim().to_string()
+        let proposed_name = if self.repo.new_branch_name.trim().is_empty() {
+            self.filters.branch_filter_text.trim()
         } else {
-            self.repo.new_branch_name.trim().to_string()
+            self.repo.new_branch_name.trim()
         };
+        let name = sanitized_ref_name(proposed_name);
         if name.is_empty() {
-            self.messages.error_message =
-                "Type a branch name in the filter field, then click New Branch.".to_string();
+            self.messages.error_message = if proposed_name.is_empty() {
+                "Type a branch name in the filter field, then click New Branch.".to_string()
+            } else {
+                format!("{proposed_name} is not a valid name.")
+            };
             cx.notify();
             return;
         }
@@ -1257,14 +1261,24 @@ impl GitSparkApp {
             return;
         };
 
-        let new_name = self.repo.new_branch_name.trim().to_string();
+        let proposed_name = self.repo.new_branch_name.trim();
+        let new_name = sanitized_ref_name(proposed_name);
         if new_name.is_empty() {
-            self.messages.error_message = "Type a new branch name.".to_string();
+            self.messages.error_message = if proposed_name.is_empty() {
+                "Type a new branch name.".to_string()
+            } else {
+                format!("{proposed_name} is not a valid name.")
+            };
             cx.notify();
             return;
         }
         if new_name == old_name {
             self.nav.active_dialog = ActiveDialog::None;
+            cx.notify();
+            return;
+        }
+        if self.branch_name_exists(&new_name) {
+            self.messages.error_message = format!("A branch named {new_name} already exists.");
             cx.notify();
             return;
         }
@@ -2439,18 +2453,63 @@ impl GitSparkApp {
     }
 
     pub(crate) fn create_branch_validation_message(&self) -> Option<String> {
-        let branch_name = self.repo.new_branch_name.trim();
-        if branch_name.is_empty() {
+        let proposed_name = self.repo.new_branch_name.trim();
+        if proposed_name.is_empty() {
             return Some("Type a branch name.".to_string());
         }
-        if self.branch_name_exists(branch_name) {
+        let branch_name = sanitized_ref_name(proposed_name);
+        if branch_name.is_empty() {
+            return Some(format!("{proposed_name} is not a valid name."));
+        }
+        if self.branch_name_exists(&branch_name) {
             return Some(format!("A branch named {branch_name} already exists."));
+        }
+        if branch_name != proposed_name {
+            return Some(format!(
+                "Will be created as {branch_name}. Spaces and invalid characters have been replaced by hyphens."
+            ));
         }
         None
     }
 
     pub(crate) fn can_create_branch_from_dialog(&self) -> bool {
-        self.create_branch_validation_message().is_none()
+        let proposed_name = self.repo.new_branch_name.trim();
+        let branch_name = sanitized_ref_name(proposed_name);
+        !proposed_name.is_empty()
+            && !branch_name.is_empty()
+            && !self.branch_name_exists(&branch_name)
+    }
+
+    pub(crate) fn rename_branch_validation_message(&self, old_name: &str) -> Option<String> {
+        let proposed_name = self.repo.new_branch_name.trim();
+        if proposed_name.is_empty() {
+            return Some("Type a new branch name.".to_string());
+        }
+        let branch_name = sanitized_ref_name(proposed_name);
+        if branch_name.is_empty() {
+            return Some(format!("{proposed_name} is not a valid name."));
+        }
+        if branch_name == old_name {
+            return Some("Type a different branch name.".to_string());
+        }
+        if self.branch_name_exists(&branch_name) {
+            return Some(format!("A branch named {branch_name} already exists."));
+        }
+        if branch_name != proposed_name {
+            return Some(format!(
+                "Will be renamed as {branch_name}. Spaces and invalid characters have been replaced by hyphens."
+            ));
+        }
+        None
+    }
+
+    pub(crate) fn can_rename_branch_from_dialog(&self, old_name: &str) -> bool {
+        let proposed_name = self.repo.new_branch_name.trim();
+        let branch_name = sanitized_ref_name(proposed_name);
+        !proposed_name.is_empty()
+            && !branch_name.is_empty()
+            && branch_name != old_name
+            && !self.branch_name_exists(&branch_name)
     }
 
     pub(crate) fn create_tag_validation_message(&self) -> Option<String> {
@@ -5594,7 +5653,7 @@ impl GitSparkApp {
                 let branch_name = &self.repo.new_branch_name;
                 let validation_message = self.create_branch_validation_message();
                 let show_validation_message = !branch_name.trim().is_empty();
-                let can_create = validation_message.is_none();
+                let can_create = self.can_create_branch_from_dialog();
                 let current = self
                     .repo
                     .snapshot
@@ -5720,7 +5779,7 @@ impl GitSparkApp {
                                         div()
                                             .id("create-branch-validation-message")
                                             .text_size(theme::z(11.0))
-                                            .text_color(theme::danger())
+                                            .text_color(branch_validation_message_color(message))
                                             .child(message.clone())
                                     }),
                             ),
@@ -5801,6 +5860,10 @@ impl GitSparkApp {
             ActiveDialog::RenameBranch { old_name } => {
                 let branch_name = &self.repo.new_branch_name;
                 let old_name_for_click = old_name.clone();
+                let validation_message = self.rename_branch_validation_message(old_name);
+                let show_validation_message =
+                    !branch_name.trim().is_empty() && branch_name.trim() != old_name;
+                let can_rename = self.can_rename_branch_from_dialog(old_name);
 
                 v_flex()
                     .w(px(400.0))
@@ -5903,6 +5966,20 @@ impl GitSparkApp {
                                     .child(format!("Current branch name: {old_name}")),
                             ),
                     )
+                    .children(
+                        validation_message
+                            .as_ref()
+                            .filter(|_| show_validation_message)
+                            .map(|message| {
+                                div()
+                                    .id("rename-branch-validation-message")
+                                    .px(theme::z(16.0))
+                                    .pb(theme::z(12.0))
+                                    .text_size(theme::z(11.0))
+                                    .text_color(branch_validation_message_color(message))
+                                    .child(message.clone())
+                            }),
+                    )
                     .child(
                         h_flex()
                             .w_full()
@@ -5940,16 +6017,36 @@ impl GitSparkApp {
                                     .px(theme::z(12.0))
                                     .py(theme::z(6.0))
                                     .rounded(theme::z(theme::CORNER_RADIUS))
-                                    .bg(theme::commit_button_bg())
-                                    .cursor_pointer()
-                                    .hover(|s| s.bg(theme::commit_button_hover_bg()))
+                                    .bg(if can_rename {
+                                        theme::commit_button_bg()
+                                    } else {
+                                        theme::surface_bg()
+                                    })
+                                    .border_1()
+                                    .border_color(if can_rename {
+                                        theme::commit_button_bg()
+                                    } else {
+                                        theme::surface_bg_alt()
+                                    })
+                                    .when(can_rename, |el| {
+                                        el.cursor_pointer()
+                                            .hover(|s| s.bg(theme::commit_button_hover_bg()))
+                                    })
                                     .child(
                                         div()
                                             .text_size(theme::z(12.0))
-                                            .text_color(theme::commit_button_text())
+                                            .text_color(if can_rename {
+                                                theme::commit_button_text()
+                                            } else {
+                                                theme::text_muted()
+                                            })
                                             .child("Rename Branch"),
                                     )
                                     .on_click(cx.listener(move |app, _evt, _win, cx| {
+                                        if !app.can_rename_branch_from_dialog(&old_name_for_click) {
+                                            cx.notify();
+                                            return;
+                                        }
                                         app.rename_branch(old_name_for_click.clone(), cx);
                                     })),
                             ),
@@ -7455,6 +7552,59 @@ fn tag_name_length_validation_message(tag_name: &str) -> Option<String> {
         .then(|| format!("The tag name cannot be longer than {MAX_TAG_NAME_LENGTH} characters"))
 }
 
+fn sanitized_ref_name(name: &str) -> String {
+    let mut sanitized = name
+        .chars()
+        .map(|ch| {
+            if ch <= '\u{20}'
+                || ch == '\u{7f}'
+                || matches!(
+                    ch,
+                    '~' | '^' | ':' | '?' | '*' | '[' | '\\' | '|' | '"' | '<' | '>'
+                )
+            {
+                '-'
+            } else {
+                ch
+            }
+        })
+        .collect::<String>();
+
+    while sanitized.contains("@{") {
+        sanitized = sanitized.replace("@{", "-");
+    }
+    while sanitized.contains("..") {
+        sanitized = sanitized.replace("..", "-");
+    }
+    if sanitized.starts_with('.') {
+        sanitized.replace_range(..1, "-");
+    }
+    if sanitized.ends_with(".lock") {
+        let start = sanitized.len() - ".lock".len();
+        sanitized.replace_range(start.., "-");
+    }
+    if sanitized.ends_with('.') || sanitized.ends_with('/') {
+        let start = sanitized
+            .char_indices()
+            .last()
+            .map(|(index, _)| index)
+            .unwrap_or(0);
+        sanitized.replace_range(start.., "-");
+    }
+
+    sanitized
+        .trim_start_matches(|ch| matches!(ch, '-' | '+'))
+        .to_string()
+}
+
+fn branch_validation_message_color(message: &str) -> Hsla {
+    if message.starts_with("Will be ") {
+        theme::warning()
+    } else {
+        theme::danger()
+    }
+}
+
 fn default_commit_summary_for_change(change: &ChangeEntry) -> String {
     let filename = change.path.rsplit('/').next().unwrap_or(&change.path);
     let verb = if change.status.contains('?') || change.status.contains('A') {
@@ -7613,7 +7763,7 @@ fn next_char_boundary(s: &str, pos: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_TAG_NAME_LENGTH, tag_name_length_validation_message};
+    use super::{MAX_TAG_NAME_LENGTH, sanitized_ref_name, tag_name_length_validation_message};
 
     #[test]
     fn validates_github_desktop_tag_name_length_limit() {
@@ -7622,6 +7772,15 @@ mod tests {
             tag_name_length_validation_message(&"x".repeat(MAX_TAG_NAME_LENGTH + 1)),
             Some("The tag name cannot be longer than 245 characters".to_string())
         );
+    }
+
+    #[test]
+    fn sanitizes_branch_names_like_github_desktop() {
+        assert_eq!(sanitized_ref_name("feature branch?"), "feature-branch-");
+        assert_eq!(sanitized_ref_name("+ bad/name.lock"), "bad/name-");
+        assert_eq!(sanitized_ref_name(".@{bad..name."), "bad-name-");
+        assert_eq!(sanitized_ref_name("////"), "///-");
+        assert_eq!(sanitized_ref_name("   "), "");
     }
 }
 

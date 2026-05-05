@@ -101,6 +101,54 @@ export async function testCreateBranchDialog(app) {
     { timeoutMs: 10_000 },
   );
 
+  await app.command({
+    command: "branch_action",
+    name: "dialog-created",
+    action: "rename",
+  });
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.active_dialog === "rename_branch",
+    { timeoutMs: 10_000 },
+  );
+  await app.getByTestId("rename-branch-name-input").fill("main");
+  await expect(app.getByText("A branch named main already exists.")).toBeVisible({
+    timeoutMs: 10_000,
+  });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "rename-branch-confirm" && node.enabled === false,
+      ),
+    { timeoutMs: 10_000 },
+  );
+  await app.getByTestId("rename-branch-cancel").click();
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.active_dialog === "none",
+    { timeoutMs: 10_000 },
+  );
+
+  await app.getByTestId("button-branch-selector").click();
+  await app.getByTestId("input-branch-filter").fill("feature branch?");
+  await app.getByTestId("button-branch-new").click();
+  await expect(
+    app.getByText(
+      "Will be created as feature-branch-. Spaces and invalid characters have been replaced by hyphens.",
+    ),
+  ).toBeVisible({ timeoutMs: 10_000 });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.active_dialog === "create_branch" &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "dialog-create-branch" && node.enabled === true,
+      ),
+    { timeoutMs: 10_000 },
+  );
+  await app.getByTestId("dialog-cancel").click();
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.active_dialog === "none",
+    { timeoutMs: 10_000 },
+  );
+
   await app.getByTestId("button-branch-selector").click();
   await app.getByTestId("input-branch-filter").fill("");
   await app.getByTestId("button-branch-new").click();

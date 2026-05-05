@@ -1186,7 +1186,10 @@ impl GitSparkApp {
             ]);
         }
 
-        if matches!(self.nav.active_dialog, ActiveDialog::RenameBranch { .. }) {
+        if let ActiveDialog::RenameBranch { old_name } = &self.nav.active_dialog {
+            let rename_validation = self.rename_branch_validation_message(old_name);
+            let show_rename_validation = !self.repo.new_branch_name.trim().is_empty()
+                && self.repo.new_branch_name.trim() != old_name;
             children.extend([
                 automation_node(
                     "rename-branch-name-input",
@@ -1208,8 +1211,20 @@ impl GitSparkApp {
                     Some("rename-branch-confirm"),
                     Some("Rename Branch"),
                     Some(AutomationNodeAction::ConfirmRenameBranch),
-                ),
+                )
+                .enabled(self.can_rename_branch_from_dialog(old_name)),
             ]);
+            if show_rename_validation {
+                if let Some(message) = rename_validation {
+                    children.push(automation_node(
+                        "rename-branch-validation-message",
+                        AutomationRole::Status,
+                        Some("rename-branch-validation-message"),
+                        Some(message.as_str()),
+                        None::<AutomationNodeAction>,
+                    ));
+                }
+            }
         }
 
         if matches!(self.nav.active_dialog, ActiveDialog::DeleteBranch { .. }) {
@@ -1798,6 +1813,9 @@ impl GitSparkApp {
                     ActiveDialog::RenameBranch { old_name } => old_name.clone(),
                     _ => return AutomationResponse::failure("rename branch dialog is not active"),
                 };
+                if !self.can_rename_branch_from_dialog(&old_name) {
+                    return AutomationResponse::failure("rename branch name is invalid");
+                }
                 self.rename_branch(old_name, cx);
             }
             AutomationNodeAction::ConfirmDeleteBranch => {
