@@ -389,21 +389,22 @@ fn render_git_section(
     let has_repo = repo_scope.is_some();
     let description = repo_scope
         .map(|path| {
-            format!("Author, default branch, and pull behavior apply to this repository: {path}.")
+            format!("Choose the author identity used for commits in this repository: {path}.")
         })
         .unwrap_or_else(|| {
-            "Author and default branch are stored in global Git config.".to_string()
+            "Author identity and repository defaults are stored in global Git config.".to_string()
         });
     let inherited_global_identity = has_repo && !app.repo.use_local_identity;
+    let title = if has_repo {
+        "Repository Git identity"
+    } else {
+        "Global Git configuration"
+    };
 
     v_flex()
         .w_full()
-        .gap(theme::z(20.0))
-        .child(render_section_header(
-            "Git",
-            "Git configuration",
-            &description,
-        ))
+        .gap(theme::z(22.0))
+        .child(render_section_header("Git", title, &description))
         .children(if has_repo {
             Some(render_git_config_scope(app, cx).into_any_element())
         } else {
@@ -441,6 +442,34 @@ fn render_git_section(
                     None,
                 ))),
         )
+        .child(render_git_defaults_section(
+            app,
+            window,
+            has_repo,
+            inherited_global_identity,
+            cx,
+        ))
+}
+
+fn render_git_defaults_section(
+    app: &GitSparkApp,
+    window: &Window,
+    has_repo: bool,
+    inherited_global_identity: bool,
+    cx: &mut Context<GitSparkApp>,
+) -> impl IntoElement {
+    v_flex()
+        .w_full()
+        .gap(theme::z(12.0))
+        .pt(theme::z(2.0))
+        .child(render_section_subhead(
+            "Defaults and pull behavior",
+            if has_repo {
+                "These settings are separate from the author identity above."
+            } else {
+                "These defaults apply when GitSpark works without a selected repository."
+            },
+        ))
         .child(render_text_input(
             app,
             window,
@@ -1327,6 +1356,25 @@ fn render_section_header(eyebrow: &str, title: &str, description: &str) -> impl 
         .child(
             div()
                 .text_size(theme::z(12.0))
+                .text_color(theme::text_muted())
+                .child(description.to_string()),
+        )
+}
+
+fn render_section_subhead(title: &str, description: &str) -> impl IntoElement {
+    v_flex()
+        .w_full()
+        .gap(theme::z(4.0))
+        .child(
+            div()
+                .text_size(theme::z(13.0))
+                .text_color(theme::text_main())
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(title.to_string()),
+        )
+        .child(
+            div()
+                .text_size(theme::z(11.0))
                 .text_color(theme::text_muted())
                 .child(description.to_string()),
         )
