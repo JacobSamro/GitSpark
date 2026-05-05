@@ -59,6 +59,11 @@ export async function testCreateBranchDialog(app) {
     { timeoutMs: 10_000 },
   );
 
+  await app.getByTestId("button-branch-selector").click();
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.show_branch_selector === true,
+    { timeoutMs: 10_000 },
+  );
   await app.getByTestId("button-branch-new").click();
   await expect(app.getByTestId("dialog-create-branch")).toBeVisible({
     timeoutMs: 10_000,
@@ -340,6 +345,7 @@ export async function testHistoryAndBranchFlows(app, fixture) {
   );
 
   await app.getByTestId("branch-delete-me-delete").click();
+  await app.getByTestId("delete-branch-confirm").click();
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.status_message === "Deleted branch 'delete/me' complete." &&

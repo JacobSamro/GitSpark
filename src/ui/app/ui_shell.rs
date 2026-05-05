@@ -598,6 +598,8 @@ impl GitSparkApp {
         self.new_branch_cursor = self.repo.new_branch_name.len();
         self.new_branch_selection = None;
         self.repo.new_branch_start_point = None;
+        self.nav.show_branch_selector = false;
+        self.nav.branch_selector_mode = BranchSelectorMode::Switch;
         self.nav.active_dialog = ActiveDialog::CreateBranch;
         cx.notify();
     }

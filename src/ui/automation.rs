@@ -1250,7 +1250,7 @@ impl GitSparkApp {
                     Some("Create Branch"),
                     Some(AutomationNodeAction::ConfirmCreateBranch),
                 )
-                .enabled(branch_validation.is_none()),
+                .enabled(self.can_create_branch_from_dialog()),
             ]);
             if show_branch_validation {
                 if let Some(message) = branch_validation {
@@ -1928,7 +1928,7 @@ impl GitSparkApp {
                             Some("Merge compared branch"),
                             Some(AutomationNodeAction::MergeComparedBranch),
                         )
-                        .enabled(comparison.ahead > 0),
+                        .enabled(comparison.behind > 0),
                     ]);
                 }
                 children.push(automation_node(
@@ -2299,6 +2299,8 @@ impl GitSparkApp {
                 self.new_branch_cursor = self.repo.new_branch_name.len();
                 self.new_branch_selection = None;
                 self.repo.new_branch_start_point = None;
+                self.nav.show_branch_selector = false;
+                self.nav.branch_selector_mode = BranchSelectorMode::Switch;
                 self.nav.active_dialog = ActiveDialog::CreateBranch;
                 cx.notify();
             }
@@ -2533,7 +2535,7 @@ impl GitSparkApp {
                 let Some(comparison) = self.repo.comparison.as_ref() else {
                     return AutomationResponse::failure("compare view is not active");
                 };
-                if comparison.ahead == 0 {
+                if comparison.behind == 0 {
                     return AutomationResponse::failure("compared branch has no commits to merge");
                 }
                 self.repo.merge_target = comparison.target_branch.clone();

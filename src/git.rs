@@ -2457,6 +2457,8 @@ fn parse_git_bool(value: &str) -> Result<bool> {
 fn parse_ref_tags(refs: &str) -> Vec<String> {
     refs.split(", ")
         .filter_map(|ref_name| ref_name.strip_prefix("tag: "))
+        .map(str::trim)
+        .filter(|tag| !tag.is_empty())
         .map(ToOwned::to_owned)
         .collect()
 }

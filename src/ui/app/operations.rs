@@ -2115,6 +2115,8 @@ impl GitSparkApp {
                 self.messages.error_message.clear();
             }
             BranchContextAction::Delete => {
+                self.nav.show_branch_selector = false;
+                self.nav.branch_selector_mode = BranchSelectorMode::Switch;
                 self.nav.active_dialog = ActiveDialog::DeleteBranch { branch_name };
                 self.messages.error_message.clear();
             }
@@ -2148,6 +2150,8 @@ impl GitSparkApp {
                 }
             }
             BranchContextAction::Rename => {
+                self.nav.show_branch_selector = false;
+                self.nav.branch_selector_mode = BranchSelectorMode::Switch;
                 self.repo.new_branch_name = branch_name.clone();
                 self.new_branch_cursor = self.repo.new_branch_name.len();
                 self.new_branch_selection = None;
