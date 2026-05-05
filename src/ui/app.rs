@@ -2427,11 +2427,12 @@ impl GitSparkApp {
                 .snapshot
                 .as_ref()
                 .map(|snapshot| {
-                    snapshot
-                        .history
-                        .iter()
-                        .flat_map(|commit| commit.tags.iter())
-                        .any(|tag| tag == tag_name)
+                    snapshot.tags.iter().any(|tag| tag == tag_name)
+                        || snapshot
+                            .history
+                            .iter()
+                            .flat_map(|commit| commit.tags.iter())
+                            .any(|tag| tag == tag_name)
                 })
                 .unwrap_or(false)
     }

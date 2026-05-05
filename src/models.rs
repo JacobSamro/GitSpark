@@ -81,6 +81,7 @@ pub struct RepoSnapshot {
     pub diffs: Vec<DiffEntry>,
     pub branches: Vec<BranchInfo>,
     pub history: Vec<CommitInfo>,
+    pub tags: Vec<String>,
     #[allow(dead_code)]
     pub stash_count: usize,
 }

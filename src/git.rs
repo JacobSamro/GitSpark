@@ -805,6 +805,7 @@ impl GitClient {
         let branches = self.list_branches(repo_path)?;
         let diffs = self.build_diffs(repo_path, &status.changes)?;
         let history = self.fetch_history(repo_path, 100).unwrap_or_default();
+        let tags = self.list_tags(repo_path).unwrap_or_default();
         let stash_count = self.stash_count(repo_path).unwrap_or(0);
         let remote_name = self.read_primary_remote(repo_path).unwrap_or(None);
         let has_github_remote = remote_name
@@ -833,8 +834,19 @@ impl GitClient {
             diffs,
             branches,
             history,
+            tags,
             stash_count,
         })
+    }
+
+    fn list_tags(&self, repo_path: &Path) -> Result<Vec<String>> {
+        let output = self.run_git(repo_path, &["tag", "--list"])?;
+        Ok(output
+            .lines()
+            .map(str::trim)
+            .filter(|tag| !tag.is_empty())
+            .map(ToOwned::to_owned)
+            .collect())
     }
 
     fn fetch_history(&self, repo_path: &Path, limit: usize) -> Result<Vec<CommitInfo>> {
@@ -1718,6 +1730,40 @@ mod tests {
 
         let snapshot = GitClient::new().open_repo(&repo).unwrap();
         assert_eq!(snapshot.history[0].tags, vec!["release,one".to_string()]);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn reads_all_tags_outside_visible_history_limit() {
+        let repo = temp_repo("all-tags");
+        fs::write(repo.join("README.md"), "0\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "commit 0"]);
+        run_git(&repo, &["tag", "older-than-visible-history"]);
+
+        for ix in 1..=105 {
+            fs::write(repo.join("README.md"), format!("{ix}\n")).unwrap();
+            run_git(&repo, &["add", "--all"]);
+            run_git(&repo, &["commit", "-m", &format!("commit {ix}")]);
+        }
+
+        let snapshot = GitClient::new().open_repo(&repo).unwrap();
+        assert!(!snapshot.history.iter().any(|commit| {
+            commit
+                .tags
+                .iter()
+                .any(|tag| tag == "older-than-visible-history")
+        }));
+        assert!(
+            snapshot
+                .tags
+                .iter()
+                .any(|tag| tag == "older-than-visible-history")
+        );
 
         let _ = fs::remove_dir_all(repo);
     }

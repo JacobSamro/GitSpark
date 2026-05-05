@@ -381,6 +381,7 @@ struct AutomationRepoSnapshot {
     changes: Vec<AutomationChange>,
     branches: Vec<AutomationBranch>,
     history: Vec<AutomationCommit>,
+    tags: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -728,6 +729,7 @@ impl GitSparkApp {
                             tags: commit.tags.clone(),
                         })
                         .collect(),
+                    tags: snapshot.tags.clone(),
                 }),
             test_tree: self.automation_test_tree(),
             sidebar_tab: self.nav.sidebar_tab.into(),
