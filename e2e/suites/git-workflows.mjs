@@ -499,9 +499,15 @@ export async function testStashAndSwitchDialog(app, fixture) {
     (snapshot) =>
       snapshot.active_dialog === "stash_and_switch" &&
       snapshot.error_message === "Branch switch needs a clean working tree." &&
-      snapshot.repo?.current_branch === "main",
+      snapshot.repo?.current_branch === "main" &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "branch-switch-file-readme-md",
+      ),
     { timeoutMs: 15_000 },
   );
+  await expect(app.getByTestId("branch-switch-file-readme-md")).toBeVisible({
+    timeoutMs: 10_000,
+  });
   await expect(app.getByTestId("stash-cancel")).toBeVisible({
     timeoutMs: 10_000,
   });
@@ -519,6 +525,17 @@ export async function testStashAndSwitchDialog(app, fixture) {
   );
 
   await app.getByTestId("branch-switch-conflict").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.active_dialog === "stash_and_switch" &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "branch-switch-file-readme-md",
+      ),
+    { timeoutMs: 15_000 },
+  );
+  await expect(app.getByTestId("branch-switch-file-readme-md")).toBeVisible({
+    timeoutMs: 10_000,
+  });
   await expect(app.getByTestId("stash-switch")).toBeVisible({
     timeoutMs: 15_000,
   });
