@@ -80,7 +80,7 @@ pub(crate) fn render_restore_stash_dialog(
                         .text_size(theme::z(12.0))
                         .text_color(theme::text_main())
                         .child(format!(
-                            "Restore the latest stash with {}?",
+                            "Restore this branch stash with {}?",
                             pluralize_files(file_count)
                         )),
                 )

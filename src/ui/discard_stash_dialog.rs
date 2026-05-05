@@ -78,7 +78,7 @@ pub(crate) fn render_discard_stash_dialog(
                     div()
                         .text_size(theme::z(12.0))
                         .text_color(theme::text_main())
-                        .child("Discard the latest stash?"),
+                        .child("Discard this branch stash?"),
                 )
                 .child(
                     div()

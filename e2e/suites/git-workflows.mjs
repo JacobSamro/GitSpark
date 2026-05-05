@@ -596,7 +596,7 @@ export async function testStashAndSwitchDialog(app, fixture) {
       snapshot.active_dialog === "none" &&
       snapshot.status_message === "Switched to branch 'switch/conflict'." &&
       snapshot.repo?.current_branch === "switch/conflict" &&
-      snapshot.repo?.stash_count === 1 &&
+      snapshot.repo?.stash_count === 0 &&
       !snapshot.repo?.changes.some((change) => change.path === "README.md"),
     { timeoutMs: 15_000 },
   );
@@ -605,10 +605,6 @@ export async function testStashAndSwitchDialog(app, fixture) {
     cleanBranchCommitButton?.enabled === false,
     "stash-and-switch disables commit button when target branch has no local changes",
   );
-  await expect(app.getByTestId("stash-indicator")).toBeVisible({
-    timeoutMs: 10_000,
-  });
-
   await app.getByTestId("branch-main").click();
   await app.waitForSnapshot(
     (snapshot) => snapshot.repo?.current_branch === "main",

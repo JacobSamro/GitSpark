@@ -13,9 +13,22 @@ use crate::models::{
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const GITSPARK_STASH_MESSAGE_PREFIX: &str = "GitSpark stash for ";
 
 #[derive(Default)]
 pub struct GitClient;
+
+struct StashEntry {
+    ref_name: String,
+    subject: String,
+}
+
+impl StashEntry {
+    fn is_gitspark_stash_for(&self, branch_name: &str) -> bool {
+        self.subject
+            .ends_with(&format!("{GITSPARK_STASH_MESSAGE_PREFIX}{branch_name}"))
+    }
+}
 
 impl GitClient {
     pub fn new() -> Self {
@@ -229,30 +242,32 @@ impl GitClient {
 
     pub fn stash_all(&self, repo_path: &Path) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
-        self.run_git(
-            &repo_path,
-            &["stash", "push", "-u", "-m", "GitSpark auto-stash"],
-        )
-        .context("failed to stash changes")?;
+        let branch_name = self.current_stash_branch_name(&repo_path)?;
+        let message = format!("{GITSPARK_STASH_MESSAGE_PREFIX}{branch_name}");
+        self.run_git(&repo_path, &["stash", "push", "-u", "-m", message.as_str()])
+            .context("failed to stash changes")?;
         self.snapshot(&repo_path)
     }
 
     pub fn stash_pop(&self, repo_path: &Path) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
-        self.run_git(&repo_path, &["stash", "pop"])
+        let stash_ref = self.latest_gitspark_stash_ref_for_current_branch(&repo_path)?;
+        self.run_git(&repo_path, &["stash", "pop", stash_ref.as_str()])
             .context("failed to pop stash")?;
         self.snapshot(&repo_path)
     }
 
     pub fn stash_drop(&self, repo_path: &Path) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
-        self.run_git(&repo_path, &["stash", "drop", "stash@{0}"])
+        let stash_ref = self.latest_gitspark_stash_ref_for_current_branch(&repo_path)?;
+        self.run_git(&repo_path, &["stash", "drop", stash_ref.as_str()])
             .context("failed to drop stash")?;
         self.snapshot(&repo_path)
     }
 
     pub fn latest_stash_files(&self, repo_path: &Path) -> Result<Vec<ChangeEntry>> {
         let repo_path = self.resolve_repo_root(repo_path)?;
+        let stash_ref = self.latest_gitspark_stash_ref_for_current_branch(&repo_path)?;
         let output = self.run_git(
             &repo_path,
             &[
@@ -261,7 +276,7 @@ impl GitClient {
                 "--name-status",
                 "--include-untracked",
                 "--format=",
-                "stash@{0}",
+                stash_ref.as_str(),
             ],
         )?;
 
@@ -887,11 +902,48 @@ impl GitClient {
     }
 
     fn stash_count(&self, repo_path: &Path) -> Result<usize> {
-        let output = self.run_git(repo_path, &["stash", "list", "--format=%gd"])?;
+        let branch_name = self.current_stash_branch_name(repo_path)?;
+        Ok(self
+            .list_stashes(repo_path)?
+            .into_iter()
+            .filter(|stash| stash.is_gitspark_stash_for(&branch_name))
+            .count())
+    }
+
+    fn latest_gitspark_stash_ref_for_current_branch(&self, repo_path: &Path) -> Result<String> {
+        let branch_name = self.current_stash_branch_name(repo_path)?;
+        self.list_stashes(repo_path)?
+            .into_iter()
+            .find(|stash| stash.is_gitspark_stash_for(&branch_name))
+            .map(|stash| stash.ref_name)
+            .with_context(|| format!("no GitSpark stash found for branch '{branch_name}'"))
+    }
+
+    fn current_stash_branch_name(&self, repo_path: &Path) -> Result<String> {
+        let branch_name = self.read_status(repo_path)?.current_branch;
+        Ok(if branch_name.trim().is_empty() {
+            "HEAD".to_string()
+        } else {
+            branch_name
+        })
+    }
+
+    fn list_stashes(&self, repo_path: &Path) -> Result<Vec<StashEntry>> {
+        let output = self.run_git(repo_path, &["stash", "list", "--format=%gd%x1f%s"])?;
         Ok(output
             .lines()
-            .filter(|line| !line.trim().is_empty())
-            .count())
+            .filter_map(|line| {
+                let (ref_name, subject) = line.split_once('\u{1f}')?;
+                let ref_name = ref_name.trim();
+                if ref_name.is_empty() {
+                    return None;
+                }
+                Some(StashEntry {
+                    ref_name: ref_name.to_string(),
+                    subject: subject.trim().to_string(),
+                })
+            })
+            .collect())
     }
 
     fn resolve_repo_root(&self, path: &Path) -> Result<PathBuf> {
@@ -1608,8 +1660,8 @@ mod tests {
     use crate::models::GitIdentity;
 
     use super::{
-        GitClient, encode_github_path, fill_missing_author_identity, normalize_github_remote_url,
-        parse_author_ident, parse_ref_tags,
+        GITSPARK_STASH_MESSAGE_PREFIX, GitClient, encode_github_path, fill_missing_author_identity,
+        normalize_github_remote_url, parse_author_ident, parse_ref_tags,
     };
 
     #[test]
@@ -1688,6 +1740,38 @@ mod tests {
 
         let peeled_target = run_git(&repo, &["rev-parse", "v1.0.0^{}"]);
         assert_eq!(peeled_target.trim(), oid);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn restores_gitspark_branch_stash_when_user_stash_is_newer() {
+        let repo = temp_repo("branch-aware-stash");
+        fs::write(repo.join("README.md"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+
+        fs::write(repo.join("README.md"), "gitspark change\n").unwrap();
+        let snapshot = GitClient::new().stash_all(&repo).unwrap();
+        assert_eq!(snapshot.stash_count, 1);
+
+        fs::write(repo.join("README.md"), "user stash\n").unwrap();
+        run_git(&repo, &["stash", "push", "-m", "User stash"]);
+        let snapshot = GitClient::new().open_repo(&repo).unwrap();
+        assert_eq!(snapshot.stash_count, 1);
+
+        GitClient::new().stash_pop(&repo).unwrap();
+
+        let readme = fs::read_to_string(repo.join("README.md")).unwrap();
+        assert_eq!(readme, "gitspark change\n");
+        let stash_list = run_git(&repo, &["stash", "list", "--format=%s"]);
+        assert!(stash_list.contains("User stash"));
+        assert!(!stash_list.contains(GITSPARK_STASH_MESSAGE_PREFIX));
+        let snapshot = GitClient::new().open_repo(&repo).unwrap();
+        assert_eq!(snapshot.stash_count, 0);
 
         let _ = fs::remove_dir_all(repo);
     }
