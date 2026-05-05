@@ -38,6 +38,7 @@ export async function testSettingsPersistence(app, fixture) {
   await app.getByTestId("settings-save-git").click();
   await app.waitForSnapshot(
     (snapshot) =>
+      snapshot.show_settings === true &&
       snapshot.error_message ===
       "Name is invalid, it consists only of disallowed characters.",
     { timeoutMs: 10_000 },
@@ -51,6 +52,7 @@ export async function testSettingsPersistence(app, fixture) {
   await app.getByTestId("settings-save-git").click();
   await app.waitForSnapshot(
     (snapshot) =>
+      snapshot.show_settings === false &&
       snapshot.status_message === "Git config saved." &&
       snapshot.error_message === "",
     { timeoutMs: 10_000 },
@@ -67,6 +69,8 @@ export async function testSettingsPersistence(app, fixture) {
     "git user.email persisted to repository config",
   );
 
+  await app.command({ command: "show_repository_settings", show: true });
+  await app.getByTestId("settings-tab-git").click();
   await app.getByTestId("settings-git-scope-global").click();
   await app.waitForSnapshot(
     (snapshot) =>
@@ -85,6 +89,7 @@ export async function testSettingsPersistence(app, fixture) {
   await app.getByTestId("settings-save-git").click();
   await app.waitForSnapshot(
     (snapshot) =>
+      snapshot.show_settings === false &&
       snapshot.status_message === "Git config saved." &&
       snapshot.error_message === "",
     { timeoutMs: 10_000 },
@@ -134,6 +139,7 @@ export async function testSettingsPersistence(app, fixture) {
   await app.getByTestId("settings-save-git").click();
   await app.waitForSnapshot(
     (snapshot) =>
+      snapshot.show_settings === false &&
       snapshot.status_message === "Git config saved." &&
       snapshot.error_message === "" &&
       snapshot.git_user_name === "Global GitSpark" &&
@@ -185,6 +191,7 @@ export async function testSettingsPersistence(app, fixture) {
   await app.getByTestId("settings-save-ai").click();
   await app.waitForSnapshot(
     (snapshot) =>
+      snapshot.show_settings === false &&
       snapshot.status_message === "AI settings saved." &&
       snapshot.error_message === "",
     { timeoutMs: 10_000 },
@@ -214,7 +221,6 @@ export async function testSettingsPersistence(app, fixture) {
     "default branch persisted independently of repository identity scope",
   );
 
-  await app.getByTestId("button-settings").click();
   await app.waitForSnapshot((snapshot) => snapshot.show_settings === false);
 }
 
@@ -256,6 +262,7 @@ export async function testIdentityWarningOpensMissingEmail(app, fixture) {
   await app.getByTestId("settings-save-git").click();
   await app.waitForSnapshot(
     (snapshot) =>
+      snapshot.show_settings === false &&
       snapshot.status_message === "Git config saved." &&
       snapshot.error_message === "" &&
       !snapshot.test_tree?.children?.some(

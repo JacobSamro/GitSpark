@@ -680,9 +680,18 @@ impl GitSparkApp {
 
     pub fn handle_settings_action(&mut self, action: SettingsAction, cx: &mut Context<Self>) {
         match action {
-            SettingsAction::SaveRemote => self.save_remote_settings(cx),
-            SettingsAction::SaveIgnoredFiles => self.save_ignored_files_settings(cx),
-            SettingsAction::SaveGitConfig => self.save_git_config(),
+            SettingsAction::SaveRemote => {
+                self.save_remote_settings(cx);
+                self.close_settings_modal_after_successful_save();
+            }
+            SettingsAction::SaveIgnoredFiles => {
+                self.save_ignored_files_settings(cx);
+                self.close_settings_modal_after_successful_save();
+            }
+            SettingsAction::SaveGitConfig => {
+                self.save_git_config();
+                self.close_settings_modal_after_successful_save();
+            }
             SettingsAction::SaveAiSettings => {
                 if self.settings.ai.provider == AiProvider::OpenRouter {
                     self.settings.ai.endpoint =
@@ -695,9 +704,11 @@ impl GitSparkApp {
                     self.settings.ai.endpoint = self.settings.ai.endpoint.trim().to_string();
                     self.settings_modal.ai_endpoint_cursor = self.settings.ai.endpoint.len();
                 }
+                self.messages.error_message.clear();
                 self.persist_settings();
                 if self.messages.error_message.is_empty() {
                     self.messages.status_message = "AI settings saved.".to_string();
+                    self.close_settings_modal_after_successful_save();
                 }
             }
             SettingsAction::SetGitConfigScope(use_local) => {
@@ -751,6 +762,12 @@ impl GitSparkApp {
             }
         }
         cx.notify();
+    }
+
+    fn close_settings_modal_after_successful_save(&mut self) {
+        if self.messages.error_message.is_empty() {
+            self.close_settings_modal();
+        }
     }
 
     // ------------------------------------------------------------------
