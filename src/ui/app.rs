@@ -3060,6 +3060,12 @@ impl GitSparkApp {
     }
 
     pub fn menu_repository_settings(&mut self, cx: &mut Context<Self>) {
+        if self.repo.snapshot.is_none() {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        }
+
         self.open_settings_modal(Some(crate::ui::ui_state::SettingsSection::Git), cx);
         cx.notify();
     }
@@ -3367,8 +3373,10 @@ impl GitSparkApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.open_settings_modal(Some(crate::ui::ui_state::SettingsSection::Git), cx);
-        self.activate_settings_field(SettingsField::GitUserName, window, cx);
+        self.menu_repository_settings(cx);
+        if self.nav.show_settings {
+            self.activate_settings_field(SettingsField::GitUserName, window, cx);
+        }
     }
 
     fn handle_menu_new_branch(
