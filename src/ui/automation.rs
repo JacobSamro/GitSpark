@@ -19,6 +19,7 @@ use crate::ui::app::SettingsAction;
 use crate::ui::app::{AppEvent, GitSparkApp, NotifySender, SidebarAction, ToolbarAction};
 use crate::ui::branch_context_menu::BranchContextAction;
 use crate::ui::changes_context_menu::ChangesContextAction;
+use crate::ui::diff_line_selection::DiffLineSelection;
 use crate::ui::domain_state::NetworkAction;
 use crate::ui::history_context_menu::HistoryContextMenuAction;
 use crate::ui::ids::stable_id_slug;
@@ -379,6 +380,8 @@ struct AutomationSnapshot {
     diff_hide_whitespace_changes: bool,
     diff_show_side_by_side: bool,
     selected_diff_visible_line_count: Option<usize>,
+    selected_diff_selectable_line_count: usize,
+    selected_diff_selected_line_count: usize,
     selected_diff_is_image: bool,
     selected_diff_is_submodule: bool,
     show_settings: bool,
@@ -562,6 +565,7 @@ enum AutomationNodeAction {
     OpenSelectedImageWithDefaultProgram,
     OpenSelectedSubmodule,
     RevealSelectedSubmodule,
+    ToggleDiffLine(DiffLineSelection),
     ToggleSideBySideDiff,
     ToggleHideWhitespaceChanges,
     SetBranchFilter,
@@ -940,6 +944,18 @@ impl GitSparkApp {
                     self.nav.diff_options.hide_whitespace_changes,
                 )
             }),
+            selected_diff_selectable_line_count: self
+                .selected_diff()
+                .map(|diff| {
+                    crate::ui::workspace::selectable_diff_line_targets(
+                        &diff.path,
+                        &diff.diff,
+                        self.nav.diff_options.hide_whitespace_changes,
+                    )
+                    .len()
+                })
+                .unwrap_or(0),
+            selected_diff_selected_line_count: self.selection.selected_diff_lines.len(),
             selected_diff_is_image: self.selected_diff().is_some_and(|diff| diff.is_image),
             selected_diff_is_submodule: self.selected_diff().is_some_and(|diff| diff.is_submodule),
             show_settings: self.nav.show_settings,
@@ -1263,6 +1279,35 @@ impl GitSparkApp {
                 None,
             ),
         ];
+
+        if self.nav.sidebar_tab == SidebarTab::Changes
+            && !self.nav.diff_options.show_side_by_side
+            && let Some(diff) = self.selected_diff()
+            && !diff.is_binary
+            && !diff.is_image
+            && !diff.is_submodule
+        {
+            children.extend(
+                crate::ui::workspace::selectable_diff_line_targets(
+                    &diff.path,
+                    &diff.diff,
+                    self.nav.diff_options.hide_whitespace_changes,
+                )
+                .into_iter()
+                .map(|target| {
+                    let id = target.id();
+                    let selected = self.selection.selected_diff_lines.contains(&target);
+                    automation_node(
+                        id.clone(),
+                        AutomationRole::ListItem,
+                        Some(id),
+                        Some("Diff line"),
+                        Some(AutomationNodeAction::ToggleDiffLine(target)),
+                    )
+                    .selected(selected)
+                }),
+            );
+        }
 
         if self.nav.show_settings {
             children.extend(settings_automation_nodes(self));
@@ -2715,6 +2760,9 @@ impl GitSparkApp {
                 }
                 self.reveal_in_finder(&path);
                 cx.notify();
+            }
+            AutomationNodeAction::ToggleDiffLine(target) => {
+                self.toggle_diff_line_selection(target, cx);
             }
             AutomationNodeAction::ToggleSideBySideDiff => {
                 self.toggle_side_by_side_diff(cx);

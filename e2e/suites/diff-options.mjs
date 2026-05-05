@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { assert } from "../support/assertions.mjs";
-import { nodeById } from "../support/tree.mjs";
+import { flattenNodes, nodeById } from "../support/tree.mjs";
 
 const exec = promisify(execFile);
 
@@ -17,9 +17,31 @@ export async function testDiffOptions(app) {
     (snapshot) =>
       snapshot.selected_change === "code.txt" &&
       snapshot.selected_diff_visible_line_count > 0 &&
+      snapshot.selected_diff_selectable_line_count === 4 &&
       nodeById(snapshot.test_tree, "diff-option-side-by-side")?.selected ===
         false &&
       nodeById(snapshot.test_tree, "diff-option-hide-whitespace")?.selected === false,
+    { timeoutMs: 10_000 },
+  );
+
+  const selectableLine = flattenNodes(before.test_tree).find((node) =>
+    node.id?.startsWith("diff-line-code-txt-added-"),
+  );
+  assert(selectableLine, "changed diff lines expose stable selectable nodes");
+
+  await app.getByTestId(selectableLine.test_id).click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.selected_diff_selected_line_count === 1 &&
+      nodeById(snapshot.test_tree, selectableLine.id)?.selected === true,
+    { timeoutMs: 10_000 },
+  );
+
+  await app.getByTestId(selectableLine.test_id).click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.selected_diff_selected_line_count === 0 &&
+      nodeById(snapshot.test_tree, selectableLine.id)?.selected === false,
     { timeoutMs: 10_000 },
   );
 

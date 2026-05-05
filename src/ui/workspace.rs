@@ -1,6 +1,7 @@
 use gpui::*;
 use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
 use gpui_component::{h_flex, v_flex};
+use std::collections::HashSet;
 use std::path::Path;
 
 use crate::models::DiffEntry;
@@ -8,6 +9,7 @@ use crate::ui::app::{DiffExpandDirection, GitSparkApp};
 use gpui_component::scroll::ScrollableElement;
 
 use crate::ui::binary_diff::render_binary_diff_panel;
+use crate::ui::diff_line_selection::{DiffLineSelection, DiffLineSelectionKind};
 use crate::ui::image_diff::render_image_diff_panel;
 use crate::ui::submodule_diff::render_submodule_diff_panel;
 use crate::ui::theme;
@@ -584,8 +586,83 @@ fn render_highlighted_text(
         .child(div().text_color(base_color).child(after))
 }
 
+fn diff_line_selection_target(file_path: &str, line: &DiffLine) -> Option<DiffLineSelection> {
+    let kind = match line.kind {
+        DiffLineKind::Added => DiffLineSelectionKind::Added,
+        DiffLineKind::Deleted => DiffLineSelectionKind::Deleted,
+        _ => return None,
+    };
+
+    Some(DiffLineSelection {
+        path: file_path.to_string(),
+        old_line: line.old_line,
+        new_line: line.new_line,
+        kind,
+    })
+}
+
+fn render_line_selection_cell(selected: bool, target: Option<&DiffLineSelection>) -> Div {
+    let mut cell = div()
+        .w(z(22.0))
+        .flex_shrink_0()
+        .items_center()
+        .justify_center();
+
+    if target.is_some() {
+        cell = cell.child(
+            div()
+                .size(z(13.0))
+                .items_center()
+                .justify_center()
+                .rounded(z(3.0))
+                .border_1()
+                .border_color(if selected {
+                    theme::accent()
+                } else {
+                    theme::line_num_color()
+                })
+                .bg(if selected {
+                    theme::accent()
+                } else {
+                    gpui::transparent_black()
+                })
+                .text_size(z(10.0))
+                .text_color(theme::text_main())
+                .child(if selected { "✓" } else { "" }),
+        );
+    }
+
+    cell
+}
+
+fn diff_row_id(file_path: &str, line: &DiffLine) -> String {
+    if let Some(target) = diff_line_selection_target(file_path, line) {
+        return target.id();
+    }
+
+    let old_line = line
+        .old_line
+        .map(|line| line.to_string())
+        .unwrap_or_else(|| "none".to_string());
+    let new_line = line
+        .new_line
+        .map(|line| line.to_string())
+        .unwrap_or_else(|| "none".to_string());
+    format!(
+        "diff-line-{}-context-{}-{}",
+        crate::ui::ids::stable_id_slug(file_path),
+        old_line,
+        new_line
+    )
+}
+
 /// Render a single diff line as a horizontal flex row.
-fn render_diff_line(line: &DiffLine) -> Div {
+fn render_diff_line(
+    file_path: &str,
+    line: &DiffLine,
+    view: Option<&Entity<GitSparkApp>>,
+    selected_lines: &HashSet<DiffLineSelection>,
+) -> Stateful<Div> {
     // Format line number strings. Hunk headers show no numbers.
     let old_num_str = match line.old_line {
         Some(n) => format!("{n}"),
@@ -597,12 +674,29 @@ fn render_diff_line(line: &DiffLine) -> Div {
     };
 
     let mut row = h_flex()
+        .id(SharedString::from(diff_row_id(file_path, line)))
         .w_full()
         .min_h(z(theme::DIFF_ROW_HEIGHT))
         .flex_shrink_0()
         .font_family("monospace")
         .text_size(z(12.0))
         .py(z(2.0)); // match GitHub Desktop: padding 2px 0
+
+    let selection_target = diff_line_selection_target(file_path, line);
+    let line_selected = selection_target
+        .as_ref()
+        .is_some_and(|target| selected_lines.contains(target));
+
+    if let (Some(target), Some(vh)) = (selection_target.clone(), view) {
+        let target_for_click = target.clone();
+        let toggle_view = vh.clone();
+        row = row.cursor_pointer().on_click(move |_evt, _win, cx| {
+            let target = target_for_click.clone();
+            toggle_view.update(cx, |app, cx| {
+                app.toggle_diff_line_selection(target, cx);
+            });
+        });
+    }
 
     // Old line number gutter
     row = row.child(
@@ -623,6 +717,11 @@ fn render_diff_line(line: &DiffLine) -> Div {
             .px(z(4.0))
             .child(new_num_str),
     );
+
+    row = row.child(render_line_selection_cell(
+        line_selected,
+        selection_target.as_ref(),
+    ));
 
     // Content — varies by line kind
     match &line.kind {
@@ -1124,6 +1223,7 @@ pub fn render_workspace(
     diff: Option<&DiffEntry>,
     hide_whitespace_changes: bool,
     show_side_by_side: bool,
+    selected_lines: &HashSet<DiffLineSelection>,
     view: Option<&Entity<GitSparkApp>>,
 ) -> Div {
     let Some(file_path) = selected_file else {
@@ -1212,7 +1312,12 @@ pub fn render_workspace(
                         ));
                         hunk_index += 1;
                     } else {
-                        scroll_content = scroll_content.child(render_diff_line(line));
+                        scroll_content = scroll_content.child(render_diff_line(
+                            file_path,
+                            line,
+                            view,
+                            selected_lines,
+                        ));
                     }
                 }
             }
@@ -1327,6 +1432,18 @@ pub fn render_workspace(
 pub fn visible_diff_line_count(diff_text: &str, hide_whitespace_changes: bool) -> usize {
     let parsed = parse_diff(diff_text);
     meaningful_diff_line_count(&visible_diff_lines(&parsed, hide_whitespace_changes))
+}
+
+pub(crate) fn selectable_diff_line_targets(
+    file_path: &str,
+    diff_text: &str,
+    hide_whitespace_changes: bool,
+) -> Vec<DiffLineSelection> {
+    let parsed = parse_diff(diff_text);
+    visible_diff_lines(&parsed, hide_whitespace_changes)
+        .iter()
+        .filter_map(|line| diff_line_selection_target(file_path, line))
+        .collect()
 }
 
 fn visible_diff_lines(lines: &[DiffLine], hide_whitespace_changes: bool) -> Vec<DiffLine> {

@@ -301,6 +301,16 @@ pub fn render_sidebar_interactive(
                                                     .on_click(move |_evt, _win, cx| {
                                                         let path = path.clone();
                                                         click_view.update(cx, |app, cx| {
+                                                            if app
+                                                                .selection
+                                                                .selected_change
+                                                                .as_deref()
+                                                                != Some(path.as_str())
+                                                            {
+                                                                app.selection
+                                                                    .selected_diff_lines
+                                                                    .clear();
+                                                            }
                                                             app.selection.selected_change =
                                                                 Some(path.clone());
                                                             app.refresh_file_diff(path);

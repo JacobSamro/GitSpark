@@ -252,6 +252,9 @@ impl GitSparkApp {
             SidebarAction::OpenRepo(path) => self.open_repo_with_notify(path, cx),
             SidebarAction::HideRepoSelector => self.nav.show_repo_selector = false,
             SidebarAction::SelectChange(path) => {
+                if self.selection.selected_change.as_deref() != Some(path.as_str()) {
+                    self.selection.selected_diff_lines.clear();
+                }
                 self.selection.selected_change = Some(path);
             }
             SidebarAction::DiscardChange(path) => self.discard_change(&path),
@@ -1528,6 +1531,22 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub(crate) fn toggle_diff_line_selection(
+        &mut self,
+        target: DiffLineSelection,
+        cx: &mut Context<Self>,
+    ) {
+        if self.selection.selected_change.as_deref() != Some(target.path.as_str()) {
+            self.selection.selected_diff_lines.clear();
+        }
+
+        if !self.selection.selected_diff_lines.insert(target.clone()) {
+            self.selection.selected_diff_lines.remove(&target);
+        }
+
+        cx.notify();
+    }
+
     // ------------------------------------------------------------------
     // AI commit generation
     // ------------------------------------------------------------------
@@ -2625,7 +2644,11 @@ impl GitSparkApp {
                 }
                 operation
             });
-        self.selection.selected_change = snapshot.changes.first().map(|change| change.path.clone());
+        let next_selected_change = snapshot.changes.first().map(|change| change.path.clone());
+        if self.selection.selected_change.as_ref() != next_selected_change.as_ref() {
+            self.selection.selected_diff_lines.clear();
+        }
+        self.selection.selected_change = next_selected_change;
         self.repo.branch_target = current_branch;
         self.repo.merge_target = snapshot
             .branches

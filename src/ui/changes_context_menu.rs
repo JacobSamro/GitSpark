@@ -163,6 +163,9 @@ pub(crate) fn bind_changes_context_click(
         let path = path.clone();
         let position = event.position;
         view.update(cx, |app, cx| {
+            if app.selection.selected_change.as_deref() != Some(path.as_str()) {
+                app.selection.selected_diff_lines.clear();
+            }
             app.selection.selected_change = Some(path.clone());
             app.refresh_file_diff(path.clone());
             app.nav.change_context_menu = Some(ChangeContextMenuState {

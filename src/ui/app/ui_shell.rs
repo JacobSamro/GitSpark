@@ -3335,6 +3335,7 @@ impl GitSparkApp {
                                     selected_diff,
                                     self.nav.diff_options.hide_whitespace_changes,
                                     self.nav.diff_options.show_side_by_side,
+                                    &self.selection.selected_diff_lines,
                                     None, // History diffs are read-only, no expand controls
                                 ),
                             )),
@@ -3351,6 +3352,7 @@ impl GitSparkApp {
                         selected_diff,
                         self.nav.diff_options.hide_whitespace_changes,
                         self.nav.diff_options.show_side_by_side,
+                        &self.selection.selected_diff_lines,
                         Some(&view),
                     )),
                 )
@@ -3554,6 +3556,11 @@ impl GitSparkApp {
                                 vh.update(cx, |app, cx| {
                                     match tab {
                                         SidebarTab::Changes => {
+                                            if app.selection.selected_change.as_deref()
+                                                != Some(path.as_str())
+                                            {
+                                                app.selection.selected_diff_lines.clear();
+                                            }
                                             app.selection.selected_change = Some(path);
                                         }
                                         SidebarTab::History => {

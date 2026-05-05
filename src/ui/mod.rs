@@ -6,6 +6,7 @@ pub mod changes_context_menu;
 pub mod compare_view;
 pub mod conflict_banner;
 pub mod delete_branch_dialog;
+pub mod diff_line_selection;
 pub mod discard_stash_dialog;
 pub mod domain_state;
 pub mod history_context_menu;

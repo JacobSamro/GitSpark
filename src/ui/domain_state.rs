@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use crate::ui::diff_line_selection::DiffLineSelection;
+
 use crate::models::{
     BranchComparison, ChangeEntry, CommitSuggestion, DiffEntry, GitIdentity, GitOperationState,
     RepoSnapshot,
@@ -170,6 +172,7 @@ pub struct SelectionState {
     pub selected_commit: Option<String>,
     pub selected_commit_file: Option<String>,
     pub commit_diffs: Option<Vec<DiffEntry>>,
+    pub selected_diff_lines: HashSet<DiffLineSelection>,
 }
 
 impl Default for SelectionState {
@@ -179,6 +182,7 @@ impl Default for SelectionState {
             selected_commit: None,
             selected_commit_file: None,
             commit_diffs: None,
+            selected_diff_lines: HashSet::new(),
         }
     }
 }
