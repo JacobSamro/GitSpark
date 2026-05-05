@@ -2571,6 +2571,12 @@ impl GitSparkApp {
 
     fn adopt_snapshot(&mut self, snapshot: RepoSnapshot) {
         let previous_commit = self.selection.selected_commit.clone();
+        let previous_branch = self
+            .repo
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.repo.current_branch.clone());
+        let previous_comparison = self.repo.comparison.clone();
         let previous_operation_target = self
             .repo
             .operation
@@ -2584,7 +2590,8 @@ impl GitSparkApp {
             .map(|change| change.path.clone())
             .collect();
         self.close_history_context_menu();
-        self.repo.comparison = None;
+        self.repo.comparison = previous_comparison
+            .filter(|_| previous_branch.as_deref() == Some(current_branch.as_str()));
         self.repo.operation = self
             .git
             .operation_state(&snapshot.repo.path)

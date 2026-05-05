@@ -408,9 +408,31 @@ export async function testHistoryAndBranchFlows(app, fixture) {
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.sidebar_tab === "history" &&
+      snapshot.compare?.target_branch === "main" &&
+      snapshot.compare?.behind === 0 &&
       snapshot.status_message.startsWith("'e2e-created' is ") &&
       snapshot.status_message.endsWith(" commits behind 'main'.") &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "compare-merge-button" && node.enabled === false,
+      ) &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "commit-file-list-viewport" && node.visible,
+      ) &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id?.startsWith("commit-file-") && node.selected,
+      ) &&
       snapshot.error_message === "",
+    { timeoutMs: 10_000 },
+  );
+
+  await app.command({ command: "compare_branch", name: "switch/conflict" });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.compare?.target_branch === "switch/conflict" &&
+      snapshot.compare?.behind > 0 &&
+      snapshot.test_tree?.children?.some(
+        (node) => node.id === "compare-merge-button" && node.enabled === true,
+      ),
     { timeoutMs: 10_000 },
   );
 
@@ -431,6 +453,18 @@ export async function testHistoryAndBranchFlows(app, fixture) {
 }
 
 export async function testNetworkFlows(app, fixture) {
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.repo?.has_github_remote === false &&
+      !snapshot.test_tree?.children?.some(
+        (node) =>
+          node.id?.includes("view-on-github") ||
+          node.id === "no-changes-github" ||
+          node.id === "compare-on-github",
+      ),
+    { timeoutMs: 10_000 },
+  );
+
   await app.getByTestId("button-network-push").click();
   await expect(app.getByText("Push origin complete.")).toBeVisible({
     timeoutMs: 20_000,

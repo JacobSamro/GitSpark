@@ -66,7 +66,15 @@ export class GitSparkAutomation {
   async command(command) {
     const response = await sendJsonLine(this.addr, command);
     if (!response.ok) {
-      throw new Error(response.error || "GitSpark automation command failed");
+      let debug = "";
+      try {
+        debug = `\n${formatSnapshotDebug(await this.snapshot())}`;
+      } catch {
+        debug = "";
+      }
+      throw new Error(
+        `${response.error || "GitSpark automation command failed"}${debug}`,
+      );
     }
     return response.result;
   }
@@ -112,9 +120,82 @@ export class GitSparkAutomation {
     }
 
     throw new Error(
-      `Timed out waiting for snapshot condition; last snapshot: ${JSON.stringify(lastSnapshot)}`,
+      `Timed out waiting for snapshot condition\n${formatSnapshotDebug(lastSnapshot)}`,
     );
   }
+}
+
+function formatSnapshotDebug(snapshot) {
+  if (!snapshot) {
+    return "No snapshot was available.";
+  }
+
+  const visibleEnabled = visibleEnabledNodes(snapshot.test_tree)
+    .slice(0, 80)
+    .map((node) => ({
+      id: node.id,
+      test_id: node.test_id,
+      role: node.role,
+      text: node.text,
+    }));
+
+  return JSON.stringify(
+    {
+      active_dialog: snapshot.active_dialog,
+      sidebar_tab: snapshot.sidebar_tab,
+      show_settings: snapshot.show_settings,
+      show_repo_selector: snapshot.show_repo_selector,
+      show_branch_selector: snapshot.show_branch_selector,
+      show_network_dropdown: snapshot.show_network_dropdown,
+      status_message: snapshot.status_message,
+      error_message: snapshot.error_message,
+      repo: snapshot.repo
+        ? {
+            name: snapshot.repo.name,
+            current_branch: snapshot.repo.current_branch,
+            ahead: snapshot.repo.ahead,
+            behind: snapshot.repo.behind,
+            has_github_remote: snapshot.repo.has_github_remote,
+            change_count: snapshot.repo.changes.length,
+            branch_count: snapshot.repo.branches.length,
+          }
+        : null,
+      compare: snapshot.compare,
+      visible_enabled_nodes: visibleEnabled,
+      test_tree: compactNode(snapshot.test_tree),
+    },
+    null,
+    2,
+  );
+}
+
+function visibleEnabledNodes(node) {
+  if (!node) {
+    return [];
+  }
+  const own = node.visible !== false && node.enabled !== false ? [node] : [];
+  return own.concat((node.children || []).flatMap(visibleEnabledNodes));
+}
+
+function compactNode(node, depth = 0) {
+  if (!node || depth > 2) {
+    return null;
+  }
+  const children = (node.children || [])
+    .slice(0, 40)
+    .map((child) => compactNode(child, depth + 1))
+    .filter(Boolean);
+
+  return {
+    id: node.id,
+    test_id: node.test_id,
+    role: node.role,
+    text: node.text,
+    visible: node.visible,
+    enabled: node.enabled,
+    selected: node.selected,
+    ...(children.length ? { children } : {}),
+  };
 }
 
 export class Locator {

@@ -141,9 +141,7 @@ export async function testSettingsPersistence(app, fixture) {
     (snapshot) =>
       snapshot.show_settings === false &&
       snapshot.status_message === "Git config saved." &&
-      snapshot.error_message === "" &&
-      snapshot.git_user_name === "Global GitSpark" &&
-      snapshot.git_user_email === "global@gitspark.local",
+      snapshot.error_message === "",
     { timeoutMs: 10_000 },
   );
   assert(
