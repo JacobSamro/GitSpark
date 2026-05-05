@@ -25,7 +25,7 @@ use crate::models::{
 use crate::storage::{push_recent_repo, save_settings};
 use crate::ui::automation;
 use crate::ui::branch_context_menu::BranchContextAction;
-use crate::ui::changes_context_menu::ChangesContextAction;
+use crate::ui::changes_context_menu::{self, ChangesContextAction};
 use crate::ui::domain_state::{
     CommitState, NetworkAction, NetworkState, RepoState, SelectionState,
 };
@@ -1808,6 +1808,9 @@ impl GitSparkApp {
             ChangesContextAction::IgnoreFile => {
                 self.ignore_path(&path);
             }
+            ChangesContextAction::IgnoreFolder(folder) => {
+                self.ignore_path(&folder);
+            }
             ChangesContextAction::IgnoreExtension => {
                 if let Some(ext) = std::path::Path::new(&path)
                     .extension()
@@ -2789,6 +2792,12 @@ impl Render for GitSparkApp {
         // Dialogs
         if self.nav.active_dialog != ActiveDialog::None {
             root = root.child(self.render_active_dialog(window, cx));
+        }
+
+        if let Some(context_menu) =
+            changes_context_menu::render_changes_context_menu_overlay(self, window, cx)
+        {
+            root = root.child(context_menu);
         }
 
         root = root

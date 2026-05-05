@@ -77,11 +77,19 @@ pub struct NavState {
     pub show_repo_selector: bool,
     pub show_branch_selector: bool,
     pub show_network_dropdown: bool,
+    pub change_context_menu: Option<ChangeContextMenuState>,
     pub settings_section: SettingsSection,
     pub branch_selector_mode: BranchSelectorMode,
     pub active_dialog: ActiveDialog,
     /// Undo commit: Some((summary, timestamp)) after a successful commit
     pub undo_commit: Option<(String, std::time::Instant)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChangeContextMenuState {
+    pub path: String,
+    pub x: f32,
+    pub y: f32,
 }
 
 impl Default for NavState {
@@ -93,6 +101,7 @@ impl Default for NavState {
             show_repo_selector: false,
             show_branch_selector: false,
             show_network_dropdown: false,
+            change_context_menu: None,
             settings_section: SettingsSection::Git,
             branch_selector_mode: BranchSelectorMode::Switch,
             active_dialog: ActiveDialog::None,

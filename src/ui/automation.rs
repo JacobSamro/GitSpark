@@ -262,6 +262,7 @@ pub(crate) enum AutomationChangeAction {
     Discard,
     PromptDiscard,
     IgnorePath,
+    IgnoreFolder,
     IgnoreExtension,
     CopyFullPath,
     CopyRelativePath,
@@ -1879,6 +1880,10 @@ impl GitSparkApp {
                 return;
             }
             AutomationChangeAction::IgnorePath => SidebarAction::IgnorePath(path),
+            AutomationChangeAction::IgnoreFolder => {
+                let folder = parent_folder_pattern(&path).unwrap_or(path);
+                SidebarAction::IgnorePath(folder)
+            }
             AutomationChangeAction::IgnoreExtension => {
                 let ext = std::path::Path::new(&path)
                     .extension()
@@ -2463,6 +2468,7 @@ fn change_action_nodes(path: &str, status: &str, has_github_remote: bool) -> Vec
         .extension()
         .map(|ext| ext.to_string_lossy().to_string())
         .unwrap_or_default();
+    let folder = parent_folder_pattern(path);
     let basename = std::path::Path::new(path)
         .file_name()
         .and_then(|name| name.to_str())
@@ -2487,16 +2493,6 @@ fn change_action_nodes(path: &str, status: &str, has_github_remote: bool) -> Vec
             "ignore-path",
             crate::ui::labels::ignore_file_menu().to_string(),
             AutomationChangeAction::IgnorePath,
-            ignore_enabled,
-        ),
-        (
-            "ignore-extension",
-            if extension.is_empty() {
-                "Ignore extension".to_string()
-            } else {
-                crate::ui::labels::ignore_all_extension_menu(&extension)
-            },
-            AutomationChangeAction::IgnoreExtension,
             ignore_enabled,
         ),
         (
@@ -2531,6 +2527,30 @@ fn change_action_nodes(path: &str, status: &str, has_github_remote: bool) -> Vec
         ),
     ];
 
+    if folder.is_some() {
+        actions.insert(
+            3,
+            (
+                "ignore-folder",
+                crate::ui::labels::ignore_folder_menu().to_string(),
+                AutomationChangeAction::IgnoreFolder,
+                ignore_enabled,
+            ),
+        );
+    }
+
+    if !extension.is_empty() {
+        actions.insert(
+            if folder.is_some() { 4 } else { 3 },
+            (
+                "ignore-extension",
+                crate::ui::labels::ignore_all_extension_menu(&extension),
+                AutomationChangeAction::IgnoreExtension,
+                ignore_enabled,
+            ),
+        );
+    }
+
     if has_github_remote {
         actions.push((
             "view-on-github",
@@ -2553,6 +2573,17 @@ fn change_action_nodes(path: &str, status: &str, has_github_remote: bool) -> Vec
             .enabled(enabled)
         })
         .collect()
+}
+
+fn parent_folder_pattern(path: &str) -> Option<String> {
+    std::path::Path::new(path).parent().and_then(|parent| {
+        let folder = parent.to_string_lossy().replace('\\', "/");
+        if folder.is_empty() {
+            None
+        } else {
+            Some(format!("{folder}/"))
+        }
+    })
 }
 
 fn history_action_nodes(
@@ -2982,6 +3013,19 @@ mod tests {
                 action: AutomationChangeAction::IgnoreExtension,
             } => assert_eq!(path, "scratch.log"),
             _ => panic!("expected change_action command"),
+        }
+
+        let command: AutomationCommand = serde_json::from_str(
+            r#"{"command":"change_action","path":"nested/ignored.tmp","action":"ignore_folder"}"#,
+        )
+        .expect("ignore folder change action command parses");
+
+        match command {
+            AutomationCommand::ChangeAction {
+                path,
+                action: AutomationChangeAction::IgnoreFolder,
+            } => assert_eq!(path, "nested/ignored.tmp"),
+            _ => panic!("expected ignore_folder change_action command"),
         }
     }
 

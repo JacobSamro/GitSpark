@@ -665,6 +665,31 @@ export async function testChangeFileActions(app, fixture) {
     "ignore path appends .gitignore pattern",
   );
 
+  await fs.mkdir(path.join(fixture.workRepo, "nested"), { recursive: true });
+  await fs.writeFile(
+    path.join(fixture.workRepo, "nested", "ignored.tmp"),
+    "folder ignore\n",
+  );
+  await app.command({ command: "refresh_repo" });
+  await expect(app.getByTestId("change-nested-ignored-tmp")).toBeVisible({
+    timeoutMs: 10_000,
+  });
+  await app.getByTestId("change-nested-ignored-tmp-ignore-folder").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Added 'nested/' to .gitignore." &&
+      !snapshot.repo?.changes.some(
+        (change) => change.path === "nested/ignored.tmp",
+      ),
+    { timeoutMs: 10_000 },
+  );
+  assert(
+    (await fs.readFile(path.join(fixture.workRepo, ".gitignore"), "utf8")).includes(
+      "nested/",
+    ),
+    "ignore folder appends .gitignore pattern",
+  );
+
   const readmePath = path.join(fixture.workRepo, "README.md");
   const originalReadme = await fs.readFile(readmePath, "utf8");
   await fs.writeFile(readmePath, `${originalReadme}\ntransient edit\n`);

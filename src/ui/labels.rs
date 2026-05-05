@@ -42,6 +42,18 @@ pub(crate) fn ignore_file_menu() -> &'static str {
     }
 }
 
+pub(crate) fn ignore_folder_menu() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Ignore Folder (Add to .gitignore)"
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        "Ignore folder (add to .gitignore)"
+    }
+}
+
 pub(crate) fn ignore_all_extension_menu(extension: &str) -> String {
     #[cfg(target_os = "macos")]
     {
@@ -274,6 +286,7 @@ mod tests {
         {
             assert_eq!(discard_changes_menu(), "Discard Changes…");
             assert_eq!(ignore_file_menu(), "Ignore File (Add to .gitignore)");
+            assert_eq!(ignore_folder_menu(), "Ignore Folder (Add to .gitignore)");
             assert_eq!(
                 ignore_all_extension_menu("rs"),
                 "Ignore All .rs Files (Add to .gitignore)"
@@ -308,6 +321,7 @@ mod tests {
         {
             assert_eq!(discard_changes_menu(), "Discard changes…");
             assert_eq!(ignore_file_menu(), "Ignore file (add to .gitignore)");
+            assert_eq!(ignore_folder_menu(), "Ignore folder (add to .gitignore)");
             assert_eq!(
                 ignore_all_extension_menu("rs"),
                 "Ignore all .rs files (add to .gitignore)"
@@ -342,6 +356,7 @@ mod tests {
         {
             assert_eq!(discard_changes_menu(), "Discard changes…");
             assert_eq!(ignore_file_menu(), "Ignore file (add to .gitignore)");
+            assert_eq!(ignore_folder_menu(), "Ignore folder (add to .gitignore)");
             assert_eq!(
                 ignore_all_extension_menu("rs"),
                 "Ignore all .rs files (add to .gitignore)"
