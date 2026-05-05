@@ -166,6 +166,9 @@ export async function testStashEdgeCases(app) {
       nodeById(snapshot.test_tree, "restore-stash-file-delete-stash-txt"),
     { timeoutMs: 10_000 },
   );
+  await app.getByTestId("restore-stash-cancel").click();
+
+  await testStashPopConflict(app);
 }
 
 async function makeStashRepo() {
@@ -180,6 +183,59 @@ async function makeStashRepo() {
   await exec("git", ["add", "--all"], { cwd: repo });
   await exec("git", ["commit", "-m", "initial"], { cwd: repo });
   await exec("git", ["branch", "feature/stash"], { cwd: repo });
+  return await fs.realpath(repo);
+}
+
+async function testStashPopConflict(app) {
+  const repo = await makeStashConflictRepo();
+  await app.openRepo(repo);
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.repo?.path === repo,
+    { timeoutMs: 15_000 },
+  );
+
+  await fs.writeFile(path.join(repo, "conflict.txt"), "stashed\n");
+  await app.command({ command: "refresh_repo" });
+  await app.command({ command: "stash_all" });
+  await app.getByTestId("stash-changes-confirm").click();
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.repo?.stash_count === 1 && snapshot.repo.changes.length === 0,
+    { timeoutMs: 10_000 },
+  );
+
+  await fs.writeFile(path.join(repo, "conflict.txt"), "current\n");
+  await exec("git", ["add", "conflict.txt"], { cwd: repo });
+  await exec("git", ["commit", "-m", "current conflicting edit"], { cwd: repo });
+  await app.command({ command: "refresh_repo" });
+  await app.getByTestId("stash-indicator").click();
+  await app.getByTestId("restore-stash-confirm").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.error_message.startsWith("Restored stash failed:") &&
+      snapshot.error_message.includes("failed to pop stash"),
+    { timeoutMs: 15_000 },
+  );
+
+  const { stdout } = await exec("git", ["diff", "--name-only", "--diff-filter=U"], {
+    cwd: repo,
+  });
+  assert(
+    stdout.split("\n").includes("conflict.txt"),
+    "stash pop conflict leaves the conflicted file visible to Git",
+  );
+}
+
+async function makeStashConflictRepo() {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "gitspark-stash-conflict-e2e-"));
+  const repo = path.join(root, "repo");
+  await exec("git", ["init", "-b", "main", repo]);
+  await exec("git", ["config", "user.name", "GitSpark E2E"], { cwd: repo });
+  await exec("git", ["config", "user.email", "e2e@gitspark.local"], {
+    cwd: repo,
+  });
+  await fs.writeFile(path.join(repo, "conflict.txt"), "base\n");
+  await exec("git", ["add", "--all"], { cwd: repo });
+  await exec("git", ["commit", "-m", "initial"], { cwd: repo });
   return await fs.realpath(repo);
 }
 

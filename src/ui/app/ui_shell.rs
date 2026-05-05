@@ -1855,6 +1855,23 @@ impl GitSparkApp {
         event: &KeyDownEvent,
         cx: &mut Context<Self>,
     ) {
+        if event.keystroke.key == "enter" {
+            match self.nav.active_dialog.clone() {
+                ActiveDialog::CreateBranch if self.can_create_branch_from_dialog() => {
+                    self.create_branch(cx);
+                }
+                ActiveDialog::CreateTag { target_oid }
+                    if self.create_tag_validation_message().is_none() =>
+                {
+                    self.create_tag(target_oid, cx);
+                }
+                _ => {
+                    cx.notify();
+                }
+            }
+            return;
+        }
+
         let mut state = crate::ui::text_field::TextFieldState {
             cursor: self.new_branch_cursor,
             selection: self.new_branch_selection,

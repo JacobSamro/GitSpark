@@ -90,15 +90,48 @@ export async function testKeyboardFocusPaths(app, fixture) {
 
   await app.getByTestId("button-branch-selector").click();
   await app.getByTestId("button-branch-new").click();
-  await app.getByTestId("input-new-branch-name").fill("");
-  await app.getByTestId("input-new-branch-name").typeText("keyboard-input");
+  await app.getByTestId("input-new-branch-name").press("enter");
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.active_dialog === "create_branch" &&
-      nodeById(snapshot.test_tree, "new-branch-name")?.text === "keyboard-input",
+      nodeById(snapshot.test_tree, "dialog-create-branch")?.enabled === false,
     { timeoutMs: 10_000 },
   );
-  await app.getByTestId("dialog-cancel").click();
+  await app.getByTestId("input-new-branch-name").typeText("keyboard-input");
+  await app.getByTestId("input-new-branch-name").press("enter");
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.active_dialog === "none" &&
+      snapshot.repo?.current_branch === "keyboard-input" &&
+      snapshot.status_message === "Switched to branch 'keyboard-input'.",
+    { timeoutMs: 15_000 },
+  );
+
+  snapshot = await app.snapshot();
+  const head = snapshot.repo.history[0];
+  await app.command({
+    command: "history_action",
+    oid: head.oid,
+    action: "create_tag",
+  });
+  await app.getByTestId("create-tag-name-input").press("enter");
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.active_dialog === "create_tag" &&
+      nodeById(snapshot.test_tree, "create-tag-confirm")?.enabled === false,
+    { timeoutMs: 10_000 },
+  );
+  await app.getByTestId("create-tag-name-input").typeText("keyboard-tag");
+  await app.getByTestId("create-tag-name-input").press("enter");
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.active_dialog === "none" &&
+      snapshot.status_message === "Created tag 'keyboard-tag' complete." &&
+      snapshot.repo?.history.some((commit) =>
+        commit.tags.includes("keyboard-tag"),
+      ),
+    { timeoutMs: 15_000 },
+  );
 
   await app.openRepo(fixture.workRepo);
   await app.waitForSnapshot(
