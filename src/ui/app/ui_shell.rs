@@ -3330,6 +3330,7 @@ impl GitSparkApp {
                             )
                             .child(resizable_panel().child(
                                 crate::ui::workspace::render_workspace(
+                                    None,
                                     selected_file,
                                     selected_diff,
                                     self.nav.diff_options.hide_whitespace_changes,
@@ -3345,6 +3346,7 @@ impl GitSparkApp {
             let content = h_resizable("workspace-panels")
                 .child(
                     resizable_panel().child(crate::ui::workspace::render_workspace(
+                        self.repo_path(),
                         selected_file,
                         selected_diff,
                         self.nav.diff_options.hide_whitespace_changes,

@@ -1,12 +1,14 @@
 use gpui::*;
 use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
 use gpui_component::{h_flex, v_flex};
+use std::path::Path;
 
 use crate::models::DiffEntry;
 use crate::ui::app::{DiffExpandDirection, GitSparkApp};
 use gpui_component::scroll::ScrollableElement;
 
 use crate::ui::binary_diff::render_binary_diff_panel;
+use crate::ui::image_diff::render_image_diff_panel;
 use crate::ui::submodule_diff::render_submodule_diff_panel;
 use crate::ui::theme;
 use crate::ui::theme::z;
@@ -954,9 +956,11 @@ fn add_hunk_context_menu(
 /// Render the diff header bar showing the selected file path.
 fn render_diff_header(
     file_path: &str,
+    is_image: bool,
     hide_whitespace_changes: bool,
     show_side_by_side: bool,
     view: Option<&Entity<GitSparkApp>>,
+    diff_options_view: Option<&Entity<GitSparkApp>>,
 ) -> Div {
     let mut header = h_flex()
         .w_full()
@@ -966,92 +970,131 @@ fn render_diff_header(
         .border_b_1()
         .border_color(theme::border())
         .px(z(14.0))
-        .items_center()
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .text_color(theme::text_main())
-                .text_size(z(12.0))
-                .child(file_path.to_string()),
-        );
+        .items_center();
 
-    if let Some(vh) = view {
+    let file_label = div()
+        .flex_1()
+        .min_w_0()
+        .text_color(theme::text_main())
+        .text_size(z(12.0))
+        .child(file_path.to_string());
+    header = header.child(file_label);
+
+    if is_image && let Some(vh) = view {
+        let reveal_view = vh.clone();
+        let reveal_path = file_path.to_string();
+        header = header.child(diff_header_button(
+            "diff-image-reveal",
+            crate::ui::labels::reveal_in_file_manager_menu(),
+            move |_evt, _win, cx| {
+                let path = reveal_path.clone();
+                reveal_view.update(cx, |app, cx| {
+                    app.reveal_in_finder(&path);
+                    cx.notify();
+                });
+            },
+        ));
+
+        let open_view = vh.clone();
+        let open_path = file_path.to_string();
+        header = header.child(diff_header_button(
+            "diff-image-open-default",
+            "Open Image",
+            move |_evt, _win, cx| {
+                let path = open_path.clone();
+                open_view.update(cx, |app, cx| {
+                    app.open_with_default_program(&path);
+                    cx.notify();
+                });
+            },
+        ));
+    }
+
+    if let Some(vh) = diff_options_view {
         let vh_split = vh.clone();
         header = header.child(
-            h_flex()
-                .id("diff-option-side-by-side")
-                .h(z(24.0))
-                .px(z(10.0))
-                .mr(z(8.0))
-                .items_center()
-                .justify_center()
-                .rounded(z(theme::CORNER_RADIUS_SM))
-                .border_1()
-                .border_color(if show_side_by_side {
-                    theme::accent()
-                } else {
-                    theme::border()
-                })
-                .bg(if show_side_by_side {
-                    theme::toolbar_hover_bg()
-                } else {
-                    theme::surface_bg()
-                })
-                .text_size(z(11.0))
-                .text_color(if show_side_by_side {
-                    theme::text_main()
-                } else {
-                    theme::text_muted()
-                })
-                .cursor_pointer()
-                .hover(|style| style.bg(theme::toolbar_hover_bg()))
-                .child("Split")
-                .on_click(move |_evt, _win, cx| {
+            diff_header_button(
+                "diff-option-side-by-side",
+                "Split",
+                move |_evt, _win, cx| {
                     vh_split.update(cx, |app, cx| {
                         app.toggle_side_by_side_diff(cx);
                     });
-                }),
+                },
+            )
+            .border_color(if show_side_by_side {
+                theme::accent()
+            } else {
+                theme::border()
+            })
+            .bg(if show_side_by_side {
+                theme::toolbar_hover_bg()
+            } else {
+                theme::surface_bg()
+            })
+            .text_color(if show_side_by_side {
+                theme::text_main()
+            } else {
+                theme::text_muted()
+            }),
         );
 
         let vh_whitespace = vh.clone();
         header = header.child(
-            h_flex()
-                .id("diff-option-hide-whitespace")
-                .h(z(24.0))
-                .px(z(10.0))
-                .items_center()
-                .justify_center()
-                .rounded(z(theme::CORNER_RADIUS_SM))
-                .border_1()
-                .border_color(if hide_whitespace_changes {
-                    theme::accent()
-                } else {
-                    theme::border()
-                })
-                .bg(if hide_whitespace_changes {
-                    theme::toolbar_hover_bg()
-                } else {
-                    theme::surface_bg()
-                })
-                .text_size(z(11.0))
-                .text_color(if hide_whitespace_changes {
-                    theme::text_main()
-                } else {
-                    theme::text_muted()
-                })
-                .cursor_pointer()
-                .hover(|style| style.bg(theme::toolbar_hover_bg()))
-                .child("Hide whitespace")
-                .on_click(move |_evt, _win, cx| {
+            diff_header_button(
+                "diff-option-hide-whitespace",
+                "Hide whitespace",
+                move |_evt, _win, cx| {
                     vh_whitespace.update(cx, |app, cx| {
                         app.toggle_hide_whitespace_changes(cx);
                     });
-                }),
+                },
+            )
+            .border_color(if hide_whitespace_changes {
+                theme::accent()
+            } else {
+                theme::border()
+            })
+            .bg(if hide_whitespace_changes {
+                theme::toolbar_hover_bg()
+            } else {
+                theme::surface_bg()
+            })
+            .text_size(z(11.0))
+            .text_color(if hide_whitespace_changes {
+                theme::text_main()
+            } else {
+                theme::text_muted()
+            }),
         );
     }
 
     header
+}
+
+fn diff_header_button(
+    id: &'static str,
+    label: &'static str,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    h_flex()
+        .id(id)
+        .flex_none()
+        .h(z(24.0))
+        .px(z(10.0))
+        .mr(z(8.0))
+        .items_center()
+        .justify_center()
+        .rounded(z(theme::CORNER_RADIUS_SM))
+        .border_1()
+        .border_color(theme::border())
+        .bg(theme::surface_bg())
+        .text_size(z(11.0))
+        .text_color(theme::text_muted())
+        .cursor_pointer()
+        .hover(|style| style.bg(theme::toolbar_hover_bg()))
+        .child(label)
+        .on_click(on_click)
 }
 
 /// Render the empty state when no file is selected.
@@ -1076,6 +1119,7 @@ fn render_empty_state() -> Div {
 /// Fills the remaining horizontal space (flex-1) and displays either
 /// a unified diff for the selected file or a placeholder message.
 pub fn render_workspace(
+    repo_path: Option<&Path>,
     selected_file: Option<&str>,
     diff: Option<&DiffEntry>,
     hide_whitespace_changes: bool,
@@ -1087,11 +1131,22 @@ pub fn render_workspace(
     };
     let diff_options_view = view.filter(|_| {
         diff.is_some_and(|entry| {
-            !entry.is_binary && !entry.is_submodule && !entry.diff.trim().is_empty()
+            !entry.is_binary
+                && !entry.is_image
+                && !entry.is_submodule
+                && !entry.diff.trim().is_empty()
         })
     });
 
     let diff_content: AnyElement = match diff {
+        Some(entry) if entry.is_image => div()
+            .w_full()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .min_h_0()
+            .child(render_image_diff_panel(repo_path, file_path))
+            .into_any_element(),
         Some(entry) if entry.is_submodule => div()
             .w_full()
             .flex_1()
@@ -1260,8 +1315,10 @@ pub fn render_workspace(
         .bg(theme::bg())
         .child(render_diff_header(
             file_path,
+            diff.is_some_and(|entry| entry.is_image),
             hide_whitespace_changes,
             show_side_by_side,
+            view,
             diff_options_view,
         ))
         .child(diff_content)

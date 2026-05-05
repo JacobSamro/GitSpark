@@ -379,6 +379,7 @@ struct AutomationSnapshot {
     diff_hide_whitespace_changes: bool,
     diff_show_side_by_side: bool,
     selected_diff_visible_line_count: Option<usize>,
+    selected_diff_is_image: bool,
     selected_diff_is_submodule: bool,
     show_settings: bool,
     show_repo_selector: bool,
@@ -557,6 +558,8 @@ enum AutomationNodeAction {
     SelectTab(SidebarTab),
     RevealSelectedBinaryInFinder,
     OpenSelectedBinaryWithDefaultProgram,
+    RevealSelectedImageInFinder,
+    OpenSelectedImageWithDefaultProgram,
     OpenSelectedSubmodule,
     RevealSelectedSubmodule,
     ToggleSideBySideDiff,
@@ -937,6 +940,7 @@ impl GitSparkApp {
                     self.nav.diff_options.hide_whitespace_changes,
                 )
             }),
+            selected_diff_is_image: self.selected_diff().is_some_and(|diff| diff.is_image),
             selected_diff_is_submodule: self.selected_diff().is_some_and(|diff| diff.is_submodule),
             show_settings: self.nav.show_settings,
             show_repo_selector: self.nav.show_repo_selector,
@@ -1150,9 +1154,9 @@ impl GitSparkApp {
             .visible(
                 self.nav.sidebar_tab == SidebarTab::Changes
                     && self.selection.selected_change.is_some()
-                    && self
-                        .selected_diff()
-                        .is_some_and(|diff| !diff.is_binary && !diff.is_submodule),
+                    && self.selected_diff().is_some_and(|diff| {
+                        !diff.is_binary && !diff.is_image && !diff.is_submodule
+                    }),
             )
             .selected(self.nav.diff_options.show_side_by_side),
             automation_node(
@@ -1165,7 +1169,9 @@ impl GitSparkApp {
             .visible(
                 self.nav.sidebar_tab == SidebarTab::Changes
                     && self.selection.selected_change.is_some()
-                    && self.selected_diff().is_some_and(|diff| !diff.is_submodule),
+                    && self
+                        .selected_diff()
+                        .is_some_and(|diff| !diff.is_image && !diff.is_submodule),
             )
             .selected(self.nav.diff_options.hide_whitespace_changes),
             automation_node(
@@ -1177,7 +1183,42 @@ impl GitSparkApp {
             )
             .visible(
                 self.nav.sidebar_tab == SidebarTab::Changes
-                    && self.selected_diff().is_some_and(|diff| diff.is_binary),
+                    && self
+                        .selected_diff()
+                        .is_some_and(|diff| diff.is_binary && !diff.is_image),
+            ),
+            automation_node(
+                "diff-image-preview",
+                AutomationRole::Status,
+                Some("diff-image-preview"),
+                Some("Image preview"),
+                None,
+            )
+            .visible(
+                self.nav.sidebar_tab == SidebarTab::Changes
+                    && self.selected_diff().is_some_and(|diff| diff.is_image),
+            ),
+            automation_node(
+                "diff-image-reveal",
+                AutomationRole::Button,
+                Some("diff-image-reveal"),
+                Some(crate::ui::labels::reveal_in_file_manager_menu()),
+                Some(AutomationNodeAction::RevealSelectedImageInFinder),
+            )
+            .visible(
+                self.nav.sidebar_tab == SidebarTab::Changes
+                    && self.selected_diff().is_some_and(|diff| diff.is_image),
+            ),
+            automation_node(
+                "diff-image-open-default",
+                AutomationRole::Button,
+                Some("diff-image-open-default"),
+                Some("Open Image"),
+                Some(AutomationNodeAction::OpenSelectedImageWithDefaultProgram),
+            )
+            .visible(
+                self.nav.sidebar_tab == SidebarTab::Changes
+                    && self.selected_diff().is_some_and(|diff| diff.is_image),
             ),
             automation_node(
                 "diff-submodule-open",
@@ -1210,7 +1251,9 @@ impl GitSparkApp {
             )
             .visible(
                 self.nav.sidebar_tab == SidebarTab::Changes
-                    && self.selected_diff().is_some_and(|diff| diff.is_binary),
+                    && self
+                        .selected_diff()
+                        .is_some_and(|diff| diff.is_binary && !diff.is_image),
             ),
             automation_node(
                 "status-message",
@@ -2632,6 +2675,26 @@ impl GitSparkApp {
                     return AutomationResponse::failure("selected file is not binary");
                 }
                 self.reveal_in_finder(&path);
+                cx.notify();
+            }
+            AutomationNodeAction::RevealSelectedImageInFinder => {
+                let Some(path) = self.selection.selected_change.clone() else {
+                    return AutomationResponse::failure("no selected image file");
+                };
+                if !self.selected_diff().is_some_and(|diff| diff.is_image) {
+                    return AutomationResponse::failure("selected file is not an image");
+                }
+                self.reveal_in_finder(&path);
+                cx.notify();
+            }
+            AutomationNodeAction::OpenSelectedImageWithDefaultProgram => {
+                let Some(path) = self.selection.selected_change.clone() else {
+                    return AutomationResponse::failure("no selected image file");
+                };
+                if !self.selected_diff().is_some_and(|diff| diff.is_image) {
+                    return AutomationResponse::failure("selected file is not an image");
+                }
+                self.open_with_default_program(&path);
                 cx.notify();
             }
             AutomationNodeAction::OpenSelectedSubmodule => {

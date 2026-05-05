@@ -28,6 +28,8 @@ pub struct DiffEntry {
     pub diff: String,
     pub is_binary: bool,
     #[serde(default)]
+    pub is_image: bool,
+    #[serde(default)]
     pub is_submodule: bool,
     #[serde(default)]
     pub submodule_old_oid: Option<String>,

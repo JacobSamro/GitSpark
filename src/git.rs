@@ -283,12 +283,14 @@ impl GitClient {
             };
 
             let submodule = submodule_diff_metadata(&diff_output);
+            let is_image = path_is_supported_image(&file);
             let is_binary = !submodule.is_submodule && looks_binary_diff(&diff_output);
 
             diffs.push(DiffEntry {
                 path: file,
                 diff: diff_output,
                 is_binary,
+                is_image,
                 is_submodule: submodule.is_submodule,
                 submodule_old_oid: submodule.old_oid,
                 submodule_new_oid: submodule.new_oid,
@@ -1945,7 +1947,9 @@ impl GitClient {
                         &change.path,
                     ],
                 )?;
+                let is_image = path_is_supported_image(&change.path);
                 let submodule = submodule_diff_metadata(&diff);
+                let is_binary = !submodule.is_submodule && looks_binary_diff(&diff);
                 Ok(DiffEntry {
                     path: change.path.clone(),
                     diff: if diff.trim().is_empty() {
@@ -1953,7 +1957,8 @@ impl GitClient {
                     } else {
                         diff
                     },
-                    is_binary: false,
+                    is_binary,
+                    is_image,
                     is_submodule: submodule.is_submodule,
                     submodule_old_oid: submodule.old_oid,
                     submodule_new_oid: submodule.new_oid,
@@ -2020,6 +2025,7 @@ impl GitClient {
                 .unwrap_or(false);
         }
 
+        let is_image = path_is_supported_image(&change.path);
         let is_binary = !submodule.is_submodule
             && (looks_binary_diff(&combined)
                 || self
@@ -2048,6 +2054,7 @@ impl GitClient {
             path: change.path.clone(),
             diff: diff_text,
             is_binary,
+            is_image,
             is_submodule: submodule.is_submodule,
             submodule_old_oid: submodule.old_oid,
             submodule_new_oid: submodule.new_oid,
@@ -2066,6 +2073,7 @@ impl GitClient {
                 path: relative_path.to_string(),
                 diff: "Binary file added".to_string(),
                 is_binary: true,
+                is_image: path_is_supported_image(relative_path),
                 ..Default::default()
             });
         }
@@ -2086,6 +2094,7 @@ impl GitClient {
             path: relative_path.to_string(),
             diff,
             is_binary: false,
+            is_image: path_is_supported_image(relative_path),
             ..Default::default()
         })
     }
@@ -3594,6 +3603,41 @@ fn clean_git_ref_name(name: String) -> String {
 
 fn looks_binary_diff(diff: &str) -> bool {
     diff.contains("Binary files") || diff.contains("GIT binary patch")
+}
+
+fn path_is_supported_image(path: &str) -> bool {
+    let Some(extension) = std::path::Path::new(path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+    else {
+        return false;
+    };
+
+    matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "avif"
+            | "jpg"
+            | "jpeg"
+            | "png"
+            | "gif"
+            | "webp"
+            | "tif"
+            | "tiff"
+            | "tga"
+            | "dds"
+            | "bmp"
+            | "ico"
+            | "hdr"
+            | "exr"
+            | "pbm"
+            | "pam"
+            | "ppm"
+            | "pgm"
+            | "ff"
+            | "farbfeld"
+            | "qoi"
+            | "svg"
+    )
 }
 
 #[derive(Default)]

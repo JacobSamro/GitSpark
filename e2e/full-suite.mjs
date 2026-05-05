@@ -6,6 +6,7 @@ import { testConflictFlows } from "./suites/conflict-flows.mjs";
 import { testDiffOptions } from "./suites/diff-options.mjs";
 import { testFileOperationEdgeCases } from "./suites/file-edge-cases.mjs";
 import { testGithubEnterpriseUrlBehavior } from "./suites/github-url-behavior.mjs";
+import { testImageDiffPreview } from "./suites/image-diff.mjs";
 import { testKeyboardFocusPaths } from "./suites/keyboard-focus.mjs";
 import {
   testMenuStateWithRepository,
@@ -81,6 +82,7 @@ try {
   await testConflictFlows(app, fixture);
   await testDiffOptions(app);
   await testBinaryDiffFallback(app);
+  await testImageDiffPreview(app);
   await testSubmoduleDiff(app);
   await testCompareEdgeCases(app);
   await testCreateCloneRepositoryWorkflows(app);

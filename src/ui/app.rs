@@ -169,7 +169,7 @@ pub(crate) enum PublishField {
 // App state
 // ---------------------------------------------------------------------------
 
-/// Sender wrapper that sets an atomic flag before sending,
+/// Sender wrapper that sets an atomic flag after queueing,
 /// so the poll timer can skip acquiring the app lock when idle.
 #[derive(Clone)]
 pub(crate) struct NotifySender {
@@ -179,8 +179,8 @@ pub(crate) struct NotifySender {
 
 impl NotifySender {
     pub(crate) fn send(&self, event: AppEvent) {
-        self.pending.store(true, Ordering::Release);
         let _ = self.tx.send(event);
+        self.pending.store(true, Ordering::Release);
     }
 }
 

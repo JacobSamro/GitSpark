@@ -2588,6 +2588,7 @@ impl GitSparkApp {
 
     fn adopt_snapshot(&mut self, snapshot: RepoSnapshot) {
         let previous_commit = self.selection.selected_commit.clone();
+        let previous_commit_file = self.selection.selected_commit_file.clone();
         let previous_branch = self
             .repo
             .snapshot
@@ -2648,18 +2649,27 @@ impl GitSparkApp {
         self.repo.snapshot = Some(snapshot);
         self.reconcile_commit_inclusions(&changed_paths);
 
-        let next_selected_commit = self.repo.snapshot.as_ref().and_then(|repo| {
-            previous_commit
-                .filter(|oid| repo.history.iter().any(|commit| commit.oid == *oid))
-                .or_else(|| repo.history.first().map(|commit| commit.oid.clone()))
-        });
-
-        self.selection.selected_commit = next_selected_commit.clone();
-        self.selection.selected_commit_file = None;
         self.selection.commit_diffs = None;
 
-        if let Some(oid) = next_selected_commit {
-            self.load_commit_diff(oid);
+        if let Some(comparison) = self.repo.comparison.as_ref() {
+            self.selection.selected_commit =
+                comparison.commits.first().map(|commit| commit.oid.clone());
+            self.selection.selected_commit_file = previous_commit_file
+                .filter(|path| comparison.diffs.iter().any(|diff| diff.path == *path))
+                .or_else(|| comparison.diffs.first().map(|diff| diff.path.clone()));
+        } else {
+            let next_selected_commit = self.repo.snapshot.as_ref().and_then(|repo| {
+                previous_commit
+                    .filter(|oid| repo.history.iter().any(|commit| commit.oid == *oid))
+                    .or_else(|| repo.history.first().map(|commit| commit.oid.clone()))
+            });
+
+            self.selection.selected_commit = next_selected_commit.clone();
+            self.selection.selected_commit_file = None;
+
+            if let Some(oid) = next_selected_commit {
+                self.load_commit_diff(oid);
+            }
         }
     }
 
