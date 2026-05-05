@@ -17,7 +17,20 @@ export async function testDiffOptions(app) {
     (snapshot) =>
       snapshot.selected_change === "code.txt" &&
       snapshot.selected_diff_visible_line_count > 0 &&
+      nodeById(snapshot.test_tree, "diff-option-side-by-side")?.selected ===
+        false &&
       nodeById(snapshot.test_tree, "diff-option-hide-whitespace")?.selected === false,
+    { timeoutMs: 10_000 },
+  );
+
+  await app.getByTestId("diff-option-side-by-side").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.diff_show_side_by_side === true &&
+      nodeById(snapshot.test_tree, "diff-option-side-by-side")?.selected ===
+        true &&
+      snapshot.selected_diff_visible_line_count ===
+        before.selected_diff_visible_line_count,
     { timeoutMs: 10_000 },
   );
 
@@ -25,6 +38,7 @@ export async function testDiffOptions(app) {
   const hidden = await app.waitForSnapshot(
     (snapshot) =>
       snapshot.diff_hide_whitespace_changes === true &&
+      snapshot.diff_show_side_by_side === true &&
       nodeById(snapshot.test_tree, "diff-option-hide-whitespace")?.selected === true &&
       snapshot.selected_diff_visible_line_count <
         before.selected_diff_visible_line_count,
@@ -42,6 +56,15 @@ export async function testDiffOptions(app) {
       snapshot.diff_hide_whitespace_changes === false &&
       snapshot.selected_diff_visible_line_count ===
         before.selected_diff_visible_line_count,
+    { timeoutMs: 10_000 },
+  );
+
+  await app.getByTestId("diff-option-side-by-side").click();
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.diff_show_side_by_side === false &&
+      nodeById(snapshot.test_tree, "diff-option-side-by-side")?.selected ===
+        false,
     { timeoutMs: 10_000 },
   );
 }

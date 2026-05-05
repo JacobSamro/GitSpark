@@ -3333,6 +3333,7 @@ impl GitSparkApp {
                                     selected_file,
                                     selected_diff,
                                     self.nav.diff_options.hide_whitespace_changes,
+                                    self.nav.diff_options.show_side_by_side,
                                     None, // History diffs are read-only, no expand controls
                                 ),
                             )),
@@ -3347,6 +3348,7 @@ impl GitSparkApp {
                         selected_file,
                         selected_diff,
                         self.nav.diff_options.hide_whitespace_changes,
+                        self.nav.diff_options.show_side_by_side,
                         Some(&view),
                     )),
                 )

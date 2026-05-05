@@ -1879,6 +1879,11 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    pub fn toggle_side_by_side_diff(&mut self, cx: &mut Context<Self>) {
+        self.nav.diff_options.show_side_by_side = !self.nav.diff_options.show_side_by_side;
+        cx.notify();
+    }
+
     /// Re-fetch the diff for a single file in the working directory.
     pub fn refresh_file_diff(&mut self, file_path: String) {
         let Some(path) = self.repo_path().map(PathBuf::from) else {

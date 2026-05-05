@@ -953,6 +953,7 @@ fn add_hunk_context_menu(
 fn render_diff_header(
     file_path: &str,
     hide_whitespace_changes: bool,
+    show_side_by_side: bool,
     view: Option<&Entity<GitSparkApp>>,
 ) -> Div {
     let mut header = h_flex()
@@ -974,7 +975,44 @@ fn render_diff_header(
         );
 
     if let Some(vh) = view {
-        let vh_click = vh.clone();
+        let vh_split = vh.clone();
+        header = header.child(
+            h_flex()
+                .id("diff-option-side-by-side")
+                .h(z(24.0))
+                .px(z(10.0))
+                .mr(z(8.0))
+                .items_center()
+                .justify_center()
+                .rounded(z(theme::CORNER_RADIUS_SM))
+                .border_1()
+                .border_color(if show_side_by_side {
+                    theme::accent()
+                } else {
+                    theme::border()
+                })
+                .bg(if show_side_by_side {
+                    theme::toolbar_hover_bg()
+                } else {
+                    theme::surface_bg()
+                })
+                .text_size(z(11.0))
+                .text_color(if show_side_by_side {
+                    theme::text_main()
+                } else {
+                    theme::text_muted()
+                })
+                .cursor_pointer()
+                .hover(|style| style.bg(theme::toolbar_hover_bg()))
+                .child("Split")
+                .on_click(move |_evt, _win, cx| {
+                    vh_split.update(cx, |app, cx| {
+                        app.toggle_side_by_side_diff(cx);
+                    });
+                }),
+        );
+
+        let vh_whitespace = vh.clone();
         header = header.child(
             h_flex()
                 .id("diff-option-hide-whitespace")
@@ -1004,7 +1042,7 @@ fn render_diff_header(
                 .hover(|style| style.bg(theme::toolbar_hover_bg()))
                 .child("Hide whitespace")
                 .on_click(move |_evt, _win, cx| {
-                    vh_click.update(cx, |app, cx| {
+                    vh_whitespace.update(cx, |app, cx| {
                         app.toggle_hide_whitespace_changes(cx);
                     });
                 }),
@@ -1039,11 +1077,14 @@ pub fn render_workspace(
     selected_file: Option<&str>,
     diff: Option<&DiffEntry>,
     hide_whitespace_changes: bool,
+    show_side_by_side: bool,
     view: Option<&Entity<GitSparkApp>>,
 ) -> Div {
     let Some(file_path) = selected_file else {
         return render_empty_state();
     };
+    let diff_options_view = view
+        .filter(|_| diff.is_some_and(|entry| !entry.is_binary && !entry.diff.trim().is_empty()));
 
     let diff_content: AnyElement = match diff {
         Some(entry) if entry.is_binary => div()
@@ -1078,25 +1119,34 @@ pub fn render_workspace(
             let file_line_count = entry.file_contents.as_ref().map(|c| c.len()).unwrap_or(0);
             let expansion_types = compute_expansion_types(&hunk_bounds, file_line_count);
 
-            let mut scroll_content = div().flex().flex_col().w_full();
+            let mut scroll_content = if show_side_by_side {
+                crate::ui::side_by_side_diff::render_side_by_side_diff(
+                    &entry.diff,
+                    hide_whitespace_changes,
+                )
+            } else {
+                div().flex().flex_col().w_full()
+            };
             let mut hunk_index = 0usize;
-            for line in &visible_lines {
-                if matches!(line.kind, DiffLineKind::HunkHeader) {
-                    let exp_type = expansion_types
-                        .get(hunk_index)
-                        .copied()
-                        .unwrap_or(ExpansionType::None);
-                    scroll_content = scroll_content.child(render_hunk_header(
-                        line,
-                        hunk_index,
-                        exp_type,
-                        file_path,
-                        view,
-                        entry.original_diff.is_some(),
-                    ));
-                    hunk_index += 1;
-                } else {
-                    scroll_content = scroll_content.child(render_diff_line(line));
+            if !show_side_by_side {
+                for line in &visible_lines {
+                    if matches!(line.kind, DiffLineKind::HunkHeader) {
+                        let exp_type = expansion_types
+                            .get(hunk_index)
+                            .copied()
+                            .unwrap_or(ExpansionType::None);
+                        scroll_content = scroll_content.child(render_hunk_header(
+                            line,
+                            hunk_index,
+                            exp_type,
+                            file_path,
+                            view,
+                            entry.original_diff.is_some(),
+                        ));
+                        hunk_index += 1;
+                    } else {
+                        scroll_content = scroll_content.child(render_diff_line(line));
+                    }
                 }
             }
 
@@ -1115,7 +1165,7 @@ pub fn render_workspace(
             }
 
             // Expand-down row after the last hunk if file has more lines
-            if let Some(last_bounds) = hunk_bounds.last() {
+            if !show_side_by_side && let Some(last_bounds) = hunk_bounds.last() {
                 let last_end = last_bounds.new_start + last_bounds.new_count;
                 if last_end <= file_line_count && entry.file_contents.is_some() {
                     if let Some(vh) = view {
@@ -1196,7 +1246,12 @@ pub fn render_workspace(
         .min_h_0()
         .items_start()
         .bg(theme::bg())
-        .child(render_diff_header(file_path, hide_whitespace_changes, view))
+        .child(render_diff_header(
+            file_path,
+            hide_whitespace_changes,
+            show_side_by_side,
+            diff_options_view,
+        ))
         .child(diff_content)
 }
 

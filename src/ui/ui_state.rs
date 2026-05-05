@@ -165,6 +165,7 @@ impl Default for NavState {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DiffViewOptions {
     pub hide_whitespace_changes: bool,
+    pub show_side_by_side: bool,
 }
 
 #[derive(Clone, Copy, Default)]

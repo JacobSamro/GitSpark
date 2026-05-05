@@ -1,0 +1,276 @@
+use gpui::*;
+use gpui_component::{h_flex, v_flex};
+
+use crate::ui::theme;
+use crate::ui::theme::z;
+
+#[derive(Clone)]
+struct RawDiffLine {
+    is_add: bool,
+    is_del: bool,
+    content: String,
+    old_line: Option<usize>,
+    new_line: Option<usize>,
+}
+
+#[derive(Clone)]
+enum SideBySideRow {
+    Hunk(String),
+    Pair {
+        old_line: Option<usize>,
+        old_text: Option<String>,
+        old_is_deleted: bool,
+        new_line: Option<usize>,
+        new_text: Option<String>,
+        new_is_added: bool,
+    },
+}
+
+pub fn render_side_by_side_diff(diff_text: &str, hide_whitespace_changes: bool) -> Div {
+    let rows = side_by_side_rows(diff_text, hide_whitespace_changes);
+    let mut content = v_flex().w_full();
+
+    for (ix, row) in rows.iter().enumerate() {
+        content = content.child(render_side_by_side_row(row, ix));
+    }
+
+    content
+}
+
+fn side_by_side_rows(diff_text: &str, hide_whitespace_changes: bool) -> Vec<SideBySideRow> {
+    let raw = parse_raw_diff(diff_text);
+    let mut rows = Vec::new();
+    let mut index = 0usize;
+    let mut hunk_index = 0usize;
+
+    while index < raw.len() {
+        match &raw[index] {
+            None => {
+                if let Some(header) = hunk_header_at(diff_text, hunk_index) {
+                    rows.push(SideBySideRow::Hunk(header));
+                }
+                hunk_index += 1;
+                index += 1;
+            }
+            Some(line) if line.is_del => {
+                let del_start = index;
+                while index < raw.len() && raw[index].as_ref().is_some_and(|line| line.is_del) {
+                    index += 1;
+                }
+                let add_start = index;
+                while index < raw.len() && raw[index].as_ref().is_some_and(|line| line.is_add) {
+                    index += 1;
+                }
+
+                let deleted = raw[del_start..add_start]
+                    .iter()
+                    .filter_map(Option::as_ref)
+                    .collect::<Vec<_>>();
+                let added = raw[add_start..index]
+                    .iter()
+                    .filter_map(Option::as_ref)
+                    .collect::<Vec<_>>();
+
+                if hide_whitespace_changes
+                    && deleted.len() == added.len()
+                    && deleted.iter().zip(added.iter()).all(|(old, new)| {
+                        whitespace_normalized(&old.content) == whitespace_normalized(&new.content)
+                    })
+                {
+                    continue;
+                }
+
+                let len = deleted.len().max(added.len());
+                for ix in 0..len {
+                    let old = deleted.get(ix);
+                    let new = added.get(ix);
+                    rows.push(SideBySideRow::Pair {
+                        old_line: old.and_then(|line| line.old_line),
+                        old_text: old.map(|line| line.content.clone()),
+                        old_is_deleted: old.is_some(),
+                        new_line: new.and_then(|line| line.new_line),
+                        new_text: new.map(|line| line.content.clone()),
+                        new_is_added: new.is_some(),
+                    });
+                }
+            }
+            Some(line) if line.is_add => {
+                rows.push(SideBySideRow::Pair {
+                    old_line: None,
+                    old_text: None,
+                    old_is_deleted: false,
+                    new_line: line.new_line,
+                    new_text: Some(line.content.clone()),
+                    new_is_added: true,
+                });
+                index += 1;
+            }
+            Some(line) => {
+                rows.push(SideBySideRow::Pair {
+                    old_line: line.old_line,
+                    old_text: Some(line.content.clone()),
+                    old_is_deleted: false,
+                    new_line: line.new_line,
+                    new_text: Some(line.content.clone()),
+                    new_is_added: false,
+                });
+                index += 1;
+            }
+        }
+    }
+
+    rows
+}
+
+fn parse_raw_diff(diff_text: &str) -> Vec<Option<RawDiffLine>> {
+    let mut raw = Vec::new();
+    let mut old_num = 0usize;
+    let mut new_num = 0usize;
+
+    for line in diff_text.lines() {
+        if line.starts_with("@@") {
+            if let Some((old_start, new_start)) = parse_hunk_starts(line) {
+                old_num = old_start;
+                new_num = new_start;
+            }
+            raw.push(None);
+        } else if line.starts_with("diff --git")
+            || line.starts_with("index ")
+            || line.starts_with("+++")
+            || line.starts_with("---")
+        {
+            continue;
+        } else if let Some(content) = line.strip_prefix('+') {
+            raw.push(Some(RawDiffLine {
+                is_add: true,
+                is_del: false,
+                content: content.to_string(),
+                old_line: None,
+                new_line: Some(new_num),
+            }));
+            new_num += 1;
+        } else if let Some(content) = line.strip_prefix('-') {
+            raw.push(Some(RawDiffLine {
+                is_add: false,
+                is_del: true,
+                content: content.to_string(),
+                old_line: Some(old_num),
+                new_line: None,
+            }));
+            old_num += 1;
+        } else {
+            let content = line.strip_prefix(' ').unwrap_or(line);
+            raw.push(Some(RawDiffLine {
+                is_add: false,
+                is_del: false,
+                content: content.to_string(),
+                old_line: Some(old_num),
+                new_line: Some(new_num),
+            }));
+            old_num += 1;
+            new_num += 1;
+        }
+    }
+
+    raw
+}
+
+fn hunk_header_at(diff_text: &str, hunk_index: usize) -> Option<String> {
+    diff_text
+        .lines()
+        .filter(|line| line.starts_with("@@"))
+        .nth(hunk_index)
+        .map(ToString::to_string)
+}
+
+fn parse_hunk_starts(line: &str) -> Option<(usize, usize)> {
+    let rest = line.strip_prefix("@@ -")?;
+    let (old_part, rest) = rest.split_once(" +")?;
+    let new_part = rest.split(' ').next()?;
+    let old_start = old_part.split(',').next()?.parse().ok()?;
+    let new_start = new_part.split(',').next()?.parse().ok()?;
+    Some((old_start, new_start))
+}
+
+fn render_side_by_side_row(row: &SideBySideRow, index: usize) -> AnyElement {
+    match row {
+        SideBySideRow::Hunk(text) => h_flex()
+            .id(SharedString::from(format!("side-by-side-hunk-{index}")))
+            .w_full()
+            .h(z(theme::DIFF_ROW_HEIGHT))
+            .flex_shrink_0()
+            .bg(theme::diff_hunk_bg())
+            .items_center()
+            .px(z(8.0))
+            .text_size(z(12.0))
+            .text_color(theme::text_muted())
+            .child(text.clone())
+            .into_any_element(),
+        SideBySideRow::Pair {
+            old_line,
+            old_text,
+            old_is_deleted,
+            new_line,
+            new_text,
+            new_is_added,
+        } => h_flex()
+            .id(SharedString::from(format!("side-by-side-row-{index}")))
+            .w_full()
+            .min_h(z(theme::DIFF_ROW_HEIGHT))
+            .flex_shrink_0()
+            .child(render_line_number(*old_line))
+            .child(render_side_cell(
+                old_text.as_deref(),
+                *old_is_deleted,
+                false,
+            ))
+            .child(render_line_number(*new_line))
+            .child(render_side_cell(new_text.as_deref(), false, *new_is_added))
+            .into_any_element(),
+    }
+}
+
+fn render_line_number(line: Option<usize>) -> Div {
+    div()
+        .w(z(theme::DIFF_LINE_NUM_WIDTH))
+        .flex_shrink_0()
+        .h_full()
+        .px(z(6.0))
+        .text_align(gpui::TextAlign::Right)
+        .text_size(z(12.0))
+        .text_color(theme::line_num_color())
+        .child(line.map(|line| line.to_string()).unwrap_or_default())
+}
+
+fn render_side_cell(text: Option<&str>, deleted: bool, added: bool) -> Div {
+    let bg = if deleted {
+        theme::diff_del_bg()
+    } else if added {
+        theme::diff_add_bg()
+    } else {
+        theme::bg()
+    };
+    let fg = if deleted {
+        theme::diff_del_fg()
+    } else if added {
+        theme::diff_add_fg()
+    } else {
+        theme::text_main()
+    };
+
+    div()
+        .flex_1()
+        .min_w_0()
+        .min_h(z(theme::DIFF_ROW_HEIGHT))
+        .px(z(10.0))
+        .py(z(4.0))
+        .bg(bg)
+        .text_size(z(12.0))
+        .font_family("SF Mono, Monaco, Menlo, Consolas, monospace")
+        .text_color(fg)
+        .child(text.unwrap_or("").to_string())
+}
+
+fn whitespace_normalized(value: &str) -> String {
+    value.chars().filter(|ch| !ch.is_whitespace()).collect()
+}

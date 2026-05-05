@@ -377,6 +377,7 @@ struct AutomationSnapshot {
     selected_commit: Option<String>,
     selected_commit_file: Option<String>,
     diff_hide_whitespace_changes: bool,
+    diff_show_side_by_side: bool,
     selected_diff_visible_line_count: Option<usize>,
     show_settings: bool,
     show_repo_selector: bool,
@@ -554,6 +555,7 @@ enum AutomationNodeAction {
     SelectCommit(String),
     SelectTab(SidebarTab),
     OpenSelectedBinaryWithDefaultProgram,
+    ToggleSideBySideDiff,
     ToggleHideWhitespaceChanges,
     SetBranchFilter,
     SetCommitBody,
@@ -924,6 +926,7 @@ impl GitSparkApp {
             selected_commit: self.selection.selected_commit.clone(),
             selected_commit_file: self.selection.selected_commit_file.clone(),
             diff_hide_whitespace_changes: self.nav.diff_options.hide_whitespace_changes,
+            diff_show_side_by_side: self.nav.diff_options.show_side_by_side,
             selected_diff_visible_line_count: self.selected_diff().map(|diff| {
                 crate::ui::workspace::visible_diff_line_count(
                     &diff.diff,
@@ -1132,6 +1135,19 @@ impl GitSparkApp {
                 Some(AutomationNodeAction::SetBranchFilter),
             )
             .visible(self.nav.show_branch_selector),
+            automation_node(
+                "diff-option-side-by-side",
+                AutomationRole::Button,
+                Some("diff-option-side-by-side"),
+                Some("Split"),
+                Some(AutomationNodeAction::ToggleSideBySideDiff),
+            )
+            .visible(
+                self.nav.sidebar_tab == SidebarTab::Changes
+                    && self.selection.selected_change.is_some()
+                    && self.selected_diff().is_some_and(|diff| !diff.is_binary),
+            )
+            .selected(self.nav.diff_options.show_side_by_side),
             automation_node(
                 "diff-option-hide-whitespace",
                 AutomationRole::Button,
@@ -2567,6 +2583,9 @@ impl GitSparkApp {
                 }
                 self.open_with_default_program(&path);
                 cx.notify();
+            }
+            AutomationNodeAction::ToggleSideBySideDiff => {
+                self.toggle_side_by_side_diff(cx);
             }
             AutomationNodeAction::ToggleHideWhitespaceChanges => {
                 self.toggle_hide_whitespace_changes(cx);
