@@ -37,7 +37,7 @@ pub fn render_side_by_side_diff(
     file_path: &str,
     diff_text: &str,
     hide_whitespace_changes: bool,
-    selected_lines: &HashSet<DiffLineSelection>,
+    excluded_lines: &HashSet<DiffLineSelection>,
     view: Option<&Entity<GitSparkApp>>,
 ) -> Div {
     let rows = side_by_side_rows(file_path, diff_text, hide_whitespace_changes);
@@ -48,7 +48,7 @@ pub fn render_side_by_side_diff(
             row,
             ix,
             hide_whitespace_changes,
-            selected_lines,
+            excluded_lines,
             view,
         ));
     }
@@ -238,7 +238,7 @@ fn render_side_by_side_row(
     row: &SideBySideRow,
     index: usize,
     hide_whitespace_changes: bool,
-    selected_lines: &HashSet<DiffLineSelection>,
+    excluded_lines: &HashSet<DiffLineSelection>,
     view: Option<&Entity<GitSparkApp>>,
 ) -> AnyElement {
     match row {
@@ -276,7 +276,7 @@ fn render_side_by_side_row(
                 old_target.as_ref().filter(|_| !hide_whitespace_changes),
                 old_target
                     .as_ref()
-                    .is_some_and(|target| selected_lines.contains(target)),
+                    .is_some_and(|target| !excluded_lines.contains(target)),
                 view,
             ))
             .child(render_side_segment(
@@ -287,7 +287,7 @@ fn render_side_by_side_row(
                 new_target.as_ref().filter(|_| !hide_whitespace_changes),
                 new_target
                     .as_ref()
-                    .is_some_and(|target| selected_lines.contains(target)),
+                    .is_some_and(|target| !excluded_lines.contains(target)),
                 view,
             ))
             .into_any_element(),

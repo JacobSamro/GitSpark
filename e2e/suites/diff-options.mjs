@@ -18,6 +18,7 @@ export async function testDiffOptions(app) {
       snapshot.selected_change === "code.txt" &&
       snapshot.selected_diff_visible_line_count > 0 &&
       snapshot.selected_diff_selectable_line_count === 4 &&
+      snapshot.selected_diff_selected_line_count === 4 &&
       nodeById(snapshot.test_tree, "diff-options-menu")?.visible === true,
     { timeoutMs: 10_000 },
   );
@@ -30,16 +31,16 @@ export async function testDiffOptions(app) {
   await app.getByTestId(selectableLine.test_id).click();
   await app.waitForSnapshot(
     (snapshot) =>
-      snapshot.selected_diff_selected_line_count === 1 &&
-      nodeById(snapshot.test_tree, selectableLine.id)?.selected === true,
+      snapshot.selected_diff_selected_line_count === 3 &&
+      nodeById(snapshot.test_tree, selectableLine.id)?.selected === false,
     { timeoutMs: 10_000 },
   );
 
   await app.getByTestId(selectableLine.test_id).click();
   await app.waitForSnapshot(
     (snapshot) =>
-      snapshot.selected_diff_selected_line_count === 0 &&
-      nodeById(snapshot.test_tree, selectableLine.id)?.selected === false,
+      snapshot.selected_diff_selected_line_count === 4 &&
+      nodeById(snapshot.test_tree, selectableLine.id)?.selected === true,
     { timeoutMs: 10_000 },
   );
 
@@ -56,16 +57,16 @@ export async function testDiffOptions(app) {
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.diff_show_side_by_side === true &&
-      snapshot.selected_diff_selected_line_count === 1 &&
-      nodeById(snapshot.test_tree, selectableLine.id)?.selected === true,
+      snapshot.selected_diff_selected_line_count === 3 &&
+      nodeById(snapshot.test_tree, selectableLine.id)?.selected === false,
     { timeoutMs: 10_000 },
   );
   await app.getByTestId(selectableLine.test_id).click();
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.diff_show_side_by_side === true &&
-      snapshot.selected_diff_selected_line_count === 0 &&
-      nodeById(snapshot.test_tree, selectableLine.id)?.selected === false,
+      snapshot.selected_diff_selected_line_count === 4 &&
+      nodeById(snapshot.test_tree, selectableLine.id)?.selected === true,
     { timeoutMs: 10_000 },
   );
 
@@ -106,20 +107,22 @@ export async function testDiffOptions(app) {
     { timeoutMs: 10_000 },
   );
 
-  await app.getByTestId("diff-line-code-txt-deleted-1").click();
-  await app.getByTestId("diff-line-code-txt-added-1").click();
+  await app.getByTestId("diff-line-code-txt-deleted-12").click();
+  await app.getByTestId("diff-line-code-txt-added-12").click();
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.selected_diff_selected_line_count === 2 &&
-      nodeById(snapshot.test_tree, "diff-discard-selected-lines")?.visible === true,
+      nodeById(snapshot.test_tree, "diff-line-code-txt-deleted-12")?.selected === false &&
+      nodeById(snapshot.test_tree, "diff-line-code-txt-added-12")?.selected === false &&
+      nodeById(snapshot.test_tree, "diff-discard-selected-lines")?.visible === false,
     { timeoutMs: 10_000 },
   );
-  await app.getByTestId("input-commit-summary").fill("test: selected lines");
+  await app.getByTestId("input-commit-summary").fill("test: included lines");
   await app.getByTestId("button-commit-all").click();
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.status_message === "Commit created." &&
-      snapshot.selected_diff_selected_line_count === 0 &&
+      snapshot.selected_diff_selected_line_count === 2 &&
       snapshot.selected_diff_selectable_line_count === 2 &&
       snapshot.repo?.changes.some((change) => change.path === "code.txt"),
     { timeoutMs: 15_000 },
@@ -129,34 +132,34 @@ export async function testDiffOptions(app) {
   });
   assert(
     committedText.startsWith('        println!("hello");\n'),
-    "line-level commit includes selected replacement",
+    "line-level commit includes gutter-included replacement",
   );
   assert(
     committedText.includes("line 12\n") &&
       !committedText.includes("line 12 changed\n"),
-    "line-level commit leaves unselected replacement out of HEAD",
+    "line-level commit leaves gutter-excluded replacement out of HEAD",
   );
 
-  await app.getByTestId("diff-line-code-txt-deleted-12").click();
-  await app.getByTestId("diff-line-code-txt-added-12").click();
-  await app.getByTestId("diff-discard-selected-lines").click();
+  await app.getByTestId("input-commit-summary").fill("test: remaining lines");
+  await app.getByTestId("button-commit-all").click();
   await app.waitForSnapshot(
     (snapshot) =>
-      snapshot.selected_diff_selected_line_count === 0 &&
+      snapshot.status_message === "Commit created." &&
       snapshot.repo?.changes.length === 0 &&
-      snapshot.status_message === "Discarded 2 selected lines from 'code.txt'." &&
       snapshot.error_message === "",
-    { timeoutMs: 10_000 },
+    { timeoutMs: 15_000 },
   );
 
-  const finalText = await fs.readFile(path.join(repo, "code.txt"), "utf8");
+  const { stdout: finalText } = await exec("git", ["show", "HEAD:code.txt"], {
+    cwd: repo,
+  });
   assert(
     finalText.startsWith('        println!("hello");\n'),
-    "line-level commit keeps selected replacement in the working tree",
+    "second commit keeps first included replacement",
   );
   assert(
-    finalText.includes("line 12\n") && !finalText.includes("line 12 changed\n"),
-    "discard selected lines restores the remaining uncommitted replacement",
+    finalText.includes("line 12 changed\n"),
+    "second commit includes remaining default-included replacement",
   );
 }
 

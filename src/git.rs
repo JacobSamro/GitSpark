@@ -1197,9 +1197,10 @@ impl GitClient {
         self.snapshot(&repo_path)
     }
 
-    pub fn commit_path_content(
+    pub fn commit_paths_with_path_content(
         &self,
         repo_path: &Path,
+        paths: Option<&[String]>,
         relative_path: &str,
         content: &str,
         message: &str,
@@ -1214,13 +1215,46 @@ impl GitClient {
             bail!("commit message cannot be empty");
         }
 
-        let mode = self.index_mode_for_path(&repo_path, relative_path)?;
-        let temp_path = partial_blob_temp_path(&repo_path, relative_path);
+        self.run_git(&repo_path, &["reset", "--mixed", "--quiet", "HEAD"])
+            .context("failed to reset staged changes before committing included lines")?;
+
+        if let Some(paths) = paths {
+            let paths: Vec<&str> = paths
+                .iter()
+                .map(String::as_str)
+                .filter(|path| *path != relative_path)
+                .collect();
+            if !paths.is_empty() {
+                let mut add_args = vec!["add", "--all", "--"];
+                add_args.extend(paths);
+                self.run_git(&repo_path, &add_args)
+                    .context("failed to stage selected files")?;
+            }
+        } else {
+            self.run_git(&repo_path, &["add", "--all"])
+                .context("failed to stage repository changes")?;
+        }
+
+        self.stage_path_content(&repo_path, relative_path, content)?;
+        self.run_git(&repo_path, &["commit", "-m", message])
+            .context("failed to create commit")?;
+
+        self.snapshot(&repo_path)
+    }
+
+    fn stage_path_content(
+        &self,
+        repo_path: &Path,
+        relative_path: &str,
+        content: &str,
+    ) -> Result<()> {
+        let mode = self.index_mode_for_path(repo_path, relative_path)?;
+        let temp_path = partial_blob_temp_path(repo_path, relative_path);
         fs::write(&temp_path, content)
             .with_context(|| format!("failed to write temporary blob '{}'", temp_path.display()))?;
         let blob = self
             .run_git(
-                &repo_path,
+                repo_path,
                 &[
                     "hash-object",
                     "-w",
@@ -1231,19 +1265,15 @@ impl GitClient {
             )
             .map(|blob| blob.trim().to_string());
         let _ = fs::remove_file(&temp_path);
-        let blob = blob.context("failed to write selected lines to the git object database")?;
+        let blob = blob.context("failed to write included lines to the git object database")?;
 
-        self.run_git(&repo_path, &["reset", "--mixed", "--quiet", "HEAD"])
-            .context("failed to reset staged changes before committing selected lines")?;
         self.run_git(
-            &repo_path,
+            repo_path,
             &["update-index", "--cacheinfo", &mode, &blob, relative_path],
         )
-        .with_context(|| format!("failed to stage selected lines for '{relative_path}'"))?;
-        self.run_git(&repo_path, &["commit", "-m", message])
-            .context("failed to create commit")?;
+        .with_context(|| format!("failed to stage included lines for '{relative_path}'"))?;
 
-        self.snapshot(&repo_path)
+        Ok(())
     }
 
     pub fn head_file_text(&self, repo_path: &Path, relative_path: &str) -> Result<String> {

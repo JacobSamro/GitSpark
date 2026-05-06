@@ -958,7 +958,19 @@ impl GitSparkApp {
                     .len()
                 })
                 .unwrap_or(0),
-            selected_diff_selected_line_count: self.selection.selected_diff_lines.len(),
+            selected_diff_selected_line_count: self
+                .selected_diff()
+                .map(|diff| {
+                    crate::ui::workspace::selectable_diff_line_targets(
+                        &diff.path,
+                        &diff.diff,
+                        self.nav.diff_options.hide_whitespace_changes,
+                    )
+                    .into_iter()
+                    .filter(|target| !self.selection.selected_diff_lines.contains(target))
+                    .count()
+                })
+                .unwrap_or(0),
             selected_diff_is_image: self.selected_diff().is_some_and(|diff| diff.is_image),
             selected_diff_is_submodule: self.selected_diff().is_some_and(|diff| diff.is_submodule),
             show_settings: self.nav.show_settings,
@@ -1330,7 +1342,7 @@ impl GitSparkApp {
                 .into_iter()
                 .map(|target| {
                     let id = target.id();
-                    let selected = self.selection.selected_diff_lines.contains(&target);
+                    let selected = !self.selection.selected_diff_lines.contains(&target);
                     automation_node(
                         id.clone(),
                         AutomationRole::ListItem,
@@ -1351,14 +1363,7 @@ impl GitSparkApp {
                 Some("Discard selected lines"),
                 Some(AutomationNodeAction::DiscardSelectedDiffLines),
             )
-            .visible(
-                self.nav.sidebar_tab == SidebarTab::Changes
-                    && self.selection.selected_change.is_some()
-                    && !self.selection.selected_diff_lines.is_empty()
-                    && self.selected_diff().is_some_and(|diff| {
-                        !diff.is_binary && !diff.is_image && !diff.is_submodule
-                    }),
-            ),
+            .visible(false),
         );
 
         if self.nav.show_settings {

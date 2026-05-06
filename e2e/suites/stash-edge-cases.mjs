@@ -19,6 +19,7 @@ export async function testStashEdgeCases(app) {
 
   await fs.writeFile(path.join(repo, "main-only.txt"), "main stash one\n");
   await app.command({ command: "refresh_repo" });
+  await waitForChanges(app, ["main-only.txt"]);
   await app.command({ command: "stash_all" });
   await app.getByTestId("stash-changes-confirm").click();
   await app.waitForSnapshot(
@@ -28,6 +29,7 @@ export async function testStashEdgeCases(app) {
 
   await fs.writeFile(path.join(repo, "main-only.txt"), "main stash replacement\n");
   await app.command({ command: "refresh_repo" });
+  await waitForChanges(app, ["main-only.txt"]);
   await app.command({ command: "stash_all" });
   await app.waitForSnapshot(
     (snapshot) =>
@@ -63,6 +65,7 @@ export async function testStashEdgeCases(app) {
   );
   await fs.writeFile(path.join(repo, "feature-only.txt"), "feature stash\n");
   await app.command({ command: "refresh_repo" });
+  await waitForChanges(app, ["feature-only.txt"]);
   await app.command({ command: "stash_all" });
   await app.getByTestId("stash-changes-confirm").click();
   await app.waitForSnapshot(
@@ -115,6 +118,7 @@ export async function testStashEdgeCases(app) {
   await fs.writeFile(path.join(repo, "multi-a.txt"), "multi a\n");
   await fs.writeFile(path.join(repo, "multi-b.txt"), "multi b\n");
   await app.command({ command: "refresh_repo" });
+  await waitForChanges(app, ["multi-a.txt", "multi-b.txt"]);
   await app.command({ command: "stash_all" });
   await app.getByTestId("stash-changes-confirm").click();
   await app.waitForSnapshot(
@@ -190,6 +194,16 @@ async function makeStashRepo() {
   await exec("git", ["commit", "-m", "initial"], { cwd: repo });
   await exec("git", ["branch", "feature/stash"], { cwd: repo });
   return await fs.realpath(repo);
+}
+
+async function waitForChanges(app, paths) {
+  await app.waitForSnapshot(
+    (snapshot) =>
+      paths.every((path) =>
+        snapshot.repo?.changes.some((change) => change.path === path),
+      ),
+    { timeoutMs: 10_000 },
+  );
 }
 
 async function testStashPopConflict(app) {

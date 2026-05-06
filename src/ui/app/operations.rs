@@ -1494,7 +1494,8 @@ impl GitSparkApp {
         };
         let summary_for_event = summary;
         let included_paths = self.included_commit_paths();
-        let selected_line_diff = if self.selection.selected_diff_lines.is_empty() {
+        let excluded_lines = self.selection.selected_diff_lines.clone();
+        let partial_line_diff = if excluded_lines.is_empty() {
             None
         } else {
             let Some(diff) = self.selected_diff().cloned() else {
@@ -1508,14 +1509,22 @@ impl GitSparkApp {
             }
             Some(diff)
         };
-        let selected_lines = self.selection.selected_diff_lines.clone();
+        let included_lines = partial_line_diff
+            .as_ref()
+            .map(|diff| {
+                crate::ui::workspace::selectable_diff_line_targets(&diff.path, &diff.diff, false)
+                    .into_iter()
+                    .filter(|target| !excluded_lines.contains(target))
+                    .collect::<std::collections::HashSet<_>>()
+            })
+            .unwrap_or_default();
 
         self.messages.status_message = "Creating commit...".to_string();
         self.messages.error_message.clear();
         let tx = self.event_tx.clone();
         let git = GitClient::new();
         thread::spawn(move || {
-            let res = if let Some(diff) = selected_line_diff {
+            let res = if let Some(diff) = partial_line_diff {
                 git.head_file_text(&path, &diff.path)
                     .map_err(|e| e.to_string())
                     .and_then(|base_text| {
@@ -1523,12 +1532,18 @@ impl GitSparkApp {
                             &diff.path,
                             &diff.diff,
                             &base_text,
-                            &selected_lines,
+                            &included_lines,
                         )
                     })
                     .and_then(|selected_content| {
-                        git.commit_path_content(&path, &diff.path, &selected_content, &message)
-                            .map_err(|e| e.to_string())
+                        git.commit_paths_with_path_content(
+                            &path,
+                            included_paths.as_deref(),
+                            &diff.path,
+                            &selected_content,
+                            &message,
+                        )
+                        .map_err(|e| e.to_string())
                     })
             } else if let Some(paths) = included_paths {
                 git.commit_paths(&path, &paths, &message)

@@ -627,7 +627,7 @@ fn render_diff_line(
     file_path: &str,
     line: &DiffLine,
     view: Option<&Entity<GitSparkApp>>,
-    selected_lines: &HashSet<DiffLineSelection>,
+    excluded_lines: &HashSet<DiffLineSelection>,
     hide_whitespace_changes: bool,
 ) -> Stateful<Div> {
     let mut row = h_flex()
@@ -640,9 +640,9 @@ fn render_diff_line(
         .py(z(2.0)); // match GitHub Desktop: padding 2px 0
 
     let selection_target = diff_line_selection_target(file_path, line);
-    let line_selected = selection_target
+    let line_included = selection_target
         .as_ref()
-        .is_some_and(|target| selected_lines.contains(target));
+        .is_some_and(|target| !excluded_lines.contains(target));
 
     let selectable = selection_target.is_some() && !hide_whitespace_changes;
 
@@ -659,7 +659,7 @@ fn render_diff_line(
         });
     }
 
-    row = row.child(render_unified_line_gutter(line, line_selected, selectable));
+    row = row.child(render_unified_line_gutter(line, line_included, selectable));
 
     // Content — varies by line kind
     match &line.kind {
@@ -1069,7 +1069,6 @@ fn add_hunk_context_menu(
 fn render_diff_header(
     file_path: &str,
     is_image: bool,
-    selected_line_count: usize,
     view: Option<&Entity<GitSparkApp>>,
     diff_options_view: Option<&Entity<GitSparkApp>>,
 ) -> Div {
@@ -1123,19 +1122,6 @@ fn render_diff_header(
     }
 
     if let Some(vh) = diff_options_view {
-        if selected_line_count > 0 {
-            let discard_view = vh.clone();
-            header = header.child(diff_header_button(
-                "diff-discard-selected-lines",
-                "Discard selected lines",
-                move |_evt, _win, cx| {
-                    discard_view.update(cx, |app, cx| {
-                        app.discard_selected_diff_lines(cx);
-                    });
-                },
-            ));
-        }
-
         let menu_view = vh.clone();
         header = header.child(diff_header_button(
             "diff-options-menu",
@@ -1298,7 +1284,7 @@ pub fn render_workspace(
     hide_whitespace_changes: bool,
     show_side_by_side: bool,
     show_diff_options_menu: bool,
-    selected_lines: &HashSet<DiffLineSelection>,
+    excluded_lines: &HashSet<DiffLineSelection>,
     view: Option<&Entity<GitSparkApp>>,
 ) -> Div {
     let Some(file_path) = selected_file else {
@@ -1366,7 +1352,7 @@ pub fn render_workspace(
                     file_path,
                     &entry.diff,
                     hide_whitespace_changes,
-                    selected_lines,
+                    excluded_lines,
                     view,
                 )
             } else {
@@ -1394,7 +1380,7 @@ pub fn render_workspace(
                             file_path,
                             line,
                             view,
-                            selected_lines,
+                            excluded_lines,
                             hide_whitespace_changes,
                         ));
                     }
@@ -1501,7 +1487,6 @@ pub fn render_workspace(
         .child(render_diff_header(
             file_path,
             diff.is_some_and(|entry| entry.is_image),
-            selected_lines.len(),
             view,
             diff_options_view,
         ))
