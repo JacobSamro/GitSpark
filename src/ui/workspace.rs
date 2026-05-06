@@ -628,6 +628,7 @@ fn render_diff_line(
     line: &DiffLine,
     view: Option<&Entity<GitSparkApp>>,
     selected_lines: &HashSet<DiffLineSelection>,
+    hide_whitespace_changes: bool,
 ) -> Stateful<Div> {
     let mut row = h_flex()
         .id(SharedString::from(diff_row_id(file_path, line)))
@@ -643,7 +644,11 @@ fn render_diff_line(
         .as_ref()
         .is_some_and(|target| selected_lines.contains(target));
 
-    if let (Some(target), Some(vh)) = (selection_target.clone(), view) {
+    let selectable = selection_target.is_some() && !hide_whitespace_changes;
+
+    if let (Some(target), Some(vh)) = (selection_target.clone(), view)
+        && selectable
+    {
         let target_for_click = target.clone();
         let toggle_view = vh.clone();
         row = row.cursor_pointer().on_click(move |_evt, _win, cx| {
@@ -654,11 +659,7 @@ fn render_diff_line(
         });
     }
 
-    row = row.child(render_unified_line_gutter(
-        line,
-        line_selected,
-        selection_target.is_some(),
-    ));
+    row = row.child(render_unified_line_gutter(line, line_selected, selectable));
 
     // Content — varies by line kind
     match &line.kind {
@@ -800,32 +801,19 @@ fn render_unified_selection_mark(selected: bool, selectable: bool) -> Div {
         return div().w(z(20.0)).flex_shrink_0();
     }
 
-    div()
+    let mark = div()
         .w(z(20.0))
         .flex_shrink_0()
         .items_center()
-        .justify_center()
-        .child(
-            div()
-                .size(z(13.0))
-                .items_center()
-                .justify_center()
-                .rounded(z(3.0))
-                .border_1()
-                .border_color(if selected {
-                    theme::text_main()
-                } else {
-                    theme::line_num_color()
-                })
-                .bg(if selected {
-                    theme::diff_selected_bg()
-                } else {
-                    gpui::transparent_black()
-                })
-                .text_size(z(10.0))
-                .text_color(theme::text_main())
-                .child(if selected { "✓" } else { "" }),
-        )
+        .justify_center();
+
+    if selected {
+        mark.text_size(z(11.0))
+            .text_color(theme::text_main())
+            .child("✓")
+    } else {
+        mark
+    }
 }
 
 /// Render a hunk header row. The entire row is clickable to expand.
@@ -1407,6 +1395,7 @@ pub fn render_workspace(
                             line,
                             view,
                             selected_lines,
+                            hide_whitespace_changes,
                         ));
                     }
                 }
@@ -1539,8 +1528,12 @@ pub(crate) fn selectable_diff_line_targets(
     diff_text: &str,
     hide_whitespace_changes: bool,
 ) -> Vec<DiffLineSelection> {
+    if hide_whitespace_changes {
+        return Vec::new();
+    }
+
     let parsed = parse_diff(diff_text);
-    visible_diff_lines(&parsed, hide_whitespace_changes)
+    visible_diff_lines(&parsed, false)
         .iter()
         .filter_map(|line| diff_line_selection_target(file_path, line))
         .collect()

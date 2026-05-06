@@ -76,7 +76,9 @@ export async function testDiffOptions(app) {
       snapshot.diff_hide_whitespace_changes === true &&
       snapshot.diff_show_side_by_side === true &&
       snapshot.selected_diff_visible_line_count <
-        before.selected_diff_visible_line_count,
+        before.selected_diff_visible_line_count &&
+      snapshot.selected_diff_selectable_line_count === 0 &&
+      snapshot.selected_diff_selected_line_count === 0,
     { timeoutMs: 10_000 },
   );
 

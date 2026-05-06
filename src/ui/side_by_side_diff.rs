@@ -44,7 +44,13 @@ pub fn render_side_by_side_diff(
     let mut content = v_flex().w_full();
 
     for (ix, row) in rows.iter().enumerate() {
-        content = content.child(render_side_by_side_row(row, ix, selected_lines, view));
+        content = content.child(render_side_by_side_row(
+            row,
+            ix,
+            hide_whitespace_changes,
+            selected_lines,
+            view,
+        ));
     }
 
     content
@@ -231,6 +237,7 @@ fn parse_hunk_starts(line: &str) -> Option<(usize, usize)> {
 fn render_side_by_side_row(
     row: &SideBySideRow,
     index: usize,
+    hide_whitespace_changes: bool,
     selected_lines: &HashSet<DiffLineSelection>,
     view: Option<&Entity<GitSparkApp>>,
 ) -> AnyElement {
@@ -266,7 +273,7 @@ fn render_side_by_side_row(
                 *old_is_deleted,
                 false,
                 *old_line,
-                old_target.as_ref(),
+                old_target.as_ref().filter(|_| !hide_whitespace_changes),
                 old_target
                     .as_ref()
                     .is_some_and(|target| selected_lines.contains(target)),
@@ -277,7 +284,7 @@ fn render_side_by_side_row(
                 false,
                 *new_is_added,
                 *new_line,
-                new_target.as_ref(),
+                new_target.as_ref().filter(|_| !hide_whitespace_changes),
                 new_target
                     .as_ref()
                     .is_some_and(|target| selected_lines.contains(target)),
@@ -416,32 +423,19 @@ fn render_selection_mark(selected: bool, selectable: bool) -> Div {
         return div().w(z(20.0)).flex_shrink_0();
     }
 
-    div()
+    let mark = div()
         .w(z(20.0))
         .flex_shrink_0()
         .items_center()
-        .justify_center()
-        .child(
-            div()
-                .size(z(13.0))
-                .items_center()
-                .justify_center()
-                .rounded(z(3.0))
-                .border_1()
-                .border_color(if selected {
-                    theme::text_main()
-                } else {
-                    theme::line_num_color()
-                })
-                .bg(if selected {
-                    theme::diff_selected_bg()
-                } else {
-                    gpui::transparent_black()
-                })
-                .text_size(z(10.0))
-                .text_color(theme::text_main())
-                .child(if selected { "✓" } else { "" }),
-        )
+        .justify_center();
+
+    if selected {
+        mark.text_size(z(11.0))
+            .text_color(theme::text_main())
+            .child("✓")
+    } else {
+        mark
+    }
 }
 
 fn whitespace_normalized(value: &str) -> String {

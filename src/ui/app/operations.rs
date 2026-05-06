@@ -1567,6 +1567,10 @@ impl GitSparkApp {
         target: DiffLineSelection,
         cx: &mut Context<Self>,
     ) {
+        if self.nav.diff_options.hide_whitespace_changes {
+            return;
+        }
+
         if self.selection.selected_change.as_deref() != Some(target.path.as_str()) {
             self.selection.selected_diff_lines.clear();
         }
@@ -1926,6 +1930,9 @@ impl GitSparkApp {
     pub fn toggle_hide_whitespace_changes(&mut self, cx: &mut Context<Self>) {
         self.nav.diff_options.hide_whitespace_changes =
             !self.nav.diff_options.hide_whitespace_changes;
+        if self.nav.diff_options.hide_whitespace_changes {
+            self.selection.selected_diff_lines.clear();
+        }
         cx.notify();
     }
 
