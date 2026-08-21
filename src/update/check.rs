@@ -295,6 +295,39 @@ mod tests {
         );
     }
 
+    /// Guards the wiring, not the logic.
+    ///
+    /// The key is supplied by `.cargo/config.toml` via `option_env!`, which
+    /// is silent when absent — a typo in that file would leave the updater
+    /// permanently disabled with no error anywhere.
+    #[test]
+    fn the_configured_public_key_is_present_and_well_formed() {
+        use base64::Engine as _;
+        use base64::engine::general_purpose::STANDARD as BASE64;
+
+        let key = update_public_key().expect(
+            "no update public key compiled in — check GITSPARK_UPDATE_PUBLIC_KEY \
+             in .cargo/config.toml",
+        );
+        let bytes = BASE64.decode(key).expect("public key is not valid base64");
+        assert_eq!(bytes.len(), 32, "Ed25519 public keys are 32 bytes");
+
+        // It must also be a usable curve point, not just 32 arbitrary bytes.
+        let array: [u8; 32] = bytes.try_into().unwrap();
+        ed25519_dalek::VerifyingKey::from_bytes(&array)
+            .expect("compiled-in key is not a valid Ed25519 public key");
+    }
+
+    #[test]
+    fn the_configured_base_url_is_absolute_and_https() {
+        // A relative or http URL would silently defeat transport security and
+        // is not something a signature check compensates for.
+        assert!(
+            DEFAULT_UPDATE_BASE_URL.starts_with("https://"),
+            "update base URL must be https, got {DEFAULT_UPDATE_BASE_URL}"
+        );
+    }
+
     #[test]
     fn a_build_without_a_signing_key_refuses_to_check() {
         // Fail closed: with no pinned key there is nothing to verify against,

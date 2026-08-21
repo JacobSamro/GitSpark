@@ -270,3 +270,127 @@ jobs:
               --generate-notes \
               --title "$RELEASE_TAG"
           fi
+
+      # ------------------------------------------------------------------
+      # Signed update manifest
+      #
+      # GitHub Releases stays the binary store; this publishes the signed
+      # index the app actually reads. Clients never consult GitHub's "latest
+      # release" endpoint, which only ever returns the newest NON-prerelease
+      # and is therefore wrong for the beta channel by design.
+      # ------------------------------------------------------------------
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          path: repo
+          fetch-depth: 0
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build manifest signing tool
+        working-directory: repo
+        run: cargo build --release --example update_sign
+
+      - name: Verify the release key matches the key shipped in the app
+        working-directory: repo
+        env:
+          GITSPARK_UPDATE_PRIVATE_KEY: ${{ secrets.GITSPARK_UPDATE_PRIVATE_KEY }}
+          EXPECTED_PUBLIC_KEY: ${{ vars.GITSPARK_UPDATE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          # GitHub secrets are write-only, so this is the only place the pair
+          # can be checked. A mismatch means every client would reject the
+          # manifest — fail here, loudly, rather than shipping a dead update.
+          echo '{}' > /tmp/keycheck.json
+          actual="$(./target/release/examples/update_sign /tmp/keycheck.json 2>&1 \
+            | sed -n 's/^public key: //p')"
+          if [[ -z "$actual" ]]; then
+            echo "signing tool did not report a public key" >&2
+            exit 1
+          fi
+          if [[ "$actual" != "$EXPECTED_PUBLIC_KEY" ]]; then
+            echo "::error::Release private key does not match the public key compiled into the app." >&2
+            echo "  app expects: $EXPECTED_PUBLIC_KEY" >&2
+            echo "  secret is:   $actual" >&2
+            exit 1
+          fi
+          echo "release key matches the shipped public key"
+
+      - name: Generate signed channel manifest
+        working-directory: repo
+        env:
+          GITSPARK_UPDATE_PRIVATE_KEY: ${{ secrets.GITSPARK_UPDATE_PRIVATE_KEY }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+
+          # Tag shape decides the channel: a pre-release identifier means beta.
+          if [[ "$version" == *-* ]]; then channel="beta"; else channel="release"; fi
+          echo "publishing $version to the $channel channel"
+
+          base="https://github.com/${GH_REPO}/releases/download/${RELEASE_TAG}"
+          dist="${GITHUB_WORKSPACE}/dist"
+
+          # Build the assets map from what actually shipped. A platform whose
+          # build failed is simply absent, and the client reports that as a
+          # partial release rather than offering a download that 404s.
+          assets="{}"
+          add_asset() {
+            local key="$1" file="$2"
+            [[ -f "$dist/$file" ]] || { echo "  $key: missing, skipping"; return; }
+            local sum size
+            sum="$(sha256sum "$dist/$file" | cut -d' ' -f1)"
+            size="$(stat -c%s "$dist/$file")"
+            assets="$(jq --arg k "$key" --arg u "$base/$file" --arg s "$sum" --argjson z "$size" \
+              '.[$k] = {url: $u, sha256: $s, size: $z}' <<<"$assets")"
+            echo "  $key: $file"
+          }
+
+          add_asset "macos-universal" "gitspark-${RELEASE_TAG}-universal2-apple-darwin.dmg"
+          add_asset "windows-x64"     "gitspark-${RELEASE_TAG}-x86_64-pc-windows-msvc.zip"
+          add_asset "linux-x64"       "gitspark-${RELEASE_TAG}-x86_64-unknown-linux-gnu.tar.gz"
+
+          if [[ "$(jq 'length' <<<"$assets")" -eq 0 ]]; then
+            echo "::error::No release assets matched the expected names." >&2
+            exit 1
+          fi
+
+          out="updates/${channel}"
+          mkdir -p "$out"
+          jq -n \
+            --arg channel "$channel" \
+            --arg version "$version" \
+            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg notes_url "https://github.com/${GH_REPO}/releases/tag/${RELEASE_TAG}" \
+            --argjson assets "$assets" \
+            '{channel: $channel, version: $version, pub_date: $pub_date,
+              notes: "", notes_url: $notes_url, assets: $assets}' \
+            > "$out/latest.json"
+
+          # Sign last: the signature covers the file byte for byte, so any
+          # later rewrite would invalidate it.
+          ./target/release/examples/update_sign "$out/latest.json"
+          cat "$out/latest.json"
+
+      - name: Publish manifest to GitHub Pages
+        working-directory: repo
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- updates; then
+            echo "manifest unchanged, nothing to publish"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add updates
+          # Pages serves the master branch root, so the manifest lands there.
+          # [skip ci] keeps this from re-triggering the CI workflow.
+          git commit -m "chore: publish update manifest for ${RELEASE_TAG} [skip ci]"
+          git push origin master

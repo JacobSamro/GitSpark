@@ -1,0 +1,21 @@
+# Build-time configuration.
+#
+# These are read by `option_env!` at compile time, so they are baked into the
+# binary rather than read from the environment at runtime.
+
+[env]
+# Ed25519 public key that verifies update manifests.
+#
+# NOT a secret — it only verifies signatures, it cannot produce them. The
+# matching private key lives in the GITSPARK_UPDATE_PRIVATE_KEY repository
+# secret and is used by the release workflow.
+#
+# Changing this strands every user still running a build with the old key, so
+# treat a rotation as a breaking release: publish manifests signed by BOTH
+# keys for a transition period before retiring the old one.
+GITSPARK_UPDATE_PUBLIC_KEY = "h4WLAvYjx4kSQ6bMXB01eVgILWWmpfx/KqqHPpEJc7c="
+
+# Where signed channel manifests are served from. GitHub Pages for this repo,
+# which serves the master branch root — so the release workflow writes
+# updates/<channel>/latest.json there.
+GITSPARK_UPDATE_BASE_URL = "https://jacobsamro.github.io/GitSpark"
