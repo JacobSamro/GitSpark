@@ -391,11 +391,24 @@ jobs:
           # publishes. Comparing the index instead covers both the first run
           # and every later one. This is not hypothetical: it is exactly what
           # happened on v0.6.0.
-          git add updates
+          # --force because a blanket *.json rule in .gitignore silently
+          # dropped latest.json on v0.6.1 while still committing its .sig,
+          # publishing a signature with nothing to verify. The ignore rule is
+          # fixed, but the release must not depend on it staying fixed.
+          git add --force updates
           if git diff --cached --quiet -- updates; then
             echo "manifest unchanged, nothing to publish"
             exit 0
           fi
+          # Both halves or neither. A partial publish is worse than no publish:
+          # clients would fetch a manifest that fails verification, or a
+          # signature for a manifest that is not there.
+          for required in updates/*/latest.json updates/*/latest.json.sig; do
+            if ! git diff --cached --name-only | grep -qx "$required"; then
+              echo "::error::$required is missing from the manifest commit." >&2
+              exit 1
+            fi
+          done
           # Pages serves the master branch root, so the manifest lands there.
           # [skip ci] keeps this from re-triggering the CI workflow.
           git commit -m "chore: publish update manifest for ${RELEASE_TAG} [skip ci]"

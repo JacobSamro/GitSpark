@@ -1,5 +1,11 @@
 /target
 tmp/
 *.json
+# The signed update manifests are the one JSON the repo must track: GitHub
+# Pages serves them from here and the app reads them. Without this negation
+# the blanket rule above silently drops latest.json while still committing
+# latest.json.sig — a signature with nothing to verify, which is exactly what
+# v0.6.1 published.
+!updates/**/*.json
 /.agents
 CLAUDE.md
