@@ -2,6 +2,42 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-21
+
+Security patches, and the fix that makes v0.6.0's updater actually work.
+
+### Fixed
+
+- **The update manifest never published.** The release workflow generated and
+  signed it correctly, then skipped committing it: the guard used
+  `git diff --quiet -- updates`, and `git diff` only reports *tracked* files. On
+  the first release the whole `updates/` tree is untracked, so it reported "no
+  changes" and exited before the `git add` below it ever ran. The first manifest
+  could therefore never publish, which is the one case that had to work. It now
+  stages first and compares the index, and rebases before pushing so a release
+  that takes minutes to build cannot lose the manifest to a race on `master`.
+
+  **v0.6.0 shipped with no manifest and cannot see this release.** 0.6.1 needs a
+  manual install; updates are automatic from there.
+
+### Security
+
+Six advisories closed in the dependency graph. Lockfile only, no API changes.
+
+- **rustls-webpki 0.103.9 → 0.103.14** — a high-severity denial of service via a
+  panic on a malformed CRL BIT STRING, plus three lower name-constraint and
+  CRL-matching issues. This backs TLS for every AI request *and* every update
+  check, so it is the one that mattered most — and v0.6.0 shipped with it.
+- **quinn-proto 0.11.14 → 0.11.17** — high-severity remote memory exhaustion from
+  unbounded out-of-order stream reassembly.
+- **rand 0.8.5 → 0.8.7 and 0.9.2 → 0.9.5** — an unsoundness advisory affecting
+  both majors present in the graph.
+
+Not fixed: the `grid` integer overflow needs grid 1.0.1, but taffy 0.9 requires
+grid `^0.18` and gpui 0.2.2 pins taffy 0.9, so it cannot move until gpui does. It
+is also unreachable here — the overflow is on taffy's CSS Grid layout path, and
+this app lays out entirely with flex and never sets `Display::Grid`.
+
 ## [0.6.0] - 2026-08-21
 
 Signed auto-update, plus the seven issues closed since v0.5.0.

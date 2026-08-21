@@ -383,14 +383,23 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
         run: |
           set -euo pipefail
-          if git diff --quiet -- updates; then
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Stage BEFORE testing for changes. `git diff` only reports tracked
+          # files, so on the very first release — when updates/ does not exist
+          # in the tree yet — it reports nothing and the manifest never
+          # publishes. Comparing the index instead covers both the first run
+          # and every later one. This is not hypothetical: it is exactly what
+          # happened on v0.6.0.
+          git add updates
+          if git diff --cached --quiet -- updates; then
             echo "manifest unchanged, nothing to publish"
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add updates
           # Pages serves the master branch root, so the manifest lands there.
           # [skip ci] keeps this from re-triggering the CI workflow.
           git commit -m "chore: publish update manifest for ${RELEASE_TAG} [skip ci]"
+          # A release takes many minutes to build, and master can move in that
+          # window. Rebase rather than losing the manifest to a race.
+          git pull --rebase origin master
           git push origin master
