@@ -53,3 +53,10 @@ lto = "thin"
 codegen-units = 16
 strip = true
 incremental = false
+
+# Benchmark-only. These back examples/git_backends.rs, which compares the
+# shell-out we ship against libgit2 and gitoxide on the operations the app
+# actually performs. Not linked into the binary.
+[dev-dependencies]
+git2 = "0.21"
+gix = { version = "0.86", features = ["status", "revision", "blocking-network-client"] }
