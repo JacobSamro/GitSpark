@@ -25,7 +25,7 @@ const RECV_TIMEOUT: Duration = Duration::from_secs(120);
 /// Without timeouts a slow or unreachable endpoint blocks its worker thread
 /// forever: the thread is never reclaimed and the UI sits on "Generating
 /// commit details..." with no way to recover short of restarting the app.
-fn http_agent() -> ureq::Agent {
+pub fn http_agent() -> ureq::Agent {
     ureq::Agent::new_with_config(
         ureq::config::Config::builder()
             .http_status_as_error(false)

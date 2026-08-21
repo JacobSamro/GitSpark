@@ -21,6 +21,13 @@ once_cell = "1.21.3"
 open = "5.3.3"
 # OS-level filesystem watching (FSEvents / inotify / ReadDirectoryChangesW).
 notify = "8"
+# Auto-update. The manifest is Ed25519-signed and the public key is compiled
+# in, so a compromised host cannot point the updater at a hostile artifact.
+semver = { version = "1", features = ["serde"] }
+ed25519-dalek = "2"
+sha2 = "0.10"
+base64 = "0.22"
+hex = "0.4"
 # Read-path git backend. Writes stay on the `git` binary — see
 # examples/git_backends.rs for the benchmark this choice rests on.
 gix = { version = "0.86", features = ["status", "revision"] }
