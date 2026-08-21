@@ -1,4 +1,5 @@
 use std::env;
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
@@ -7,6 +8,33 @@ use crate::models::{AiSettings, CommitSuggestion, RemoteModelOption};
 
 #[derive(Default)]
 pub struct AiClient;
+
+/// Give up connecting after this long. A wrong host or a dropped network
+/// should fail quickly, not look like a slow model.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Time allowed to upload the request. Diffs are capped at 32 KB, so this is
+/// generous even on a poor connection.
+const SEND_TIMEOUT: Duration = Duration::from_secs(30);
+/// Time allowed for the response. Deliberately the longest of the three: a
+/// large model genuinely can take this long to produce a commit message, and
+/// cutting a working request short is worse than waiting.
+const RECV_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// HTTP client for every outbound AI call.
+///
+/// Without timeouts a slow or unreachable endpoint blocks its worker thread
+/// forever: the thread is never reclaimed and the UI sits on "Generating
+/// commit details..." with no way to recover short of restarting the app.
+fn http_agent() -> ureq::Agent {
+    ureq::Agent::new_with_config(
+        ureq::config::Config::builder()
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_send_request(Some(SEND_TIMEOUT))
+            .timeout_recv_response(Some(RECV_TIMEOUT))
+            .build(),
+    )
+}
 
 impl AiClient {
     pub fn new() -> Self {
@@ -67,11 +95,7 @@ impl AiClient {
             ]
         });
 
-        let agent = ureq::Agent::new_with_config(
-            ureq::config::Config::builder()
-                .http_status_as_error(false)
-                .build(),
-        );
+        let agent = http_agent();
 
         let response = agent
             .post(endpoint)
@@ -117,7 +141,10 @@ impl AiClient {
     }
 
     pub fn fetch_openrouter_models(&self) -> Result<Vec<RemoteModelOption>> {
-        let response = ureq::get("https://openrouter.ai/api/v1/models")
+        // Same timeouts as the completion call. This one populates the model
+        // picker, so hanging here leaves the picker spinning with no way out.
+        let response = http_agent()
+            .get("https://openrouter.ai/api/v1/models")
             .header("Accept", "application/json")
             .call()
             .map_err(|error| anyhow!("OpenRouter models request failed: {error}"))?;
@@ -331,4 +358,63 @@ fn clean_subject_line(line: &str) -> String {
         .unwrap_or(line)
         .trim_matches('"')
         .to_string()
+}
+
+
+#[cfg(test)]
+mod tests {
+    use std::io::Read;
+    use std::net::TcpListener;
+    use std::time::Instant;
+
+    use super::{CONNECT_TIMEOUT, http_agent};
+
+    /// A socket that accepts a connection and then never replies.
+    ///
+    /// This is the failure the issue describes — not a refused connection,
+    /// which fails fast on its own, but an endpoint that holds the socket
+    /// open. Without a receive timeout the caller blocks forever.
+    #[test]
+    fn gives_up_on_an_endpoint_that_never_responds() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().unwrap().port();
+
+        std::thread::spawn(move || {
+            if let Ok((mut socket, _)) = listener.accept() {
+                // Read the request, then hold the connection open and stall.
+                let mut buffer = [0u8; 1024];
+                let _ = socket.read(&mut buffer);
+                std::thread::sleep(std::time::Duration::from_secs(60));
+            }
+        });
+
+        // Override the long receive timeout so the test does not take minutes;
+        // the point is that SOME bound applies, not the exact value.
+        let agent = ureq::Agent::new_with_config(
+            ureq::config::Config::builder()
+                .http_status_as_error(false)
+                .timeout_connect(Some(CONNECT_TIMEOUT))
+                .timeout_recv_response(Some(std::time::Duration::from_secs(2)))
+                .build(),
+        );
+
+        let started = Instant::now();
+        let result = agent.get(&format!("http://127.0.0.1:{port}/")).call();
+        let elapsed = started.elapsed();
+
+        assert!(result.is_err(), "a stalled endpoint must not succeed");
+        assert!(
+            elapsed < std::time::Duration::from_secs(15),
+            "request did not time out; it took {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn the_shipped_agent_carries_timeouts() {
+        // Guards against the config being rebuilt without them later.
+        let timeouts = http_agent().config().timeouts();
+        assert!(timeouts.connect.is_some(), "connect timeout missing");
+        assert!(timeouts.send_request.is_some(), "send timeout missing");
+        assert!(timeouts.recv_response.is_some(), "receive timeout missing");
+    }
 }
