@@ -51,6 +51,7 @@ mod repo_selector;
 mod worktree_selector;
 mod tag_dialogs;
 mod ui_shell;
+mod updates;
 pub(crate) use helpers::diff_line_stats;
 
 // ---------------------------------------------------------------------------
@@ -480,6 +481,8 @@ impl GitSparkApp {
         if let Some(last_repo) = settings.recent_repos.first() {
             app.open_repo(last_repo.clone());
         }
+
+        app.schedule_first_update_check(cx);
 
         // Poll loop: only acquires the app lock when the atomic flag
         // indicates events are pending. Idle polls are lock-free.

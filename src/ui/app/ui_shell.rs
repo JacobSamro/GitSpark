@@ -169,7 +169,10 @@ impl Render for GitSparkApp {
                 .items_center()
                 .justify_end()
                 .pr(theme::z(theme::SPACE_6))
-                .child(crate::ui::update_indicator::render(&self.update_state));
+                .child(crate::ui::update_indicator::render(
+                    &self.update_state,
+                    cx.listener(Self::handle_update_indicator_click),
+                ));
             #[cfg(target_os = "macos")]
             let spacer = spacer.on_click(|event: &ClickEvent, window: &mut Window, _| {
                 if event.click_count() == 2 {

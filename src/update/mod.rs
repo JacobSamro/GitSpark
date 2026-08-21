@@ -21,32 +21,38 @@
 //! refuses rather than accepting an unsigned manifest — accepting one would
 //! hand whoever hosts the metadata the ability to choose what code runs.
 //!
-//! ## What is here, and what is not
+//! ## The cycle
 //!
-//! Implemented and tested: the channel model, the manifest contract, signature
-//! and checksum verification, and the decision rules.
+//! [`driver::run`] performs check → download → verify on a worker thread and
+//! reports each transition as an [`UpdateState`]. When it ends on
+//! [`UpdateState::ReadyToInstall`], [`apply::install`] replaces the installed
+//! application and [`apply::relaunch`] starts the new one. Nothing is applied
+//! without the user asking: the download is silent, the restart is not.
 //!
-//! Not implemented: downloading, staging, and applying. Those replace the
-//! installed application on disk and differ per platform — a helper process on
-//! Windows because a running executable cannot replace itself, `hdiutil` plus
-//! an rsync over the bundle on macOS, a directory swap on Linux. They also
-//! cannot be meaningfully verified from here without the signing key and the
-//! target platforms, so they are deliberately left for a pass that can be
-//! tested end to end rather than written blind.
+//! Applying differs per platform for reasons that are not stylistic — a
+//! running executable cannot replace itself on Windows, and a macOS
+//! application is a directory inside a disk image. Those live in [`apply`].
 
-// The module is complete and tested but not yet consumed by the UI: there is
-// no "Check for Updates" action until the apply half exists, and wiring one
-// that can only ever report an update it cannot install would be worse than
-// nothing.
-#![allow(dead_code)]
-
+pub mod apply;
 pub mod channel;
 pub mod check;
 pub mod download;
+pub mod driver;
 pub mod manifest;
 pub mod verify;
 
 use std::path::PathBuf;
+
+use anyhow::{Context, Result};
+
+/// This build's version, parsed.
+///
+/// Fallible rather than panicking: a malformed `CARGO_PKG_VERSION` should
+/// disable updates, not take the app down on launch.
+pub fn current_version() -> Result<semver::Version> {
+    semver::Version::parse(env!("CARGO_PKG_VERSION"))
+        .with_context(|| format!("this build has an unparseable version: {}", env!("CARGO_PKG_VERSION")))
+}
 
 /// What the UI shows, and the only update state the app holds.
 ///

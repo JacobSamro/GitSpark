@@ -42,6 +42,10 @@ pub fn update_public_key() -> Option<&'static str> {
 pub enum UpdateDecision {
     /// Nothing newer on this channel.
     UpToDate,
+    /// This channel has no manifest yet. Normal before the first release
+    /// publishes one, and reported separately so it can stay silent instead
+    /// of being shown as a failure the user cannot do anything about.
+    NoManifestPublished,
     /// The manifest is newer but has no artifact for this platform. Distinct
     /// from `UpToDate` because it is a broken release, not a quiet one, and
     /// the caller may want to say so rather than claim we are current.
@@ -108,7 +112,12 @@ pub fn check_for_update(
     let signature_url = format!("{manifest_url}.sig");
 
     let agent = crate::ai::http_agent();
-    let manifest_bytes = fetch(&agent, &manifest_url)?;
+    let Some(manifest_bytes) = fetch_optional(&agent, &manifest_url)? else {
+        return Ok(UpdateDecision::NoManifestPublished);
+    };
+    // The signature is NOT optional. A manifest that exists with no signature
+    // beside it is exactly what stripping the signature would look like, so it
+    // is an error rather than a quiet skip.
     let signature = String::from_utf8(fetch(&agent, &signature_url)?)
         .context("update signature file is not valid UTF-8")?;
 
@@ -132,13 +141,46 @@ pub fn check_for_update(
     decide(&manifest, channel, current)
 }
 
+/// Fetch, treating "not there" as an answer rather than an error.
+///
+/// A channel with no manifest yet is the normal state of a project between
+/// its first build and its first release, not a fault — reporting it as one
+/// would put "Update failed" in the title bar of every install until someone
+/// tags a release.
+fn fetch_optional(agent: &ureq::Agent, url: &str) -> Result<Option<Vec<u8>>> {
+    match fetch(agent, url) {
+        Ok(body) => Ok(Some(body)),
+        Err(error) if is_not_found(&error) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn is_not_found(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<HttpStatus>()
+        .is_some_and(|status| status.0 == 404)
+}
+
+/// Carried so a 404 stays distinguishable after the error is formatted.
+#[derive(Debug)]
+struct HttpStatus(u16);
+
+impl std::fmt::Display for HttpStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "HTTP {}", self.0)
+    }
+}
+
+impl std::error::Error for HttpStatus {}
+
 fn fetch(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>> {
     let mut response = agent
         .get(url)
         .call()
         .with_context(|| format!("failed to fetch {url}"))?;
     if response.status().as_u16() >= 400 {
-        bail!("{url} returned HTTP {}", response.status().as_u16());
+        return Err(anyhow::Error::new(HttpStatus(response.status().as_u16()))
+            .context(format!("failed to fetch {url}")));
     }
     let mut body = Vec::new();
     std::io::Read::read_to_end(&mut response.body_mut().as_reader(), &mut body)
@@ -326,6 +368,28 @@ mod tests {
             DEFAULT_UPDATE_BASE_URL.starts_with("https://"),
             "update base URL must be https, got {DEFAULT_UPDATE_BASE_URL}"
         );
+    }
+
+    #[test]
+    fn a_missing_manifest_is_silence_not_a_failure() {
+        // The state every install is in until the first release publishes a
+        // manifest. If a 404 became an error, every launch would show "Update
+        // failed" in the title bar for something the user cannot act on.
+        let agent = crate::ai::http_agent();
+        let absent = format!(
+            "{}/updates/release/definitely-not-published.json",
+            DEFAULT_UPDATE_BASE_URL.trim_end_matches('/')
+        );
+        match fetch_optional(&agent, &absent) {
+            Ok(None) => {}
+            Ok(Some(_)) => panic!("that URL was supposed to be absent"),
+            // Offline is a different failure and must not fail this test; the
+            // 404 mapping is what is under test, not the network.
+            Err(error) => assert!(
+                !is_not_found(&error),
+                "a 404 must map to Ok(None), got: {error:#}"
+            ),
+        }
     }
 
     #[test]
