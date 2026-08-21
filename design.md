@@ -483,6 +483,10 @@ worktree section took the vacated slot, because it sits directly above the
 sidebar and the sidebar lists that worktree's changes. The repository *list*
 did not disappear: it is what `+` opens, and picking from it opens a new tab.
 
+That list is a **drop-down under `+`**, not a panel. It began as a sidebar
+takeover, which meant clicking a control at the far right of the window made a
+panel appear at the far left — the two were never visibly connected.
+
 **State is parked, not duplicated.** See `ui::repo_tabs` — the app's own
 `repo` / `commit` / `selection` fields *are* the active tab, and an inactive
 tab parks a copy until it is activated. Only the active repository keeps a

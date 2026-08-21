@@ -9,6 +9,14 @@ impl GitSparkApp {
             had_events = true;
             match event {
                 AppEvent::RepoLoaded(Ok(snapshot)) => {
+                    // Only adopt the load we are still waiting for. Loads run
+                    // on a worker thread, so switching tabs quickly can land
+                    // the previous repository's snapshot here — and adopting
+                    // it would repoint the active tab at the wrong repository.
+                    if !self.load_is_current(&snapshot) {
+                        continue;
+                    }
+                    self.pending_repo_load = None;
                     self.adopt_snapshot(snapshot);
                     self.messages.status_message = "Repository loaded.".to_string();
                     self.messages.error_message.clear();
@@ -493,7 +501,22 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    /// Whether a finished load is the one currently being waited on.
+    ///
+    /// Compared against the requested path rather than the active tab's,
+    /// because a worktree switch deliberately points the current tab at a
+    /// different directory: the tab's path is the OLD one until this lands.
+    fn load_is_current(&self, snapshot: &RepoSnapshot) -> bool {
+        let Some(pending) = self.pending_repo_load.as_ref() else {
+            // Nothing outstanding — a refresh or an operation produced this,
+            // and those carry their own guards.
+            return true;
+        };
+        crate::ui::repo_tabs::load_matches_request(pending, &snapshot.repo.path)
+    }
+
     pub(crate) fn open_repo(&mut self, path: PathBuf) {
+        self.pending_repo_load = Some(path.clone());
         self.messages.status_message = "Loading repository...".to_string();
         self.messages.error_message.clear();
         self.nav.show_repo_selector = false;

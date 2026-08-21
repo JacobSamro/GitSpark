@@ -134,6 +134,16 @@ pub fn index_of(tabs: &[RepoTab], path: &Path) -> Option<usize> {
     tabs.iter().position(|tab| tab.path == path)
 }
 
+/// Whether a finished repository load answers the request still outstanding.
+///
+/// `git` resolves any path inside a work tree to its root, so a request for a
+/// subdirectory legitimately comes back as the parent. Anything else is a load
+/// for a repository the user has already navigated away from, and adopting it
+/// would repoint the active tab at the wrong repository.
+pub fn load_matches_request(pending: &Path, loaded_root: &Path) -> bool {
+    pending == loaded_root || pending.starts_with(loaded_root)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,6 +248,45 @@ mod tests {
         // `index_of` finds the FIRST, which is what makes the guard able to
         // keep one and drop the rest deterministically.
         assert_eq!(index_of(&tabs, Path::new("/a/one")), Some(0));
+    }
+
+    #[test]
+    fn a_load_for_the_requested_repository_is_accepted() {
+        assert!(load_matches_request(
+            Path::new("/work/api"),
+            Path::new("/work/api")
+        ));
+    }
+
+    #[test]
+    fn a_load_that_resolved_to_the_work_tree_root_is_accepted() {
+        // Opening a subdirectory is normal, and git answers with the root.
+        assert!(load_matches_request(
+            Path::new("/work/api/src/deep"),
+            Path::new("/work/api")
+        ));
+    }
+
+    #[test]
+    fn a_load_for_a_repository_we_navigated_away_from_is_rejected() {
+        // The tab-switch race: the previous repository's load lands after the
+        // user has already moved on. Adopting it repointed the active tab at
+        // the wrong repository, which then looked like a duplicate and cost
+        // the real tab for it.
+        assert!(!load_matches_request(
+            Path::new("/work/api"),
+            Path::new("/work/site")
+        ));
+    }
+
+    #[test]
+    fn a_sibling_with_a_shared_prefix_is_not_a_match() {
+        // `starts_with` on paths compares components, not characters, so
+        // "/work/api-v2" must not match "/work/api".
+        assert!(!load_matches_request(
+            Path::new("/work/api-v2"),
+            Path::new("/work/api")
+        ));
     }
 
     #[test]

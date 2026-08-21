@@ -234,6 +234,13 @@ pub struct GitSparkApp {
     pub active_tab: usize,
     repo_watch_generation: Arc<AtomicU64>,
     watched_repo_path: Option<PathBuf>,
+    /// The path of the most recently requested repository load.
+    ///
+    /// A load runs on a worker thread and can land after the user has already
+    /// switched tabs. Without this, the previous repository's snapshot was
+    /// adopted into whatever tab is now active — which then looked like a
+    /// duplicate and cost the real tab for that repository.
+    pending_repo_load: Option<PathBuf>,
     pub(crate) event_tx: NotifySender,
     event_rx: Receiver<AppEvent>,
     // Text input state
@@ -365,6 +372,7 @@ impl GitSparkApp {
             messages: MessageState::new("Open a repository to get started.", error_message),
             repo_watch_generation: Arc::new(AtomicU64::new(0)),
             watched_repo_path: None,
+            pending_repo_load: None,
             event_tx,
             event_rx,
             summary_focus: cx.focus_handle(),

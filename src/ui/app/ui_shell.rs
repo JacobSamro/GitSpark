@@ -97,15 +97,13 @@ impl Render for GitSparkApp {
         // Build toolbar parts separately — they go into the resizable columns
         let (toolbar_left, toolbar_right) = self.render_toolbar_parts(cx);
 
-        // Left column: repo toolbar section + sidebar (or repo selector)
+        // Left column: worktree toolbar section + sidebar.
+        //
+        // The repository list no longer lives here — it is a drop-down under
+        // the tab strip's `+`, rendered over the whole window further down.
         let left_column = v_flex().size_full().min_h_0().child(toolbar_left).child(
-            if self.nav.show_repo_selector {
-                repo_selector::render_repo_selector_panel(self, repo_filter_focused, cx)
-                    .into_any_element()
-            } else {
-                self.render_sidebar(summary_focused, description_focused, cx)
-                    .into_any_element()
-            },
+            self.render_sidebar(summary_focused, description_focused, cx)
+                .into_any_element(),
         );
 
         // Right column: branch + network toolbar sections + workspace
@@ -227,6 +225,12 @@ impl Render for GitSparkApp {
                 ),
             )
             .child(self.render_status_bar());
+
+        // Mounted on the ROOT, not inside a column: the `+` that opens it is
+        // in the title-bar row, which spans the whole window.
+        if self.nav.show_repo_selector {
+            root = root.child(render_repo_selector_overlay(self, repo_filter_focused, cx));
+        }
 
         if self.nav.show_settings {
             root = root.child(settings_modal::render_settings_modal(self, window, cx));
@@ -3812,6 +3816,48 @@ fn render_worktree_overlay(
         .size_full()
         .child(backdrop)
         .child(panel)
+}
+
+/// The repository list, hanging under the tab strip's `+`.
+///
+/// Anchored to the top RIGHT of the window rather than the left, because that
+/// is where the button that opens it lives. It used to replace the sidebar,
+/// which meant clicking a control on the far right made a panel appear on the
+/// far left.
+fn render_repo_selector_overlay(
+    app: &GitSparkApp,
+    filter_focused: bool,
+    cx: &mut Context<GitSparkApp>,
+) -> AnyElement {
+    let backdrop = div()
+        .id("repo-selector-backdrop")
+        .absolute()
+        .top_0()
+        .left_0()
+        .right_0()
+        .bottom_0()
+        .on_click(cx.listener(|app, _evt, _win, cx| {
+            app.nav.show_repo_selector = false;
+            cx.notify();
+        }));
+
+    let panel = repo_selector::render_repo_selector_panel(app, filter_focused, cx)
+        .id("repo-selector-panel")
+        .on_click(|_evt, _win, cx| cx.stop_propagation())
+        .absolute()
+        // Directly below the title-bar row, right-aligned so its edge sits
+        // under the `+` rather than drifting toward the middle of the window.
+        .top(theme::z(theme::TITLEBAR_HEIGHT))
+        .right(theme::z(theme::SPACE_4));
+
+    div()
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .child(backdrop)
+        .child(panel)
+        .into_any_element()
 }
 
 fn prev_char_boundary(s: &str, pos: usize) -> usize {

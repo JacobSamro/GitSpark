@@ -257,13 +257,29 @@ pub(super) fn render_repo_selector_panel(
             .child("Recent"),
     );
 
-    // --- Fill the sidebar panel ---
+    // --- A dropdown under the tab strip's `+`, not a sidebar takeover ---
+    //
+    // This used to replace the sidebar, which put the list at the far LEFT of
+    // the window while the button that opened it sits at the far right. The
+    // panel now hangs directly beneath the control that summons it.
     v_flex()
-        .size_full()
-        .bg(theme::panel_bg())
-        .border_r_1()
+        .w(px(REPO_SELECTOR_WIDTH))
+        .max_h(px(REPO_SELECTOR_MAX_HEIGHT))
+        .bg(theme::overlay_bg())
+        .rounded(theme::z(theme::CORNER_RADIUS))
+        .border_1()
         .border_color(theme::border())
+        .shadow_lg()
+        .overflow_hidden()
         .child(filter_bar)
         .child(section_header)
         .child(repo_list)
 }
+
+/// Wide enough for a repository name plus enough of its path to tell two
+/// checkouts apart.
+pub(crate) const REPO_SELECTOR_WIDTH: f32 = 340.0;
+
+/// Caps the drop-down so a long history of repositories cannot run off the
+/// bottom of the window; the list scrolls inside it.
+pub(crate) const REPO_SELECTOR_MAX_HEIGHT: f32 = 420.0;
