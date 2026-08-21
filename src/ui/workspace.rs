@@ -22,6 +22,10 @@ use crate::ui::theme::z;
 const MAX_INTRA_LINE_CHARS: usize = 1024;
 const EXPAND_STEP: usize = 20;
 
+/// Group name tying a diff gutter to the line-number cells inside it, so
+/// hovering anywhere in the gutter highlights the cells that paint over it.
+const DIFF_GUTTER_GROUP: &str = "diff-gutter";
+
 // --- Hunk boundary info for expansion ---
 
 #[derive(Clone, Debug)]
@@ -769,20 +773,39 @@ fn render_diff_line(
 
     let selectable = selection_target.is_some() && !hide_whitespace_changes;
 
+    // Only the GUTTER toggles a line in or out of the commit — not the whole
+    // row. Clicking the code itself is how you select text to copy, and
+    // stealing that click meant every attempt to highlight a token silently
+    // changed what was staged. GitHub Desktop scopes the affordance the same
+    // way, to `.diff-line-gutter.includeable`.
+    let mut gutter = render_unified_line_gutter(line, line_included, selectable)
+        .id(SharedString::from(format!(
+            "{}-gutter",
+            diff_row_id(file_path, line)
+        )));
+
     if let (Some(target), Some(vh)) = (selection_target.clone(), view)
         && selectable
     {
         let target_for_click = target.clone();
         let toggle_view = vh.clone();
-        row = row.cursor_pointer().on_click(move |_evt, _win, cx| {
-            let target = target_for_click.clone();
-            toggle_view.update(cx, |app, cx| {
-                app.toggle_diff_line_selection(target, cx);
+        gutter = gutter
+            .cursor_pointer()
+            // A group, not `.hover()`: the line-number cells paint their own
+            // background over this container, so hovering the container alone
+            // would be invisible. The cells react to the group instead —
+            // which is also what GitHub Desktop highlights (`.includeable:hover
+            // .diff-line-number`).
+            .group(DIFF_GUTTER_GROUP)
+            .on_click(move |_evt, _win, cx| {
+                let target = target_for_click.clone();
+                toggle_view.update(cx, |app, cx| {
+                    app.toggle_diff_line_selection(target, cx);
+                });
             });
-        });
     }
 
-    row = row.child(render_unified_line_gutter(line, line_included, selectable));
+    row = row.child(gutter);
 
     // Content — varies by line kind
     match &line.kind {
@@ -924,6 +947,7 @@ fn render_unified_line_gutter(line: &DiffLine, selected: bool, selectable: bool)
                 .justify_end()
                 .pr(z(5.0))
                 .bg(number_bg)
+                .group_hover(DIFF_GUTTER_GROUP, |s| s.bg(theme::diff_hover_bg()))
                 .whitespace_nowrap()
                 .child(render_line_number_text(line.old_line)),
         )
@@ -936,6 +960,7 @@ fn render_unified_line_gutter(line: &DiffLine, selected: bool, selectable: bool)
                 .justify_end()
                 .pr(z(5.0))
                 .bg(number_bg)
+                .group_hover(DIFF_GUTTER_GROUP, |s| s.bg(theme::diff_hover_bg()))
                 .whitespace_nowrap()
                 .child(render_line_number_text(line.new_line)),
         )

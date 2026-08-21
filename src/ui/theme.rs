@@ -359,6 +359,14 @@ pub fn diff_selected_bg() -> Hsla {
     pick(0x044289, 0x2188ff)
 }
 
+/// Gutter hover — `--diff-hover-background-color` (`$blue-500` / `$blue-300`).
+///
+/// Only the gutter is clickable, so this is what tells the user which part of
+/// the row acts.
+pub fn diff_hover_bg() -> Hsla {
+    pick(0x0366d6, 0xc8e1ff)
+}
+
 /// Text on a selected line-number cell, knocked out of the blue fill.
 pub fn diff_selected_fg() -> Hsla {
     pick(0xd3d7de, 0xffffff)
