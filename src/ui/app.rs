@@ -32,6 +32,7 @@ use crate::ui::domain_state::{
 };
 use crate::ui::history_context_menu::HistoryContextMenuAction;
 use crate::ui::ids::stable_id_slug;
+use crate::ui::kit;
 use crate::ui::settings_modal::{self, SettingsField, SettingsModalState};
 use crate::ui::stash_file_list::render_stash_file_list;
 use crate::ui::theme;

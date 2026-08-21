@@ -10,6 +10,13 @@ This repo should not be treated like a web app:
 - no browser layout engine
 - GPUI uses retained-mode element trees, not immediate mode
 
+## Design system
+
+`design.md` is the visual language — tokens, component specs, elevation, the
+type ramp, and the build profiles. `src/ui/theme.rs` is those tokens made
+executable and `src/ui/kit/` is the components. Read `design.md` before any UI
+change: this file is the agent guide, that one is the spec.
+
 ## Core Rule
 
 Do not add more ad hoc UI to `src/ui/app.rs` when a reusable primitive or component should exist.

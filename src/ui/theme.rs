@@ -1,6 +1,18 @@
+//! GitHub Desktop Dark design tokens (see `design.md`).
+//!
+//! This is the single place raw colors live. Every token is a `fn`, never a
+//! `const`, so a light theme stays a token swap and never a component fork
+//! (design.md §13). A `rgb(0x…)` literal outside this file is a bug.
+//!
+//! Layout tokens come in three groups — [`SPACE_1`]..[`SPACE_8`] for spacing,
+//! the `CORNER_RADIUS*` family for radii, and the frame dimensions further
+//! down. All of them are *base* values: pass them through [`z`] so the user's
+//! zoom factor applies.
+
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use gpui::{Hsla, Pixels, px};
+use gpui::{FontFeatures, Hsla, Pixels, Styled, px};
 
 // ---------------------------------------------------------------------------
 // Zoom — global scale factor for layout
@@ -238,6 +250,31 @@ pub fn blend(from: Hsla, to: Hsla, t: f32) -> Hsla {
 }
 
 // ---------------------------------------------------------------------------
+// Spacing scale (design.md §5.2)
+//
+// Eight steps, and SPACE_4 is the default gap. A layout that needs a value
+// off this scale is usually the thing that's wrong, not the scale.
+// ---------------------------------------------------------------------------
+
+/// 2px — icon nudge, tag inner padding.
+pub const SPACE_1: f32 = 2.0;
+/// 4px — icon-to-label gap, close-button padding.
+pub const SPACE_2: f32 = 4.0;
+/// 6px — button vertical padding, tight row gaps.
+pub const SPACE_3: f32 = 6.0;
+/// 8px — the default gap: row gaps, button gaps, footer gaps.
+pub const SPACE_4: f32 = 8.0;
+/// 10px — toolbar section inner padding, list gaps.
+pub const SPACE_5: f32 = 10.0;
+/// 12px — button horizontal padding, dialog header vertical padding.
+pub const SPACE_6: f32 = 12.0;
+/// 16px — dialog body padding, section padding.
+pub const SPACE_7: f32 = 16.0;
+/// 24px — empty-state padding, welcome-screen breathing room.
+#[allow(dead_code)]
+pub const SPACE_8: f32 = 24.0;
+
+// ---------------------------------------------------------------------------
 // Geometry tokens
 // ---------------------------------------------------------------------------
 
@@ -261,6 +298,8 @@ pub const CONTROL_HEIGHT: f32 = 34.0;
 pub const TAB_HEIGHT: f32 = 34.0;
 pub const CORNER_RADIUS: f32 = 6.0;
 pub const CORNER_RADIUS_SM: f32 = 4.0;
+/// Fully rounded — count pills, branch chips.
+pub const RADIUS_PILL: f32 = 999.0;
 #[allow(dead_code)]
 pub const SECTION_PADDING: f32 = 12.0;
 #[allow(dead_code)]
@@ -275,10 +314,43 @@ pub const FILTER_BAR_HEIGHT: f32 = 32.0;
 // Font sizes
 // ---------------------------------------------------------------------------
 
+// Six rungs. `FONT_SIZE_BODY` is the workhorse — most UI text is 12px, and
+// `FONT_SIZE` (13) is reserved for the prominent line in a list row: file
+// names, branch names, repo names, commit summaries.
+
+/// 9px — status tags (A/M/D), badge counts. SEMIBOLD.
 pub const FONT_SIZE_XS: f32 = 9.0;
+/// 11px — metadata, timestamps, paths, hints.
 pub const FONT_SIZE_SM: f32 = 11.0;
+/// 12px — the default for UI text: labels, buttons, dialog copy.
+pub const FONT_SIZE_BODY: f32 = 12.0;
+/// 13px — the prominent line in a row: file, branch, repo, commit summary.
 pub const FONT_SIZE: f32 = 13.0;
+/// 14px — dialog titles, section headings. SEMIBOLD.
 #[allow(dead_code)]
 pub const FONT_SIZE_MD: f32 = 14.0;
+/// 28px — empty-state and welcome-screen headlines.
 #[allow(dead_code)]
 pub const FONT_SIZE_LG: f32 = 28.0;
+
+// ---------------------------------------------------------------------------
+// Typography helpers
+// ---------------------------------------------------------------------------
+
+/// Text styling that gpui's `Styled` doesn't expose directly.
+pub trait TextStyleExt: Styled + Sized {
+    /// Tabular (fixed-width) numerals — OpenType `tnum`.
+    ///
+    /// San Francisco's default figures are proportional, so a count that
+    /// updates in place (ahead/behind, changed-file counts, line numbers)
+    /// shifts width as its digits change. Apply this wherever digits move
+    /// under a stable label or line up in a column.
+    fn tabular_nums(mut self) -> Self {
+        self.text_style()
+            .get_or_insert_with(Default::default)
+            .font_features = Some(FontFeatures(Arc::new(vec![("tnum".to_string(), 1)])));
+        self
+    }
+}
+
+impl<T: Styled> TextStyleExt for T {}

@@ -1,0 +1,532 @@
+# GitSpark — Desktop Design System
+
+The visual language for the GPUI desktop client. It is a port of **GitHub
+Desktop Dark**, built on Primer's dark neutral scale.
+
+The goal is a client that reads as GitHub Desktop, not as a generic Rust GUI:
+dense information, quiet chrome, one blue accent, hairline separators, no
+decoration. Reference UI source lives in `tmp/` (GitHub Desktop).
+
+> **Scope of this doc:** tokens + component specs + how they map to GPUI /
+> gpui-component. It defines the *what*. `src/ui/theme.rs` is the tokens made
+> executable; `src/ui/kit/` is the components made executable. When this doc
+> and the code disagree, the code is the bug.
+
+---
+
+## 1. Principles
+
+1. **Density over comfort.** This is a tool people keep open all day next to an
+   editor. Rows are 22–32px, body text is 13px, padding is tight. Whitespace is
+   earned, not default.
+2. **One accent.** `accent` (`#1f6feb`) is the single interactive blue;
+   `commit_button_bg` (`#0969da`) is the one call-to-action blue. Nothing else
+   is blue. Green/red/yellow are **status only** — never chrome.
+3. **Structure by hairline, not by shadow.** A 1px `border()` line separates
+   surfaces. Shadows exist only for things that genuinely float (dialogs,
+   dropdowns, context menus) — see §7.
+4. **Chrome recedes, content leads.** The toolbar, sidebar, and status bar use
+   darker surfaces than the diff. The diff is the brightest thing on screen.
+5. **No motion.** GitSpark has no transitions, no spinners that bounce, no
+   fades. State changes are instant. The only animated element is the
+   indeterminate `LoaderCircle` during network operations.
+6. **Everything scales.** Zoom is a first-class feature (§5.1). Any pixel value
+   a user can perceive goes through `theme::z()`. Values that are not
+   perceptual (1px hairlines) do not.
+
+---
+
+## 2. Surfaces
+
+The window is: toolbar across the top, sidebar left, workspace right, status
+bar across the bottom. The surface ramp is Primer's dark neutral scale — each
+step is a token, and the ordering is the hierarchy.
+
+| Surface | Token | Hex | Notes |
+|---|---|---|---|
+| Toolbar | `toolbar_bg()` | `#0a0e14` | Darkest. `darken($gray-900, 3%)`. |
+| Window / diff body | `bg()` | `#0d1117` | neutral-1. The reading surface. |
+| Sidebar, panels, dialogs | `panel_bg()` | `#151b23` | neutral-2. |
+| Raised control (button, field) | `surface_bg()` | `#212830` | neutral-3. |
+| Raised control border / pressed | `surface_bg_alt()` | `#2a313c` | neutral-5. |
+| Recessed (hunk header, gutter) | `surface_bg_muted()` | `#010409` | Pure black-ish. |
+
+**Rule:** a surface never sits on a surface of the same value. If two adjacent
+regions share a token, one of them needs a `border()` hairline instead.
+
+---
+
+## 3. Color tokens
+
+All colors live in `src/ui/theme.rs` and are exposed as `fn() -> Hsla`. They
+are functions, not consts, so a light theme stays a token swap and never a
+component fork (§13). **No component may write `rgb(0x…)`.**
+
+### 3.1 Text
+
+| Token | Hex | Use |
+|---|---|---|
+| `text_main()` | `#d1d7e0` | Primary labels, file names, commit summaries, diff code. |
+| `text_muted()` | `#9198a1` | Metadata, timestamps, paths, placeholders, idle icons. |
+| `line_num_color()` | `#656c76` | Diff line numbers only. The faintest readable step. |
+| `commit_button_text()` | `#ffffff` | Text on the accent CTA. Pure white, nothing else uses it. |
+
+Three steps of text is the whole ramp. If a label needs a fourth, it is
+probably the wrong size or the wrong surface.
+
+### 3.2 Accent & interactive
+
+| Token | Hex | Use |
+|---|---|---|
+| `accent()` | `#1f6feb` | Selection fill, focus ring, active tab underline, links. |
+| `accent_muted()` | `#0969da` | Pressed accent. |
+| `commit_button_bg()` | `#0969da` | The commit CTA and primary dialog buttons. |
+| `commit_button_hover_bg()` | `#0b7bef` | Its hover. `lighten($blue, 5%)`. |
+| `checkbox_selected_bg()` | `#58a6ff` | Checked checkbox fill (lighter — it is a small target). |
+| `checkbox_selected_fg()` | = `bg()` | The check glyph, knocked out of the fill. |
+| `text_selection_bg()` | `#264f78` | Text selection inside fields and the diff. |
+| `hover_bg()` | `#151b23` | Hover on chrome. |
+| `list_hover_bg()` | `#1c2128` | Hover on list rows — one step brighter, because rows sit on `panel_bg`. |
+| `toolbar_hover_bg()` | `#262c36` | Hover in the toolbar, which is darker to begin with. |
+
+Three hover tokens is deliberate: hover must be visible against whatever it
+sits on, and the three chrome surfaces differ. Pick by surface, not by taste.
+
+### 3.3 Status
+
+| Token | Hex | Use |
+|---|---|---|
+| `success()` | `#3fb950` | Added files, ahead count, clean state. |
+| `warning()` | `#d29922` | Conflicts pending, detached HEAD, stale branch. |
+| `warning_bg()` | `#2d2307` | Fill behind a warning banner. |
+| `danger()` | `#f85149` | Deleted files, destructive buttons, errors. |
+| `danger_hover()` | `#ff6961` | Hover on a destructive button. |
+
+Status colors carry meaning. A red button means data loss; a yellow banner
+means the repo is in a state the user must resolve. Never use them for emphasis.
+
+### 3.4 Diff
+
+The diff has its own palette because it needs four simultaneous backgrounds
+(add / delete / context / hunk) that all stay legible under 13px mono text.
+
+| Token | Hex | Use |
+|---|---|---|
+| `diff_add_bg()` / `diff_add_gutter_bg()` | `#0d3a1a` / `#072d14` | Added line body / its gutter. |
+| `diff_del_bg()` / `diff_del_gutter_bg()` | `#3d1f1a` / `#2a120f` | Deleted line body / its gutter. |
+| `diff_add_fg()` | `#c9d1d9` | Added line text (neutral — the background carries the signal). |
+| `diff_del_fg()` | `#ffd7d5` | Deleted line text (soft pink — GitHub's `$red-100`). |
+| `diff_hunk_bg()` | `#010409` | `@@` hunk header strip. |
+| `diff_gutter_bg()` | `#0a0e14` | Line-number gutter on context lines. |
+| `diff_selected_bg()` | `#0969da` | Line-selection highlight for partial commits. |
+
+The gutter of a changed line is always *darker* than its body — that is what
+makes the gutter read as a separate column without a border.
+
+### 3.5 Push suggestion card
+
+| Token | Hex |
+|---|---|
+| `push_card_bg()` | `#032f62` |
+| `push_card_border()` | `#1f6feb` |
+| `push_card_text()` | `#8db1d8` |
+
+One component, three tokens. Do not reuse them elsewhere; if a second
+highlighted card appears, generalize these into `info_*` first.
+
+### 3.6 Utilities
+
+- `with_alpha(color, a)` — the only sanctioned way to make a translucent
+  variant. Never write a second hex for "the same color but faded".
+- `blend(from, to, t)` — interpolation, for intra-line diff highlighting.
+
+---
+
+## 4. Typography
+
+System font (San Francisco on macOS) via GPUI's default. Do not name or bundle
+a face. The diff uses GPUI's monospace family.
+
+Every size below is a **base** value; render it as `theme::z(SIZE)` so zoom
+applies (§5.1).
+
+| Role | Const | px | Weight | Use |
+|---|---|---|---|---|
+| Display | `FONT_SIZE_LG` | 28 | SEMIBOLD | Empty-state headline, welcome screen. |
+| Title | `FONT_SIZE_MD` | 14 | SEMIBOLD | Dialog titles, section headings. |
+| Row title | `FONT_SIZE` | 13 | NORMAL | The prominent line in a row: file, branch, repo, commit summary. Also diff code. |
+| Body | `FONT_SIZE_BODY` | 12 | NORMAL | **The default.** Labels, buttons, dialog copy. |
+| Secondary | `FONT_SIZE_SM` | 11 | NORMAL | Metadata, timestamps, paths, hints. |
+| Micro | `FONT_SIZE_XS` | 9 | SEMIBOLD | Status tags (A/M/D), badge counts. |
+
+Six rungs, and **12 is the workhorse** — it is what most UI text renders at, so
+it gets the plainest name. 13 is a deliberate step up for the one line in a row
+the eye should land on first. Reaching for 13 as a general default inflates the
+whole layout; reaching for 12 in a row title flattens it.
+
+**Numerals.** SF's default figures are proportional, so digits that update in
+place jitter. Apply `theme::tabular_nums()` to ahead/behind counts, line
+numbers, file counts, and anything else whose digits change under a stable
+label.
+
+**Truncation.** Single-line labels truncate with `.truncate()`, never wrap.
+File paths truncate at the *front* (`labels::truncate_path_start`) so the file
+name stays visible; everything else truncates at the end.
+
+---
+
+## 5. Spacing & geometry
+
+### 5.1 Zoom — the `z()` contract
+
+GitSpark scales its whole layout with a user zoom factor. `theme::z(v)` returns
+`px(v * zoom())`.
+
+**Use `z()` for:** padding, gaps, font sizes, icon sizes, row heights, corner
+radii, fixed widths — anything whose apparent size should follow zoom.
+
+**Use raw `px()` for:** 1px hairline borders (a 1.3px border renders as a
+smeared 2px line), and nothing else. `border_1()` already does the right thing.
+
+A `z()` call with a literal is a smell — reach for the scale below instead.
+
+### 5.2 Spacing scale
+
+| Token | px | Typical use |
+|---|---|---|
+| `SPACE_1` | 2 | Icon nudge, tag inner padding. |
+| `SPACE_2` | 4 | Icon-to-label gap, close-button padding. |
+| `SPACE_3` | 6 | Button vertical padding, tight row gaps. |
+| `SPACE_4` | 8 | The default gap. Row gaps, button gaps, footer gaps. |
+| `SPACE_5` | 10 | Toolbar section inner padding, list gaps. |
+| `SPACE_6` | 12 | Button horizontal padding, dialog header vertical padding. |
+| `SPACE_7` | 16 | Dialog body padding, section padding. |
+| `SPACE_8` | 24 | Empty-state padding, welcome-screen breathing room. |
+
+Eight steps, and 8 is the default. If a layout needs a value that is not on the
+scale, the layout is wrong before the scale is.
+
+### 5.3 Radius
+
+| Token | px | Applied to |
+|---|---|---|
+| `CORNER_RADIUS_SM` | 4 | Tags, badges, checkboxes, close buttons, hover chips. |
+| `CORNER_RADIUS` | 6 | Buttons, text fields, list rows, cards, dialogs, menus. |
+| `RADIUS_PILL` | 999 | Count pills, branch chips. |
+
+Two real radii. A third would be noticed.
+
+### 5.4 Frame dimensions
+
+| Token | px | Notes |
+|---|---|---|
+| `TOOLBAR_HEIGHT` | 50 | Fixed. Matches GitHub Desktop. |
+| `STATUS_BAR_HEIGHT` | 26 | Fixed. |
+| `SIDEBAR_WIDTH` / `SIDEBAR_MIN_WIDTH` | 260 / 220 | Resizable via `h_resizable`. |
+| `ROW_HEIGHT` / `ROW_HEIGHT_COMPACT` | 32 / 28 | List rows. `uniform_list` needs these exact. |
+| `CONTROL_HEIGHT` | 34 | Buttons, fields, dropdown triggers. |
+| `TAB_HEIGHT` | 34 | Sidebar tab bar. |
+| `DIFF_ROW_HEIGHT` | 22 | Must be exact — `uniform_list` computes scroll from it. |
+| `DIFF_HEADER_HEIGHT` | 32 | File header strip in the diff. |
+| `DIFF_LINE_NUM_WIDTH` | 50 | Both gutters. |
+| `FILTER_BAR_HEIGHT` | 32 | Sidebar filter field. |
+
+---
+
+## 6. Iconography
+
+- **Source:** `gpui_component::Icon` + `IconName` first; custom SVGs in
+  `assets/icons/` for anything missing.
+- **Sizes:** toolbar 16 · dialog title 16 · list row 14 · close/chevron 14 ·
+  caret 10. All through `z()`.
+- **Color:** idle `text_muted()`; active/selected `text_main()`; status icons
+  take their status color.
+- **Constraint:** `Button::new().icon(IconName::X)` renders nothing without
+  `Root` (§10). Icon buttons are `div()` + `Icon::new()`, which is exactly what
+  `kit::icon_button` gives you.
+
+---
+
+## 7. Elevation
+
+Four levels. Most surfaces are flat with a hairline and no shadow at all.
+
+`kit::Surface` is a trait over every `Styled` element, so the helpers chain:
+`v_flex().w(z(440.0)).dialog()`.
+
+| Level | Helper | Shadow | Use |
+|---|---|---|---|
+| `e0` | none — `border_1() + border_color(border())` | — | Sidebar, rows, chips, fields. |
+| `e1` | `.card()` | `0 1px 2px / 20%` | Push suggestion card, settings groups. |
+| `e2` | `.overlay()` | `0 6px 16px / 40%` | Dropdowns, context menus, autocomplete. |
+| `e3` | `.dialog()` | `0 12px 32px / 55%` | Modal dialogs, the settings modal. |
+
+Each helper applies the fill, the outline, **and** the shadow together. A 1px
+border on top of a drop shadow reads as an outline rather than as elevation, so
+do not add `border_1()` after calling one.
+
+Shadow offsets and blur go through `z()` like everything else — a shadow that
+stayed put while the layout grew under zoom reads as a rendering bug.
+
+---
+
+## 8. Component catalog
+
+Each entry: what it is → key specs → where it lives. Everything here exists in
+`src/ui/kit/`; the specs are the contract, the code is the truth.
+
+Migration status: `dialog`, `button`, `icon_button`, and `Surface` are built
+and in use by the delete-branch, reset-to-commit, and discard-stash dialogs.
+`tag`, `pill`, `empty_state`, and `section_header` are built but not yet
+adopted — the app still draws those by hand. `row` is specified below and not
+yet built. Unused kit code is marked `#[allow(dead_code)]` on purpose: a
+component library carries its vocabulary ahead of its consumers, so "unused"
+here means "not migrated yet", not "backlog".
+
+### 8.1 Button — `kit::button`
+
+`CONTROL_HEIGHT` tall, `SPACE_6` horizontal padding, `CORNER_RADIUS`,
+`FONT_SIZE` label. Four variants:
+
+| Variant | Rest | Hover | Use |
+|---|---|---|---|
+| `Primary` | `commit_button_bg()` bg, white text | `commit_button_hover_bg()` | The one affirmative action per dialog. |
+| `Secondary` | `surface_bg()` bg, `surface_bg_alt()` border, `text_main()` | `toolbar_hover_bg()` | Cancel, and every non-primary action. |
+| `Danger` | `danger()` bg, white text | `danger_hover()` | Delete, discard, force-push. |
+| `Ghost` | transparent, `text_muted()` | `hover_bg()` | Tertiary links inside a body. |
+
+**Disabled** (`button_state(.., false)`) drops to neutral gray —
+`surface_bg()` fill, `surface_bg_alt()` border, `text_muted()` label — for all
+four variants, and loses hover and the pointer cursor. It is *not* the variant
+color at reduced alpha: a translucent red still reads as "destructive", where
+gray reads as "unavailable", which is the thing that needs communicating. The
+footprint stays identical so the footer doesn't shift under the cursor.
+
+Every button takes a stable id (§9).
+
+### 8.2 Icon button — `kit::icon_button`
+
+Square, `SPACE_2` padding, `CORNER_RADIUS_SM`, 14px icon in `text_muted()`,
+hover fills `hover_bg()`. Dialog close buttons, row affordances, toolbar
+extras.
+
+### 8.3 Dialog — `kit::dialog`
+
+The single modal shell. `panel_bg()`, `CORNER_RADIUS`, `e3` elevation, fixed
+width (440 default; 520 wide; 720 for settings).
+
+- **Header:** `SPACE_7`/`SPACE_6` padding, hairline bottom. Optional status
+  icon (16px), title at Title role, close `icon_button` pinned right.
+- **Body:** `SPACE_7` padding, `SPACE_5` gap. Body text at Body role,
+  explanatory text at Secondary role in `text_muted()`.
+- **Footer:** `SPACE_7`/`SPACE_6` padding, hairline top, right-aligned,
+  `SPACE_4` gap. **Cancel is always leftmost, the affirmative action rightmost**
+  — macOS order.
+
+A dialog that hand-rolls its own header/footer is a bug. Fourteen files did
+this before the kit existed; that is precisely why it exists.
+
+### 8.4 Row — `kit::row`
+
+The list-row primitive behind changes, history, branches, stashes, and repos.
+`ROW_HEIGHT` (or `ROW_HEIGHT_COMPACT`), `SPACE_5` horizontal padding,
+`SPACE_4` gap, `CORNER_RADIUS`.
+
+- Rest: transparent · Hover: `list_hover_bg()` · Selected: `accent()` fill with
+  `text_main()` label and icons (GitHub Desktop fills the whole row).
+- Leading slot (checkbox / status tag / avatar), title (truncating, `flex_1`),
+  trailing slot (metadata, count, chevron).
+- Every row is built inside `uniform_list` and carries a stable id derived from
+  its file path / SHA / branch name.
+
+### 8.5 Tag — `kit::tag`
+
+The A/M/D status square and the HEAD marker. 16px square, `CORNER_RADIUS_SM`,
+Micro role SEMIBOLD, centered glyph. Colors: added `success()`, modified
+`warning()`, deleted `danger()`, renamed `accent()`, conflicted `danger()` with
+a `warning_bg()` fill.
+
+### 8.6 Count pill — `kit::pill`
+
+Inline counters in the tab bar and toolbar. `RADIUS_PILL`,
+`toolbar_badge_bg()`, Secondary role, `SPACE_3`/`SPACE_1` padding,
+`tabular_nums`. **Not** `gpui_component::Badge` — that is an absolutely
+positioned overlay dot, not an inline counter (§10).
+
+### 8.7 Empty state — `kit::empty_state`
+
+Centered, `SPACE_8` padding. Optional 28px icon in `text_muted()`, headline at
+Body role in `text_main()`, one line of guidance at Secondary role in
+`text_muted()`. Optional single `Ghost` button. No illustrations.
+
+### 8.8 Section header — `kit::section_header`
+
+Sidebar and settings group labels. Secondary role, SEMIBOLD, `text_muted()`,
+`SPACE_5`/`SPACE_3` padding. Not uppercase — GitHub Desktop is not.
+
+### 8.9 Text field
+
+Native GPUI `FocusHandle` + `on_key_down`, per `src/ui/text_field.rs`.
+`surface_bg()`, `CORNER_RADIUS`, `CONTROL_HEIGHT`, `SPACE_6` padding, Body
+role. Focused: `accent()` border. Placeholder: `text_muted()`.
+`gpui_component::Input` is unusable here (§10) — do not reach for it.
+
+---
+
+## 9. Stable ID rule
+
+Every repeated row, popup, selector, checkbox-like control, text input, and
+scroll area carries an explicit stable id. Preferred sources, in order: repo
+path, file path, commit SHA, branch name, enum key. Build them with
+`SharedString::from(format!("prefix-{key}"))`.
+
+Index-based ids (`format!("row-{i}")`) are a bug: they re-bind to a different
+item when the list is filtered or reordered, which loses hover, focus, and
+scroll position.
+
+---
+
+## 10. gpui-component constraints
+
+These are hard limits of the dependency, not preferences. They are why the kit
+exists at all.
+
+1. **`Input` requires `Root`. Do not use either.** `Input` calls `Root::read()`
+   and panics without it; wrapping the window in `Root` costs a blink-cursor
+   timer, font overrides, and constant repaints. Native `FocusHandle` +
+   `on_key_down` instead (§8.9).
+2. **Button icons need `Root`.** `Button::new().icon(..)` renders an empty box.
+   Use `kit::icon_button`.
+3. **`Popover::trigger()` requires `Selectable`,** which `Stateful<Div>` does
+   not implement. Dropdowns and menus are hand-rolled — see
+   `src/ui/primitives`-era code and the kit overlay helpers.
+4. **`Badge` is an absolute overlay,** not an inline counter. Use `kit::pill`.
+5. **Theme must be forced dark:** `Theme::change(ThemeMode::Dark, None, cx)` in
+   `main.rs` before the window opens, or components follow system appearance.
+
+What we *do* use from gpui-component: `TabBar`/`Tab`, `Divider::vertical()`,
+`Icon`/`IconName`, `h_flex`/`v_flex`, `ResizablePanelGroup`/`resizable_panel`,
+and label-only `Button`.
+
+---
+
+## 11. Layout gotchas
+
+**Vertical centering in scroll containers.** `v_flex().flex_1().overflow_y_scroll()`
+centers its children when content is shorter than the container. Separate the
+scroller from the content:
+
+```rust
+// BAD — centers children
+v_flex().flex_1().overflow_y_scroll().child(a).child(b)
+
+// GOOD — content stays at top
+div().flex_1().overflow_y_scroll().child(
+    v_flex().w_full().child(a).child(b)
+)
+```
+
+**Long lists are `uniform_list`.** Any list that can exceed ~20 items —
+changes, history, files, branches — is virtualized. A `for` loop that pushes
+hundreds of children is a bug. `uniform_list` needs an exact row height, which
+is why §5.4 pins `ROW_HEIGHT` and `DIFF_ROW_HEIGHT`.
+
+**Resizable panels fill their parent.** Do not hardcode widths on the content
+inside a `resizable_panel` — use `.size_full()`.
+
+---
+
+## 12. Composition rules
+
+`src/ui/app.rs` and `src/ui/app/*` hold app state, the event loop, action
+dispatch, and top-level screen composition. They do **not** hold custom
+dropdown implementations, custom text-field styling, repeated row rendering, or
+repeated popup lifecycle code. Those live in `src/ui/kit/`.
+
+**If a visual pattern appears twice, it is a candidate for extraction. Three
+times and it is not a candidate any more.**
+
+### Known debt
+
+- **`src/ui/components/` and `src/ui/primitives/` are dead.** They are tracked
+  in git but declared in no `mod.rs`, so nothing compiles them, and they are
+  written against **egui** (`use eframe::egui`) — they predate the GPUI
+  rewrite. They are not an earlier version of this kit and must not be
+  mistaken for one. Delete them.
+- **Dialog geometry is still split.** `kit::dialog` owns the width, but
+  `app::dialogs` also carries a hand-maintained *height* per dialog for
+  centering. Migrated dialogs share the width constant; the heights are still
+  guesses typed in one place and rendered in another.
+- **Off-scale dialog widths.** `420` and `576` are still in the centering
+  table (§8.3 defines 440 / 500 / 720). Fold them in as those dialogs migrate.
+
+---
+
+## 13. Light mode (not shipped)
+
+Light is a **token swap**, exactly like the dark/light split in the sibling
+desktop app: `theme.rs` tokens are already functions, so a resolved-appearance
+flag plus a second palette arm is the whole change. This is why §3 forbids raw
+hex in components — every `rgb(0x…)` outside `theme.rs` is a light-mode bug
+waiting to happen.
+
+Do not add light values speculatively. Do keep the token discipline that makes
+adding them cheap.
+
+---
+
+## 14. Build profiles
+
+GPUI's dependency graph is large enough that build configuration is part of the
+development experience, so it is specified here alongside everything else.
+
+| Profile | Setting | Why |
+|---|---|---|
+| `dev` | `opt-level = 1` | Debug GPUI is unusably slow to run. |
+| `dev` | `debug = "line-tables-only"` | Backtraces and panic locations stay accurate; full DWARF costs seconds per link and hundreds of MB. |
+| `dev` | `split-debuginfo = "unpacked"` | Skips `dsymutil` on every build. |
+| `dev.package."*"` | `opt-level = 2`, `debug = false` | We never step into gpui/syntect/regex. |
+| `test` | `debug = "line-tables-only"`, `lto = "off"` | Tests link often and are never profiled. |
+| `release` | `lto = "thin"` | Most of fat LTO's cross-crate inlining, parallel across codegen units — a fraction of the link time. |
+| `release` | `codegen-units = 16`, `strip = true` | Parallel codegen; thin LTO recovers the inlining. Stripping halves the shipped binary. |
+
+Not adopted: an alternative linker (`lld`/`mold` are not installed, and Apple's
+`ld-prime` is already fast on this toolchain) and `panic = "abort"` (GPUI
+relies on unwinding).
+
+---
+
+## 15. Do / Don't
+
+**Do**
+- route every color through a `theme.rs` token
+- use the spacing scale (§5.2) instead of free-handing `z(13.0)`
+- wrap perceptual sizes in `z()` and leave hairlines at raw 1px
+- use `uniform_list` for anything that can exceed ~20 rows
+- give every repeated interactive element a stable, content-derived id
+- reach for `kit::` before writing a `div()` chain that looks like a control
+
+**Don't**
+- write `rgb(0x…)` outside `theme.rs`
+- use `gpui_component::Input`, `Root`, `Badge`, or `Button::icon`
+- introduce a second interactive accent, a gradient on chrome, or a heavy shadow
+- put a border and a shadow on the same raised surface
+- animate anything decoratively
+- hardcode a panel width inside a `resizable_panel`
+
+---
+
+## 16. Definition of done
+
+A UI change is not done unless:
+
+- repeated patterns are extracted into `kit::`
+- ids are stable and content-derived
+- hover / active / selected states are explicit
+- geometry comes from tokens, not literals
+- lists are virtualized
+- it was checked **visually in the native app**, not only through automation —
+  hit targets, modal placement, contrast, scrolling, and real keyboard input.
+  The automation snapshot must agree with what is on screen (if the UI shows
+  `1 changed file`, `test_tree` reports one change).
+- `src/ui/app.rs` is simpler, not more crowded

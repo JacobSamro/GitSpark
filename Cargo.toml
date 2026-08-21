@@ -23,8 +23,33 @@ open = "5.3.3"
 [build-dependencies]
 embed-resource = "3.0"
 
+# --- Build profiles -----------------------------------------------------------
+# GPUI pulls in a very large dependency graph, so the profiles below trade
+# debug fidelity we do not use for link time and artifact size. See design.md
+# §14 for the reasoning behind each knob.
+
 [profile.dev]
 opt-level = 1
+# Full DWARF for our own crate costs seconds per link and hundreds of MB on
+# disk. Line tables keep backtraces and panic locations usable.
+debug = "line-tables-only"
+# Keep debug info in the .o files instead of running dsymutil on every build.
+split-debuginfo = "unpacked"
 
 [profile.dev.package."*"]
 opt-level = 2
+# We never step into gpui/syntect/regex — their debug info is dead weight.
+debug = false
+
+[profile.test]
+debug = "line-tables-only"
+lto = "off"
+
+[profile.release]
+opt-level = 3
+# Thin LTO: most of the cross-crate inlining of fat LTO, but parallel across
+# codegen units, so release links in a fraction of the time.
+lto = "thin"
+codegen-units = 16
+strip = true
+incremental = false

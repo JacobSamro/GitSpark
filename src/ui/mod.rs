@@ -13,6 +13,7 @@ pub mod domain_state;
 pub mod history_context_menu;
 pub mod ids;
 pub mod image_diff;
+pub mod kit;
 pub mod labels;
 pub mod publish_dialog;
 pub mod repository_dialog;
