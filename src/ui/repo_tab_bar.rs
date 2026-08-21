@@ -159,8 +159,7 @@ fn render_tab(
             // names rather than a row of close buttons. The active tab keeps
             // its own, since that is the one ⌘W acts on.
             .when(!active, |el| {
-                el.invisible()
-                    .group_hover(TAB_GROUP, |s| s.visible())
+                el.invisible().group_hover(TAB_GROUP, |s| s.visible())
             })
             .child(Icon::new(IconName::Close).size(z(9.0)))
             .on_click(move |_evt, _win, cx| {

@@ -54,6 +54,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Public key only — a CI log is not a secret store.
     eprintln!("signed {manifest_path}");
-    eprintln!("public key: {}", BASE64.encode(signing.verifying_key().as_bytes()));
+    eprintln!(
+        "public key: {}",
+        BASE64.encode(signing.verifying_key().as_bytes())
+    );
     Ok(())
 }

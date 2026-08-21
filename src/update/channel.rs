@@ -92,7 +92,10 @@ mod tests {
 
     #[test]
     fn classifies_versions_by_prerelease_tag() {
-        assert_eq!(UpdateChannel::from_version(&v("0.5.0")), UpdateChannel::Release);
+        assert_eq!(
+            UpdateChannel::from_version(&v("0.5.0")),
+            UpdateChannel::Release
+        );
         assert_eq!(
             UpdateChannel::from_version(&v("0.6.0-beta.1")),
             UpdateChannel::Beta
@@ -121,10 +124,19 @@ mod tests {
 
     #[test]
     fn parses_known_names_and_falls_back_safely() {
-        assert_eq!("release".parse::<UpdateChannel>().unwrap(), UpdateChannel::Release);
-        assert_eq!("  BETA ".parse::<UpdateChannel>().unwrap(), UpdateChannel::Beta);
+        assert_eq!(
+            "release".parse::<UpdateChannel>().unwrap(),
+            UpdateChannel::Release
+        );
+        assert_eq!(
+            "  BETA ".parse::<UpdateChannel>().unwrap(),
+            UpdateChannel::Beta
+        );
         // A value from a future build must not fail the app open; release is
         // the conservative read.
-        assert_eq!("nightly".parse::<UpdateChannel>().unwrap(), UpdateChannel::Release);
+        assert_eq!(
+            "nightly".parse::<UpdateChannel>().unwrap(),
+            UpdateChannel::Release
+        );
     }
 }

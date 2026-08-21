@@ -360,7 +360,6 @@ fn clean_subject_line(line: &str) -> String {
         .to_string()
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::io::Read;

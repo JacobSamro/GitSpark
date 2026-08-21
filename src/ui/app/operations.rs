@@ -486,7 +486,10 @@ impl GitSparkApp {
                 self.messages.status_message = if removed == 0 {
                     "Nothing to prune.".to_string()
                 } else {
-                    format!("Pruned {removed} stale worktree entr{}.", if removed == 1 { "y" } else { "ies" })
+                    format!(
+                        "Pruned {removed} stale worktree entr{}.",
+                        if removed == 1 { "y" } else { "ies" }
+                    )
                 };
             }
             Err(error) => {
@@ -3313,12 +3316,7 @@ const WATCH_POLL_INTERVAL: Duration = Duration::from_millis(3000);
 /// write temp files, builds churn ignored directories, and `.git` is touched
 /// by operations that change nothing the UI shows — comparing the fingerprint
 /// is far cheaper than a full refresh, and stops those from causing one.
-fn watch_repository(
-    path: PathBuf,
-    token: u64,
-    generation: Arc<AtomicU64>,
-    tx: NotifySender,
-) {
+fn watch_repository(path: PathBuf, token: u64, generation: Arc<AtomicU64>, tx: NotifySender) {
     let git = GitClient::new();
     let mut last_fingerprint = git.read_watch_fingerprint(&path).ok();
 
@@ -3375,10 +3373,7 @@ fn watch_repository(
 ///
 /// Returns `None` when the platform backend refuses the path, which is the
 /// signal to fall back to polling.
-fn start_os_watcher(
-    path: &Path,
-    event_tx: mpsc::Sender<()>,
-) -> Option<notify::RecommendedWatcher> {
+fn start_os_watcher(path: &Path, event_tx: mpsc::Sender<()>) -> Option<notify::RecommendedWatcher> {
     use notify::{RecursiveMode, Watcher};
 
     // The event payload is discarded deliberately: the fingerprint decides

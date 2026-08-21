@@ -1,6 +1,6 @@
+use std::collections::HashMap;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{Duration, SystemTime};
@@ -1597,7 +1597,8 @@ impl GitClient {
         let has_github_remote = remote_name
             .as_deref()
             .and_then(|remote| {
-                self.run_git_remote_url(repo_path, remote).ok()
+                self.run_git_remote_url(repo_path, remote)
+                    .ok()
                     .and_then(|url| normalize_github_remote_url(url.trim()))
             })
             .is_some();
@@ -2145,7 +2146,9 @@ impl GitClient {
         // just in process startup, before any diffing happened.
         let paths: Vec<&str> = changes.iter().map(|change| change.path.as_str()).collect();
         let staged = self.batch_diff(repo_path, &paths, true).unwrap_or_default();
-        let unstaged = self.batch_diff(repo_path, &paths, false).unwrap_or_default();
+        let unstaged = self
+            .batch_diff(repo_path, &paths, false)
+            .unwrap_or_default();
 
         changes
             .iter()
@@ -2388,10 +2391,7 @@ impl GitClient {
         // `new_count` from that header to decide how far the file extends, so
         // an inflated count also made it offer expand controls for lines that
         // were never in the diff.
-        let emitted: Vec<&str> = contents
-            .lines()
-            .take(UNTRACKED_DIFF_MAX_LINES)
-            .collect();
+        let emitted: Vec<&str> = contents.lines().take(UNTRACKED_DIFF_MAX_LINES).collect();
         let line_count = emitted.len().max(1);
         let body = emitted
             .iter()
@@ -2987,8 +2987,12 @@ fn parse_worktree_list(output: &str, current: &Path) -> Vec<WorktreeInfo> {
             "bare" => is_bare = true,
             "branch" => {
                 if let Some(worktree) = entry.as_mut() {
-                    worktree.branch =
-                        Some(value.strip_prefix("refs/heads/").unwrap_or(value).to_string());
+                    worktree.branch = Some(
+                        value
+                            .strip_prefix("refs/heads/")
+                            .unwrap_or(value)
+                            .to_string(),
+                    );
                 }
             }
             "detached" => {
@@ -3098,11 +3102,10 @@ mod tests {
     use crate::models::{CreateRepositoryOptions, GitIdentity};
 
     use super::{
-        GITSPARK_STASH_MESSAGE_PREFIX, GitClient, encode_github_path, fill_missing_author_identity,
-        inferred_clone_directory_name, normalize_github_remote_url, parse_author_ident,
-        parse_ref_tags, parse_worktree_list, safe_repository_directory_name,
+        GITSPARK_STASH_MESSAGE_PREFIX, GitClient, UNTRACKED_DIFF_MAX_LINES, encode_github_path,
+        fill_missing_author_identity, inferred_clone_directory_name, normalize_github_remote_url,
+        parse_author_ident, parse_ref_tags, parse_worktree_list, safe_repository_directory_name,
         split_combined_diff,
-        UNTRACKED_DIFF_MAX_LINES,
     };
 
     #[test]
@@ -4071,13 +4074,19 @@ mod tests {
 
         assert_eq!(worktrees[0].name, "proj");
         assert_eq!(worktrees[0].branch.as_deref(), Some("dev"));
-        assert!(worktrees[0].is_main, "the first record is the primary worktree");
+        assert!(
+            worktrees[0].is_main,
+            "the first record is the primary worktree"
+        );
 
         assert_eq!(worktrees[1].name, "proj-master");
         assert_eq!(worktrees[1].branch.as_deref(), Some("master"));
         assert!(!worktrees[1].is_main);
 
-        assert!(worktrees[2].is_detached, "detached checkouts carry no branch");
+        assert!(
+            worktrees[2].is_detached,
+            "detached checkouts carry no branch"
+        );
         assert_eq!(worktrees[2].branch, None);
     }
 
@@ -4119,7 +4128,10 @@ mod tests {
         let worktrees = parse_worktree_list(output, Path::new("/nowhere"));
         assert!(!worktrees[0].is_locked);
         assert!(worktrees[1].is_locked, "a bare `locked` key sets the flag");
-        assert!(worktrees[2].is_locked, "`locked <reason>` also sets the flag");
+        assert!(
+            worktrees[2].is_locked,
+            "`locked <reason>` also sets the flag"
+        );
     }
 
     #[test]
@@ -4193,7 +4205,6 @@ mod tests {
         fs::remove_dir_all(&extra).ok();
     }
 
-
     // ----------------------------------------------------------------------
     // Untracked-file synthetic diffs
     // ----------------------------------------------------------------------
@@ -4264,7 +4275,6 @@ mod tests {
         fs::remove_dir_all(&repo).ok();
     }
 
-
     // ----------------------------------------------------------------------
     // Batched diff splitting
     // ----------------------------------------------------------------------
@@ -4290,7 +4300,10 @@ mod tests {
         let (sections, _) = split_combined_diff(output, &["src/a.rs", "src/b.rs"]);
         assert_eq!(sections.len(), 2);
         assert!(sections["src/a.rs"].contains("+new a"));
-        assert!(!sections["src/a.rs"].contains("new b"), "sections bled together");
+        assert!(
+            !sections["src/a.rs"].contains("new b"),
+            "sections bled together"
+        );
         assert!(sections["src/b.rs"].contains("+new b"));
         assert!(sections["src/b.rs"].starts_with("diff --git a/src/b.rs"));
     }
@@ -4351,7 +4364,10 @@ mod tests {
             "+only a changed\n",
         );
         let (sections, unattributed) = split_combined_diff(output, &["a.rs", "b.rs"]);
-        assert_eq!(unattributed, 0, "b.rs having no diff is not an attribution failure");
+        assert_eq!(
+            unattributed, 0,
+            "b.rs having no diff is not an attribution failure"
+        );
         assert!(sections.contains_key("a.rs"));
         assert!(!sections.contains_key("b.rs"));
     }
@@ -4389,7 +4405,6 @@ mod tests {
         }
         fs::remove_dir_all(&repo).ok();
     }
-
 }
 
 fn non_empty(value: String) -> Option<String> {

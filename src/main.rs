@@ -7,8 +7,8 @@ mod git;
 mod gitoxide;
 mod models;
 mod storage;
-mod update;
 mod ui;
+mod update;
 
 use gpui::*;
 

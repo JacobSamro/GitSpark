@@ -2,9 +2,9 @@ use gpui::*;
 use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
 use gpui_component::{Icon, IconName, h_flex, v_flex};
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::collections::HashSet;
 use std::path::Path;
+use std::rc::Rc;
 
 use crate::models::DiffEntry;
 use crate::ui::app::{DiffExpandDirection, GitSparkApp};
@@ -778,11 +778,9 @@ fn render_diff_line(
     // stealing that click meant every attempt to highlight a token silently
     // changed what was staged. GitHub Desktop scopes the affordance the same
     // way, to `.diff-line-gutter.includeable`.
-    let mut gutter = render_unified_line_gutter(line, line_included, selectable)
-        .id(SharedString::from(format!(
-            "{}-gutter",
-            diff_row_id(file_path, line)
-        )));
+    let mut gutter = render_unified_line_gutter(line, line_included, selectable).id(
+        SharedString::from(format!("{}-gutter", diff_row_id(file_path, line))),
+    );
 
     if let (Some(target), Some(vh)) = (selection_target.clone(), view)
         && selectable
@@ -810,30 +808,22 @@ fn render_diff_line(
     // Content — varies by line kind
     match &line.kind {
         DiffLineKind::Added => {
-            row = row.bg(theme::diff_add_bg()).child(
-                div()
-                    .flex_1()
-                    .py(z(2.0))
-                    .pl(z(5.0))
-                    .child(render_code_text(
-                        &line.content,
-                        file_path,
-                        theme::diff_add_fg(),
-                    )),
-            );
+            row = row
+                .bg(theme::diff_add_bg())
+                .child(div().flex_1().py(z(2.0)).pl(z(5.0)).child(render_code_text(
+                    &line.content,
+                    file_path,
+                    theme::diff_add_fg(),
+                )));
         }
         DiffLineKind::Deleted => {
-            row = row.bg(theme::diff_del_bg()).child(
-                div()
-                    .flex_1()
-                    .py(z(2.0))
-                    .pl(z(5.0))
-                    .child(render_code_text(
-                        &line.content,
-                        file_path,
-                        theme::diff_del_fg(),
-                    )),
-            );
+            row = row
+                .bg(theme::diff_del_bg())
+                .child(div().flex_1().py(z(2.0)).pl(z(5.0)).child(render_code_text(
+                    &line.content,
+                    file_path,
+                    theme::diff_del_fg(),
+                )));
         }
         DiffLineKind::HunkHeader => {
             row = row.bg(theme::diff_hunk_bg()).child(
@@ -1904,7 +1894,10 @@ mod tests {
         // The caller indexes this by hunk position, so a short vec would
         // silently mis-assign controls to the wrong hunks.
         let hunks = vec![hunk(10, 2), hunk(60, 2), hunk(140, 2)];
-        assert_eq!(compute_expansion_types(&hunks, 300, true).len(), hunks.len());
+        assert_eq!(
+            compute_expansion_types(&hunks, 300, true).len(),
+            hunks.len()
+        );
         assert_eq!(
             compute_expansion_types(&hunks, 300, false).len(),
             hunks.len()

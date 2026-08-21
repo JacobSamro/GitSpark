@@ -952,7 +952,15 @@ fn render_theme_option(
             gpui::rgb(0x383a41).into(),
         ]
     };
-    let [shell_bg, sidebar_bg, bar_muted, bar_accent, bar_add, bar_del, bar_text] = arm;
+    let [
+        shell_bg,
+        sidebar_bg,
+        bar_muted,
+        bar_accent,
+        bar_add,
+        bar_del,
+        bar_text,
+    ] = arm;
     v_flex()
         .id(id)
         .cursor_pointer()
@@ -1344,8 +1352,7 @@ fn render_openrouter_models(
                             .text_size(theme::z(12.0))
                             .text_color(theme::text_main())
                             .child(if app.settings.ai.model.trim().is_empty() {
-                                "None set \u{2014} type a model id in the field above."
-                                    .to_string()
+                                "None set \u{2014} type a model id in the field above.".to_string()
                             } else {
                                 app.settings.ai.model.clone()
                             }),

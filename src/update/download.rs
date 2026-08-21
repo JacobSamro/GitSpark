@@ -240,8 +240,8 @@ mod tests {
 
     #[test]
     fn reports_progress_while_downloading() {
-        use std::sync::atomic::{AtomicU64, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicU64, Ordering};
 
         let body = vec![7u8; 200_000];
         let port = serve_once(body.clone());

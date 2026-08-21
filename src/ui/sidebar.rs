@@ -1180,7 +1180,10 @@ pub fn render_history_row(commit: &CommitInfo, selected: bool) -> Div {
         .gap(z(5.0));
 
     for tag in &commit.tags {
-        indicators = indicators.child(render_commit_badge(SharedString::from(tag.clone()), selected));
+        indicators = indicators.child(render_commit_badge(
+            SharedString::from(tag.clone()),
+            selected,
+        ));
     }
     if commit.is_head {
         indicators = indicators.child(render_commit_badge(SharedString::from("HEAD"), selected));
@@ -1214,7 +1217,10 @@ fn render_commit_avatar(author: &str, selected: bool) -> Div {
         .unwrap_or_else(|| "?".to_string());
 
     let (bg, fg) = if selected {
-        (theme::list_selected_badge_bg(), theme::list_selected_badge_fg())
+        (
+            theme::list_selected_badge_bg(),
+            theme::list_selected_badge_fg(),
+        )
     } else {
         (theme::accent(), theme::on_accent())
     };
@@ -1241,7 +1247,10 @@ fn render_commit_avatar(author: &str, selected: bool) -> Div {
 /// sit on the blue fill, so it swaps to the light `selected` pair.
 fn render_commit_badge(label: SharedString, selected: bool) -> Div {
     let (bg, fg) = if selected {
-        (theme::list_selected_badge_bg(), theme::list_selected_badge_fg())
+        (
+            theme::list_selected_badge_bg(),
+            theme::list_selected_badge_fg(),
+        )
     } else {
         (theme::list_badge_bg(), theme::text_main())
     };

@@ -473,7 +473,10 @@ mod tests {
         shell_sorted.sort();
         let mut gix_sorted = gix.clone();
         gix_sorted.sort();
-        assert_eq!(gix_sorted, shell_sorted, "branch set or current flag differs");
+        assert_eq!(
+            gix_sorted, shell_sorted,
+            "branch set or current flag differs"
+        );
 
         // The current branch must sort first, as the shell path guaranteed.
         assert!(gix[0].1, "current branch is not first");
@@ -542,8 +545,14 @@ mod tests {
 
         // Both a lightweight and an annotated tag must resolve to HEAD.
         let head_tags = &gix[0].tags;
-        assert!(head_tags.contains(&"v1.0.0".to_string()), "lightweight tag missing: {head_tags:?}");
-        assert!(head_tags.contains(&"v1.1.0".to_string()), "annotated tag missing: {head_tags:?}");
+        assert!(
+            head_tags.contains(&"v1.0.0".to_string()),
+            "lightweight tag missing: {head_tags:?}"
+        );
+        assert!(
+            head_tags.contains(&"v1.1.0".to_string()),
+            "annotated tag missing: {head_tags:?}"
+        );
         fs::remove_dir_all(&repo).ok();
     }
 
@@ -552,8 +561,14 @@ mod tests {
         let repo = scratch_repo("remote");
         assert_eq!(primary_remote(&repo), Some(None), "no remotes yet");
 
-        run(&repo, &["remote", "add", "upstream", "https://example.com/u.git"]);
-        run(&repo, &["remote", "add", "origin", "https://example.com/o.git"]);
+        run(
+            &repo,
+            &["remote", "add", "upstream", "https://example.com/u.git"],
+        );
+        run(
+            &repo,
+            &["remote", "add", "origin", "https://example.com/o.git"],
+        );
 
         // origin wins over an alphabetically earlier remote, as git's caller did.
         assert_eq!(primary_remote(&repo), Some(Some("origin".to_string())));
@@ -563,5 +578,4 @@ mod tests {
         );
         fs::remove_dir_all(&repo).ok();
     }
-
 }

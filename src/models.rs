@@ -219,20 +219,27 @@ mod tests {
         // Someone running a local llama.cpp or vLLM must not have their
         // endpoint reset because they toggled the provider.
         assert_eq!(
-            endpoint_for_provider_change("http://localhost:8080/v1/chat/completions",
-                &AiProvider::OpenAICompatible),
+            endpoint_for_provider_change(
+                "http://localhost:8080/v1/chat/completions",
+                &AiProvider::OpenAICompatible
+            ),
             None
         );
         assert_eq!(
-            endpoint_for_provider_change("https://my-proxy.internal/v1/chat/completions",
-                &AiProvider::OpenRouter),
+            endpoint_for_provider_change(
+                "https://my-proxy.internal/v1/chat/completions",
+                &AiProvider::OpenRouter
+            ),
             None
         );
     }
 
     #[test]
     fn a_default_endpoint_is_recognized_regardless_of_case_or_padding() {
-        let padded = format!("  {}  ", AiProvider::OpenRouter.default_endpoint().to_uppercase());
+        let padded = format!(
+            "  {}  ",
+            AiProvider::OpenRouter.default_endpoint().to_uppercase()
+        );
         assert!(
             endpoint_for_provider_change(&padded, &AiProvider::OpenAICompatible).is_some(),
             "a default typed with different case should still be replaced"

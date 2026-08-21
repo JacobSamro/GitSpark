@@ -149,7 +149,10 @@ mod tests {
     use super::*;
 
     fn tabs_from(paths: &[&str]) -> Vec<RepoTab> {
-        paths.iter().map(|p| RepoTab::new(PathBuf::from(p))).collect()
+        paths
+            .iter()
+            .map(|p| RepoTab::new(PathBuf::from(p)))
+            .collect()
     }
 
     #[test]

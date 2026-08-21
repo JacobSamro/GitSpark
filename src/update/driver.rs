@@ -126,7 +126,10 @@ mod tests {
         );
         let last = seen.last().expect("at least one state");
         assert!(
-            !matches!(last, UpdateState::Checking | UpdateState::Downloading { .. }),
+            !matches!(
+                last,
+                UpdateState::Checking | UpdateState::Downloading { .. }
+            ),
             "run ended on a non-terminal state: {last:?}"
         );
     }

@@ -7,9 +7,9 @@ use crate::models::BranchInfo;
 use crate::ui::app::GitSparkApp;
 use crate::ui::ids::stable_id_slug;
 use crate::ui::kit;
-use std::collections::HashMap;
 use crate::ui::theme;
 use crate::ui::ui_state::{ActiveDialog, BranchSelectorMode};
+use std::collections::HashMap;
 
 #[derive(Clone)]
 enum BranchListItem {

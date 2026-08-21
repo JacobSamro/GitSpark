@@ -23,8 +23,8 @@ use crate::ui::diff_line_selection::DiffLineSelection;
 use crate::ui::domain_state::NetworkAction;
 use crate::ui::history_context_menu::HistoryContextMenuAction;
 use crate::ui::ids::stable_id_slug;
-use crate::ui::theme;
 use crate::ui::settings_modal::SettingsField;
+use crate::ui::theme;
 use crate::ui::ui_state::{ActiveDialog, BranchSelectorMode, SidebarTab};
 use crate::ui::ui_state::{OpenRouterModelsState, SettingsScope, SettingsSection};
 

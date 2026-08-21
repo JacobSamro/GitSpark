@@ -158,7 +158,11 @@ pub(super) fn render_worktree_selector_panel(
                             .bg(theme::accent())
                             .into_any_element()
                     } else {
-                        div().flex_shrink_0().w(px(7.0)).h(px(7.0)).into_any_element()
+                        div()
+                            .flex_shrink_0()
+                            .w(px(7.0))
+                            .h(px(7.0))
+                            .into_any_element()
                     })
                     .on_click(move |_evt, _win, cx| {
                         if is_current {

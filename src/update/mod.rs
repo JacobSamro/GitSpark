@@ -50,8 +50,12 @@ use anyhow::{Context, Result};
 /// Fallible rather than panicking: a malformed `CARGO_PKG_VERSION` should
 /// disable updates, not take the app down on launch.
 pub fn current_version() -> Result<semver::Version> {
-    semver::Version::parse(env!("CARGO_PKG_VERSION"))
-        .with_context(|| format!("this build has an unparseable version: {}", env!("CARGO_PKG_VERSION")))
+    semver::Version::parse(env!("CARGO_PKG_VERSION")).with_context(|| {
+        format!(
+            "this build has an unparseable version: {}",
+            env!("CARGO_PKG_VERSION")
+        )
+    })
 }
 
 /// What the UI shows, and the only update state the app holds.
@@ -103,4 +107,3 @@ impl UpdateState {
         )
     }
 }
-

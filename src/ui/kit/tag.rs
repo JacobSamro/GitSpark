@@ -4,8 +4,8 @@ use gpui::{Div, FontWeight, Hsla, ParentElement, SharedString, Styled, div};
 use gpui_component::h_flex;
 
 use crate::ui::theme;
-use crate::ui::theme::z;
 use crate::ui::theme::TextStyleExt;
+use crate::ui::theme::z;
 
 /// Side of the square A/M/D marker in a changes row.
 const TAG_SIZE: f32 = 16.0;

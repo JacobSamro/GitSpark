@@ -135,12 +135,9 @@ fn print_table(rows: &[Row]) {
 /// three have very different defaults for untracked files, which is the
 /// expensive part. Print what each actually counted.
 fn verify_status_parity(repo: &Path) {
-    let shell_count = shell(
-        repo,
-        &["status", "--porcelain=v2", "--untracked-files=all"],
-    )
-    .map(|out| out.lines().filter(|l| !l.is_empty()).count())
-    .unwrap_or(0);
+    let shell_count = shell(repo, &["status", "--porcelain=v2", "--untracked-files=all"])
+        .map(|out| out.lines().filter(|l| !l.is_empty()).count())
+        .unwrap_or(0);
 
     let git2_count = (|| {
         let r = git2::Repository::discover(repo).ok()?;
@@ -206,7 +203,13 @@ fn bench_status(repo: &Path) -> Row {
         shell: time(|| {
             shell(
                 repo,
-                &["status", "--porcelain=v2", "--branch", "--untracked-files=all", "-z"],
+                &[
+                    "status",
+                    "--porcelain=v2",
+                    "--branch",
+                    "--untracked-files=all",
+                    "-z",
+                ],
             )
         }),
         git2: time(|| {
@@ -236,7 +239,12 @@ fn bench_status(repo: &Path) -> Row {
 fn bench_history(repo: &Path) -> Row {
     Row {
         op: "history (100)",
-        shell: time(|| shell(repo, &["log", "-n100", "--pretty=format:%H%x1f%s%x1f%an%x1f%ar"])),
+        shell: time(|| {
+            shell(
+                repo,
+                &["log", "-n100", "--pretty=format:%H%x1f%s%x1f%an%x1f%ar"],
+            )
+        }),
         git2: time(|| {
             let repo = git2::Repository::discover(repo).ok()?;
             let mut walk = repo.revwalk().ok()?;
@@ -278,7 +286,12 @@ fn bench_branches(repo: &Path) -> Row {
         shell: time(|| {
             shell(
                 repo,
-                &["for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes"],
+                &[
+                    "for-each-ref",
+                    "--format=%(refname:short)",
+                    "refs/heads",
+                    "refs/remotes",
+                ],
             )
         }),
         git2: time(|| {
@@ -320,7 +333,12 @@ fn bench_remote(repo: &Path) -> Row {
         gix: time(|| {
             let repo = gix::discover(repo).ok()?;
             let remote = repo.find_remote("origin").ok()?;
-            Some(remote.url(gix::remote::Direction::Fetch)?.to_bstring().len())
+            Some(
+                remote
+                    .url(gix::remote::Direction::Fetch)?
+                    .to_bstring()
+                    .len(),
+            )
         }),
         note: "",
     }

@@ -281,8 +281,12 @@ fn install_windows(artifact: &Path, staging: &Path) -> Result<()> {
     );
     let _ = std::fs::remove_file(&backup);
 
-    std::fs::rename(&exe, &backup)
-        .with_context(|| format!("failed to move the running executable aside: {}", exe.display()))?;
+    std::fs::rename(&exe, &backup).with_context(|| {
+        format!(
+            "failed to move the running executable aside: {}",
+            exe.display()
+        )
+    })?;
 
     if let Err(error) = std::fs::copy(artifact, &exe) {
         // Put ourselves back. Failing here without rolling back would leave
@@ -312,9 +316,7 @@ mod tests {
         let exe = Path::new("/Users/x/Downloads/build/GitSpark.app/Contents/MacOS/gitspark");
         assert_eq!(
             app_bundle_for(exe),
-            Some(PathBuf::from(
-                "/Users/x/Downloads/build/GitSpark.app"
-            ))
+            Some(PathBuf::from("/Users/x/Downloads/build/GitSpark.app"))
         );
     }
 
@@ -348,10 +350,7 @@ mod tests {
         use std::fs;
         use std::process::Command;
 
-        let root = std::env::temp_dir().join(format!(
-            "gitspark-apply-{}",
-            std::process::id()
-        ));
+        let root = std::env::temp_dir().join(format!("gitspark-apply-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let staging = root.join("staging");
         let installed = root.join("installed/GitSpark.app");

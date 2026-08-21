@@ -20,10 +20,7 @@
 //!         .child(button("…-confirm", "Delete", ButtonVariant::Danger).on_click(..)))
 //! ```
 
-use gpui::{
-    Div, FontWeight, Hsla, IntoElement, ParentElement, SharedString, Styled,
-    div,
-};
+use gpui::{Div, FontWeight, Hsla, IntoElement, ParentElement, SharedString, Styled, div};
 use gpui_component::{Icon, IconName, h_flex, v_flex};
 
 use crate::ui::kit::surface::Surface;

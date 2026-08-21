@@ -188,15 +188,15 @@ impl Render for GitSparkApp {
                 );
 
             #[cfg(target_os = "macos")]
-            let row = row
-                .pl(theme::z(theme::TRAFFIC_LIGHT_INSET))
-                .on_click(|event: &ClickEvent, window: &mut Window, _| {
+            let row = row.pl(theme::z(theme::TRAFFIC_LIGHT_INSET)).on_click(
+                |event: &ClickEvent, window: &mut Window, _| {
                     // Double-click still zooms the window. The tabs stop the
                     // event themselves, so this only fires on the bare strip.
                     if event.click_count() == 2 {
                         window.titlebar_double_click();
                     }
-                });
+                },
+            );
 
             // The row and the toolbar below it share `panel_bg`, so without a
             // rule they read as one tall undifferentiated strip.
@@ -218,9 +218,7 @@ impl Render for GitSparkApp {
             .drag_over::<ExternalPaths>(|style, _, _, _| {
                 // The whole window is the target, so the cue is an inset ring
                 // rather than a fill, which would wash out the diff underneath.
-                style
-                    .border_2()
-                    .border_color(theme::accent())
+                style.border_2().border_color(theme::accent())
             })
             .bg(theme::bg())
             .font_family(".SystemUIFont")

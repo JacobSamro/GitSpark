@@ -410,7 +410,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod coverage {
     use super::*;
@@ -418,7 +417,10 @@ mod coverage {
     fn covers_the_languages_this_app_is_used_on() {
         // syntect's own defaults miss all of these; two-face is here to
         // provide them, and this test is what keeps that true.
-        for ext in ["swift", "ts", "tsx", "kt", "toml", "rs", "js", "py", "go", "java", "rb", "c", "cpp", "cs", "sh", "yaml", "json", "md"] {
+        for ext in [
+            "swift", "ts", "tsx", "kt", "toml", "rs", "js", "py", "go", "java", "rb", "c", "cpp",
+            "cs", "sh", "yaml", "json", "md",
+        ] {
             assert!(
                 syntax_for_path(&format!("x.{ext}")).is_some(),
                 ".{ext} has no syntax"

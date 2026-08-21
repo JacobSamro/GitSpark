@@ -48,11 +48,11 @@ mod dialogs;
 mod helpers;
 mod operations;
 mod repo_selector;
-mod worktree_selector;
+mod tabs;
 mod tag_dialogs;
 mod ui_shell;
-mod tabs;
 mod updates;
+mod worktree_selector;
 pub(crate) use helpers::diff_line_stats;
 
 // ---------------------------------------------------------------------------
