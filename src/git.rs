@@ -9,7 +9,7 @@ use anyhow::{Context, Result, anyhow, bail};
 
 use crate::models::{
     BranchComparison, BranchInfo, ChangeEntry, CommitInfo, CreateRepositoryOptions, DiffEntry,
-    GitIdentity, GitOperationKind, GitOperationState, RepoSnapshot, RepoSummary,
+    GitIdentity, GitOperationKind, GitOperationState, RepoSnapshot, RepoSummary, WorktreeInfo,
 };
 
 #[cfg(windows)]
@@ -486,6 +486,83 @@ impl GitClient {
         self.run_git(&repo_path, &["stash", "drop", stash_ref.as_str()])
             .context("failed to drop stash")?;
         self.snapshot(&repo_path)
+    }
+
+    // ------------------------------------------------------------------
+    // Worktrees
+    // ------------------------------------------------------------------
+
+    /// List every worktree attached to this repository.
+    ///
+    /// `is_current` is resolved against the *canonicalized* path: git prints
+    /// real paths, while the app may hold one that traverses a symlink — on
+    /// macOS `/tmp` is a symlink to `/private/tmp`, so comparing the raw
+    /// strings marks nothing current.
+    pub fn list_worktrees(&self, repo_path: &Path) -> Result<Vec<WorktreeInfo>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let output = self
+            .run_git(&repo_path, &["worktree", "list", "--porcelain"])
+            .context("failed to list worktrees")?;
+        let current = std::fs::canonicalize(&repo_path).unwrap_or(repo_path);
+        Ok(parse_worktree_list(&output, &current))
+    }
+
+    // add/remove/prune back the picker's footer actions, which land with the
+    // next increment. Kept here because they are the other half of the
+    // `worktree` surface and belong beside `list_worktrees`.
+    /// Create a worktree at `path`.
+    ///
+    /// `create_branch` maps to `-b`. Git refuses to check out a branch that is
+    /// already checked out in another worktree, so an existing branch can only
+    /// be added once — the error is surfaced, not swallowed.
+    #[allow(dead_code)]
+    pub fn add_worktree(
+        &self,
+        repo_path: &Path,
+        path: &Path,
+        branch: &str,
+        create_branch: bool,
+    ) -> Result<Vec<WorktreeInfo>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let path_arg = path.to_string_lossy().to_string();
+        let mut args = vec!["worktree", "add"];
+        if create_branch {
+            args.extend_from_slice(&["-b", branch, path_arg.as_str()]);
+        } else {
+            args.extend_from_slice(&[path_arg.as_str(), branch]);
+        }
+        self.run_git(&repo_path, &args)
+            .context("failed to add worktree")?;
+        self.list_worktrees(&repo_path)
+    }
+
+    /// Remove a worktree. `force` discards uncommitted changes inside it.
+    #[allow(dead_code)]
+    pub fn remove_worktree(
+        &self,
+        repo_path: &Path,
+        path: &Path,
+        force: bool,
+    ) -> Result<Vec<WorktreeInfo>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let path_arg = path.to_string_lossy().to_string();
+        let mut args = vec!["worktree", "remove"];
+        if force {
+            args.push("--force");
+        }
+        args.push(path_arg.as_str());
+        self.run_git(&repo_path, &args)
+            .context("failed to remove worktree")?;
+        self.list_worktrees(&repo_path)
+    }
+
+    /// Drop administrative entries for worktrees whose directory is gone.
+    #[allow(dead_code)]
+    pub fn prune_worktrees(&self, repo_path: &Path) -> Result<Vec<WorktreeInfo>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        self.run_git(&repo_path, &["worktree", "prune"])
+            .context("failed to prune worktrees")?;
+        self.list_worktrees(&repo_path)
     }
 
     pub fn latest_stash_files(&self, repo_path: &Path) -> Result<Vec<ChangeEntry>> {
@@ -2615,6 +2692,93 @@ fn parse_git_bool(value: &str) -> Result<bool> {
     }
 }
 
+/// Parse `git worktree list --porcelain`.
+///
+/// Blank-line-separated records of `key value`, or a bare key for flags:
+///
+/// ```text
+/// worktree /Users/x/proj
+/// HEAD 4b49bed…
+/// branch refs/heads/dev
+///
+/// worktree /Users/x/.wt/proj-master
+/// HEAD 0eb22df…
+/// detached
+/// ```
+///
+/// The first record with a working directory is the primary worktree. A bare
+/// repository emits a record with none; those are skipped, because there is
+/// nothing there for the app to open.
+fn parse_worktree_list(output: &str, current: &Path) -> Vec<WorktreeInfo> {
+    let mut worktrees: Vec<WorktreeInfo> = Vec::new();
+    let mut entry: Option<WorktreeInfo> = None;
+    let mut is_bare = false;
+
+    fn flush(
+        worktrees: &mut Vec<WorktreeInfo>,
+        entry: &mut Option<WorktreeInfo>,
+        is_bare: &mut bool,
+        current: &Path,
+    ) {
+        if let Some(mut worktree) = entry.take() {
+            if !*is_bare {
+                worktree.is_main = worktrees.is_empty();
+                worktree.is_current = std::fs::canonicalize(&worktree.path)
+                    .as_deref()
+                    .unwrap_or(worktree.path.as_path())
+                    == current;
+                worktrees.push(worktree);
+            }
+        }
+        *is_bare = false;
+    }
+
+    for line in output.lines() {
+        let line = line.trim_end();
+        if line.is_empty() {
+            flush(&mut worktrees, &mut entry, &mut is_bare, current);
+            continue;
+        }
+        let (key, value) = line.split_once(' ').unwrap_or((line, ""));
+        match key {
+            "worktree" => {
+                flush(&mut worktrees, &mut entry, &mut is_bare, current);
+                let path = PathBuf::from(value);
+                let name = path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_else(|| value.to_string());
+                entry = Some(WorktreeInfo {
+                    path,
+                    name,
+                    ..WorktreeInfo::default()
+                });
+            }
+            "bare" => is_bare = true,
+            "branch" => {
+                if let Some(worktree) = entry.as_mut() {
+                    worktree.branch =
+                        Some(value.strip_prefix("refs/heads/").unwrap_or(value).to_string());
+                }
+            }
+            "detached" => {
+                if let Some(worktree) = entry.as_mut() {
+                    worktree.is_detached = true;
+                }
+            }
+            // `locked` may carry a reason after the key; only the flag matters.
+            "locked" => {
+                if let Some(worktree) = entry.as_mut() {
+                    worktree.is_locked = true;
+                }
+            }
+            _ => {}
+        }
+    }
+    flush(&mut worktrees, &mut entry, &mut is_bare, current);
+    worktrees
+}
+
 fn parse_ref_tags(refs: &str) -> Vec<String> {
     refs.split(", ")
         .filter_map(|ref_name| ref_name.strip_prefix("tag: "))
@@ -2706,7 +2870,7 @@ mod tests {
     use super::{
         GITSPARK_STASH_MESSAGE_PREFIX, GitClient, encode_github_path, fill_missing_author_identity,
         inferred_clone_directory_name, normalize_github_remote_url, parse_author_ident,
-        parse_ref_tags, safe_repository_directory_name,
+        parse_ref_tags, parse_worktree_list, safe_repository_directory_name,
     };
 
     #[test]
@@ -3650,6 +3814,153 @@ mod tests {
         );
         String::from_utf8(output.stdout).unwrap()
     }
+
+    // ------------------------------------------------------------------
+    // Worktrees
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn parses_worktree_porcelain_records() {
+        let output = concat!(
+            "worktree /Users/x/proj\n",
+            "HEAD 4b49bed1\n",
+            "branch refs/heads/dev\n",
+            "\n",
+            "worktree /Users/x/.wt/proj-master\n",
+            "HEAD 0eb22df2\n",
+            "branch refs/heads/master\n",
+            "\n",
+            "worktree /Users/x/.wt/proj-detached\n",
+            "HEAD 146b9893\n",
+            "detached\n",
+        );
+        let worktrees = parse_worktree_list(output, Path::new("/nowhere"));
+        assert_eq!(worktrees.len(), 3);
+
+        assert_eq!(worktrees[0].name, "proj");
+        assert_eq!(worktrees[0].branch.as_deref(), Some("dev"));
+        assert!(worktrees[0].is_main, "the first record is the primary worktree");
+
+        assert_eq!(worktrees[1].name, "proj-master");
+        assert_eq!(worktrees[1].branch.as_deref(), Some("master"));
+        assert!(!worktrees[1].is_main);
+
+        assert!(worktrees[2].is_detached, "detached checkouts carry no branch");
+        assert_eq!(worktrees[2].branch, None);
+    }
+
+    #[test]
+    fn skips_bare_repositories_and_promotes_the_first_real_tree() {
+        // A bare repo emits a record with no working directory. Nothing can be
+        // opened there, so the NEXT record must become the primary worktree.
+        let output = concat!(
+            "worktree /Users/x/proj.git\n",
+            "bare\n",
+            "\n",
+            "worktree /Users/x/proj\n",
+            "HEAD 4b49bed1\n",
+            "branch refs/heads/main\n",
+        );
+        let worktrees = parse_worktree_list(output, Path::new("/nowhere"));
+        assert_eq!(worktrees.len(), 1);
+        assert_eq!(worktrees[0].name, "proj");
+        assert!(worktrees[0].is_main);
+    }
+
+    #[test]
+    fn records_the_locked_flag_with_or_without_a_reason() {
+        let output = concat!(
+            "worktree /Users/x/proj\n",
+            "HEAD 4b49bed1\n",
+            "branch refs/heads/main\n",
+            "\n",
+            "worktree /Users/x/.wt/a\n",
+            "HEAD 0eb22df2\n",
+            "branch refs/heads/a\n",
+            "locked\n",
+            "\n",
+            "worktree /Users/x/.wt/b\n",
+            "HEAD 146b9893\n",
+            "branch refs/heads/b\n",
+            "locked on a removable drive\n",
+        );
+        let worktrees = parse_worktree_list(output, Path::new("/nowhere"));
+        assert!(!worktrees[0].is_locked);
+        assert!(worktrees[1].is_locked, "a bare `locked` key sets the flag");
+        assert!(worktrees[2].is_locked, "`locked <reason>` also sets the flag");
+    }
+
+    #[test]
+    fn lists_adds_and_removes_worktrees_against_real_git() {
+        let repo = temp_repo("worktree-lifecycle");
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        fs::write(repo.join("a.txt"), "a\n").unwrap();
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+
+        let client = GitClient::new();
+
+        let worktrees = client.list_worktrees(&repo).unwrap();
+        assert_eq!(worktrees.len(), 1);
+        assert!(worktrees[0].is_main);
+        assert!(
+            worktrees[0].is_current,
+            "the repo we asked about must resolve as current even through a /tmp symlink"
+        );
+        assert_eq!(worktrees[0].branch.as_deref(), Some("main"));
+
+        let extra = repo.parent().unwrap().join(format!(
+            "{}-feature",
+            repo.file_name().unwrap().to_string_lossy()
+        ));
+        let worktrees = client.add_worktree(&repo, &extra, "feature", true).unwrap();
+        assert_eq!(worktrees.len(), 2);
+        let added = worktrees.iter().find(|w| !w.is_main).unwrap();
+        assert_eq!(added.branch.as_deref(), Some("feature"));
+        assert!(!added.is_current, "adding a worktree does not switch to it");
+
+        // Listing FROM the new worktree must mark that one current instead.
+        let from_extra = client.list_worktrees(&extra).unwrap();
+        let current = from_extra.iter().find(|w| w.is_current).unwrap();
+        assert_eq!(current.branch.as_deref(), Some("feature"));
+
+        let worktrees = client.remove_worktree(&repo, &extra, false).unwrap();
+        assert_eq!(worktrees.len(), 1);
+        assert!(worktrees[0].is_main);
+
+        fs::remove_dir_all(&repo).ok();
+        fs::remove_dir_all(&extra).ok();
+    }
+
+    #[test]
+    fn refuses_to_check_out_a_branch_already_checked_out_elsewhere() {
+        let repo = temp_repo("worktree-duplicate-branch");
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        fs::write(repo.join("a.txt"), "a\n").unwrap();
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+
+        let client = GitClient::new();
+        let extra = repo.parent().unwrap().join(format!(
+            "{}-dup",
+            repo.file_name().unwrap().to_string_lossy()
+        ));
+
+        // `main` is checked out in the primary worktree, so git must reject
+        // this. It is the constraint the picker has to surface, not hide.
+        assert!(
+            client.add_worktree(&repo, &extra, "main", false).is_err(),
+            "git allowed the same branch in two worktrees"
+        );
+
+        fs::remove_dir_all(&repo).ok();
+        fs::remove_dir_all(&extra).ok();
+    }
+
 }
 
 fn non_empty(value: String) -> Option<String> {

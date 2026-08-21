@@ -48,6 +48,7 @@ mod dialogs;
 mod helpers;
 mod operations;
 mod repo_selector;
+mod worktree_selector;
 mod tag_dialogs;
 mod ui_shell;
 pub(crate) use helpers::diff_line_stats;
@@ -226,6 +227,8 @@ pub struct GitSparkApp {
     branch_filter_cursor: usize,
     repo_filter_focus: FocusHandle,
     repo_filter_cursor: usize,
+    worktree_filter_focus: FocusHandle,
+    worktree_filter_cursor: usize,
     new_branch_focus: FocusHandle,
     pub(crate) new_branch_cursor: usize,
     pub(crate) new_branch_selection: Option<usize>,
@@ -296,6 +299,8 @@ impl GitSparkApp {
             branch_filter_cursor: 0,
             repo_filter_focus: cx.focus_handle(),
             repo_filter_cursor: 0,
+            worktree_filter_focus: cx.focus_handle(),
+            worktree_filter_cursor: 0,
             new_branch_focus: cx.focus_handle(),
             new_branch_cursor: 0,
             new_branch_selection: None,

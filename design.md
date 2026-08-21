@@ -247,6 +247,9 @@ Two real radii. A third would be noticed.
 | `TOOLBAR_HEIGHT` | 50 | Fixed. Matches GitHub Desktop. |
 | `STATUS_BAR_HEIGHT` | 26 | Fixed. |
 | `SIDEBAR_WIDTH` / `SIDEBAR_MIN_WIDTH` | 260 / 220 | Resizable via `h_resizable`. |
+| `WORKTREE_SECTION_WIDTH` | 220 | Toolbar section 2. |
+| `BRANCH_SECTION_WIDTH` | 300 | Toolbar section 3. |
+| `NETWORK_SECTION_WIDTH` | 231 | Toolbar section 4. |
 | `ROW_HEIGHT` / `ROW_HEIGHT_COMPACT` | 32 / 28 | List rows. `uniform_list` needs these exact. |
 | `CONTROL_HEIGHT` | 34 | Buttons, fields, dropdown triggers. |
 | `TAB_HEIGHT` | 34 | Sidebar tab bar. |
@@ -388,7 +391,44 @@ Body role in `text_main()`, one line of guidance at Secondary role in
 Sidebar and settings group labels. Secondary role, SEMIBOLD, `text_muted()`,
 `SPACE_5`/`SPACE_3` padding. Not uppercase — GitHub Desktop is not.
 
-### 8.9 Text field
+### 8.9 Picker — `kit::picker`
+
+Repository, worktree and branch selection are one control: an overlay panel
+with a filter field on top and a list below. Panel is `panel_bg()`,
+`CORNER_RADIUS`, `e3`; rows are 40px with a 16px leading icon, a title at Body
+role and an optional subtitle at Secondary; the current row takes
+`surface_bg_alt()` plus a 7px `accent()` dot.
+
+`kit::filter_input` is the extracted part, and it is the reason the module
+exists: `gpui_component::Input` is unusable (§10.1), so every consumer
+hand-rolled the same native `FocusHandle` field with its own painted caret.
+It returns with `track_focus` applied; the callsite adds `.key_context(..)`
+and `.on_key_down(..)`, so the kit never mentions `GitSparkApp`.
+
+**Splitting at the caret must snap to a char boundary.** Both hand-rolled
+copies sliced `&text[..cursor]` after clamping to `len()`, which is not
+enough — a byte index inside a multi-byte character is in range but not a
+boundary, and slicing there panics. Typing an accented character into either
+filter took the app down. `split_at_cursor` handles it, with tests.
+
+### 8.10 Toolbar sections
+
+Four, left to right: **Repository · Worktree · Branch · Status**. Each is an
+icon plus a stacked label and value; the first three open a picker and carry a
+caret, Status is a button and does not. Full-height 1px dividers between them.
+
+The **Worktree** section names the open working directory. A worktree is a
+second checkout of the same repository in its own folder, so selecting one is
+*opening a different path* — the row click goes to `open_repo_with_notify`,
+the same call the Repository picker makes, not a branch checkout.
+
+The list loads lazily on open rather than on every refresh: it is a separate
+`git worktree list` shell-out, and the toolbar can name the current worktree
+from the snapshot alone. The call is synchronous because it reads a few
+administrative files and returns in single-digit milliseconds — threading it
+would make the panel open empty and fill in late.
+
+### 8.11 Text field
 
 Native GPUI `FocusHandle` + `on_key_down`, per `src/ui/text_field.rs`.
 `surface_bg()`, `CORNER_RADIUS`, `CONTROL_HEIGHT`, `SPACE_6` padding, Body
@@ -472,6 +512,28 @@ repeated popup lifecycle code. Those live in `src/ui/kit/`.
 
 **If a visual pattern appears twice, it is a candidate for extraction. Three
 times and it is not a candidate any more.**
+
+### Decisions taken during the picker/worktree build
+
+Recorded because each was a real fork in the road, and the reasoning is not
+recoverable from the code:
+
+- **Selecting a worktree opens a path; it does not check out a branch.** A
+  worktree is a separate working directory, so the row click routes to
+  `open_repo_with_notify`. The branch changes as a *consequence* of the
+  directory changing, which is git's model, not ours.
+- **A branch checked out in another worktree is unavailable here.** Git
+  enforces this — `add_worktree` returns an error, covered by
+  `refuses_to_check_out_a_branch_already_checked_out_elsewhere`. Each worktree
+  row therefore names its branch, so the constraint is visible before it is
+  hit. Greying the branch out in the Branch picker is the follow-up.
+- **The worktree list is lazy, the label is not.** The toolbar reads the
+  current worktree name from the snapshot; the list is fetched when the picker
+  opens. One shell-out per open beats one per refresh.
+- **The duplicate Worktree section stays.** With one worktree it repeats the
+  repository name. A stable toolbar position is worth more than the reclaimed
+  space, and the section is where a second worktree becomes discoverable —
+  hiding it until one exists means nobody finds the feature.
 
 ### Known debt
 

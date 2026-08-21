@@ -51,6 +51,31 @@ pub struct BranchInfo {
     pub updated: Option<String>,
 }
 
+/// One entry from `git worktree list`.
+///
+/// A worktree is a second checkout of the same repository in its own
+/// directory, so switching to one is closer to opening a different folder
+/// than to checking out a branch — see `GitClient::list_worktrees`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorktreeInfo {
+    /// Absolute path to the working directory.
+    pub path: PathBuf,
+    /// Directory name, used as the display label.
+    pub name: String,
+    /// The branch checked out here, or `None` when detached.
+    pub branch: Option<String>,
+    /// The primary worktree — the one holding `.git` as a directory. There is
+    /// exactly one, it cannot be removed, and it sorts first.
+    pub is_main: bool,
+    /// The worktree the app currently has open.
+    pub is_current: bool,
+    /// `git worktree lock` was used. Locked trees stay listed but cannot be
+    /// pruned or removed without `--force`.
+    pub is_locked: bool,
+    /// The checkout is detached rather than on a branch.
+    pub is_detached: bool,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct BranchComparison {
     pub current_branch: String,

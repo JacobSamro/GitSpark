@@ -3,6 +3,7 @@ use gpui_component::{Icon, IconName, h_flex, v_flex};
 
 use crate::ui::app::GitSparkApp;
 use crate::ui::ids::stable_id_slug;
+use crate::ui::kit;
 use crate::ui::theme;
 
 pub(super) fn render_repo_selector_panel(
@@ -75,79 +76,18 @@ pub(super) fn render_repo_selector_panel(
         );
 
     // --- Filter bar ---
-    let filter_text = &app.filters.repo_filter_text;
-    let cursor = app.repo_filter_cursor.min(filter_text.len());
-    let repo_filter_child: AnyElement = if filter_text.is_empty() && !repo_filter_focused {
-        div()
-            .text_size(theme::z(theme::FONT_SIZE))
-            .text_color(theme::text_muted())
-            .child("Filter")
-            .into_any_element()
-    } else {
-        let before = &filter_text[..cursor];
-        let after = &filter_text[cursor..];
-        h_flex()
-            .items_center()
-            .overflow_x_hidden()
-            .text_size(theme::z(theme::FONT_SIZE))
-            .child(
-                div()
-                    .text_color(theme::text_main())
-                    .whitespace_nowrap()
-                    .child(before.to_string()),
-            )
-            .child(if repo_filter_focused {
-                div()
-                    .w(px(1.0))
-                    .h(px(14.0))
-                    .bg(theme::text_main())
-                    .flex_shrink_0()
-                    .into_any_element()
-            } else {
-                div().into_any_element()
-            })
-            .child(
-                div()
-                    .text_color(theme::text_main())
-                    .whitespace_nowrap()
-                    .child(after.to_string()),
-            )
-            .into_any_element()
-    };
-
-    let filter_bar = h_flex()
-        .w_full()
-        .flex_shrink_0()
-        .px(px(10.0))
-        .py(px(10.0))
-        .gap(px(8.0))
-        .items_center()
+    let filter_bar = kit::filter_bar()
         .child(
-            h_flex()
-                .id("repo-filter-input")
-                .track_focus(&app.repo_filter_focus)
-                .key_context("text-field")
-                .on_key_down(cx.listener(GitSparkApp::handle_repo_filter_key))
-                .flex_1()
-                .h(px(28.0))
-                .px(px(8.0))
-                .items_center()
-                .gap(px(6.0))
-                .rounded(theme::z(theme::CORNER_RADIUS))
-                .border_1()
-                .border_color(if repo_filter_focused {
-                    theme::accent()
-                } else {
-                    theme::surface_bg_alt()
-                })
-                .bg(theme::bg())
-                .cursor_text()
-                .child(
-                    Icon::new(IconName::Search)
-                        .size(px(14.0))
-                        .text_color(theme::text_muted()),
-                )
-                .child(repo_filter_child),
+            kit::filter_input(
+                "repo-filter-input",
+                &app.repo_filter_focus,
+                &app.filters.repo_filter_text,
+                app.repo_filter_cursor,
+                repo_filter_focused,
+                "Filter",
+            )
+            .key_context("text-field")
+            .on_key_down(cx.listener(GitSparkApp::handle_repo_filter_key)),
         )
         // Add button
         .child(

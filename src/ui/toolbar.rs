@@ -18,13 +18,19 @@ const SECTION_GAP: f32 = 10.0;
 const CARET_ICON_SIZE: f32 = 10.0;
 const BADGE_PILL_RADIUS: f32 = 8.0;
 
+pub const WORKTREE_SECTION_WIDTH: f32 = 220.0;
 pub const BRANCH_SECTION_WIDTH: f32 = 300.0;
 pub const NETWORK_SECTION_WIDTH: f32 = 231.0;
 pub const SECTION_DIVIDER_WIDTH: f32 = 1.0;
 pub const NETWORK_DROPDOWN_WIDTH: f32 = 300.0;
 
 pub fn network_dropdown_left_offset() -> f32 {
-    BRANCH_SECTION_WIDTH + SECTION_DIVIDER_WIDTH
+    WORKTREE_SECTION_WIDTH + SECTION_DIVIDER_WIDTH + BRANCH_SECTION_WIDTH + SECTION_DIVIDER_WIDTH
+}
+
+/// Left edge of the branch section, for anchoring its dropdown.
+pub fn branch_dropdown_left_offset() -> f32 {
+    WORKTREE_SECTION_WIDTH + SECTION_DIVIDER_WIDTH
 }
 
 // ---------------------------------------------------------------------------

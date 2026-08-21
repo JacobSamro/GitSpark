@@ -36,6 +36,8 @@ pub mod dialog;
 #[allow(dead_code)]
 pub mod empty_state;
 #[allow(dead_code)]
+pub mod picker;
+#[allow(dead_code)]
 pub mod surface;
 #[allow(dead_code)]
 pub mod tag;
@@ -46,6 +48,8 @@ pub use button::{ButtonVariant, button, button_state, icon_button};
 pub use dialog::{dialog_body, dialog_footer, dialog_header, dialog_shell};
 #[allow(unused_imports)]
 pub use empty_state::{empty_state, section_header};
+#[allow(unused_imports)]
+pub use picker::{filter_bar, filter_input};
 #[allow(unused_imports)]
 pub use surface::Surface;
 #[allow(unused_imports)]

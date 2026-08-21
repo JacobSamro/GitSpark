@@ -80,6 +80,7 @@ impl Render for GitSparkApp {
         let summary_focused = self.summary_focus.is_focused(window);
         let description_focused = self.description_focus.is_focused(window);
         let branch_filter_focused = self.branch_filter_focus.is_focused(window);
+        let worktree_filter_focused = self.worktree_filter_focus.is_focused(window);
         let repo_filter_focused = self.repo_filter_focus.is_focused(window);
 
         // Clamp filter cursors
@@ -125,6 +126,11 @@ impl Render for GitSparkApp {
                     .child(toolbar_right)
                     .child(self.render_workspace(cx.entity().clone(), cx)),
             )
+            .children(if self.nav.show_worktree_selector {
+                Some(render_worktree_overlay(self, worktree_filter_focused, cx))
+            } else {
+                None
+            })
             .children(if self.nav.show_branch_selector {
                 Some(branch_selector::render_branch_selector_overlay(
                     self,
@@ -1225,7 +1231,31 @@ impl GitSparkApp {
             .border_color(theme::toolbar_button_border())
             .child(repo_section);
 
-        // --- Right: branch section + divider + network section ---
+        // --- Right: worktree + branch + network ---
+        // The worktree name is the repo directory's own name, so the toolbar
+        // can label it without shelling out; the LIST is loaded lazily when
+        // the picker opens.
+        let worktree_name = snapshot
+            .map(|snapshot| snapshot.repo.name.clone())
+            .unwrap_or_else(|| "\u{2014}".to_string());
+        let worktree_section = toolbar::render_toolbar_section(
+            "section-worktree",
+            toolbar::ToolbarIcon::Name(IconName::FolderClosed),
+            "Current Worktree",
+            &worktree_name,
+            self.nav.show_worktree_selector,
+            false,
+            snapshot.is_none(),
+        )
+        .flex_none()
+        .w(px(toolbar::WORKTREE_SECTION_WIDTH))
+        .on_click(cx.listener(|app, _evt, window, cx| {
+            if app.repo.snapshot.is_none() {
+                return;
+            }
+            app.toggle_worktree_selector(window, cx);
+        }));
+
         let branch_section = toolbar::render_toolbar_section(
             "section-branch",
             toolbar::ToolbarIcon::Svg("icons/git-branch.svg"),
@@ -1247,6 +1277,7 @@ impl GitSparkApp {
             }
             app.nav.branch_selector_mode = BranchSelectorMode::Switch;
             app.nav.show_repo_selector = false;
+            app.nav.show_worktree_selector = false;
             app.nav.show_network_dropdown = false;
             cx.notify();
         }));
@@ -1308,6 +1339,8 @@ impl GitSparkApp {
             .bg(theme::toolbar_bg())
             .border_b_1()
             .border_color(theme::toolbar_button_border())
+            .child(worktree_section)
+            .child(toolbar::vertical_divider())
             .child(branch_section)
             .child(toolbar::vertical_divider())
             .child(
@@ -2205,6 +2238,72 @@ impl GitSparkApp {
     }
 
     #[allow(dead_code)]
+    pub(super) fn handle_worktree_filter_key(
+        &mut self,
+        event: &KeyDownEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let ks = &event.keystroke;
+        if ks.modifiers.secondary() {
+            if ks.key.as_str() == "v" {
+                if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+                    let text = text.replace('\n', "");
+                    self.filters
+                        .worktree_filter_text
+                        .insert_str(self.worktree_filter_cursor, &text);
+                    self.worktree_filter_cursor += text.len();
+                    cx.notify();
+                }
+            }
+            return;
+        }
+        match ks.key.as_str() {
+            "escape" => {
+                self.nav.show_worktree_selector = false;
+                cx.notify();
+            }
+            "backspace" => {
+                if self.worktree_filter_cursor > 0 {
+                    let start = prev_char_boundary(
+                        &self.filters.worktree_filter_text,
+                        self.worktree_filter_cursor,
+                    );
+                    self.filters
+                        .worktree_filter_text
+                        .drain(start..self.worktree_filter_cursor);
+                    self.worktree_filter_cursor = start;
+                    cx.notify();
+                }
+            }
+            "left" => {
+                self.worktree_filter_cursor = prev_char_boundary(
+                    &self.filters.worktree_filter_text,
+                    self.worktree_filter_cursor,
+                );
+                cx.notify();
+            }
+            "right" => {
+                self.worktree_filter_cursor = next_char_boundary(
+                    &self.filters.worktree_filter_text,
+                    self.worktree_filter_cursor,
+                );
+                cx.notify();
+            }
+            _ => {
+                if let Some(ch) = ks.key_char.as_ref() {
+                    if !ch.is_empty() && !ch.chars().any(char::is_control) {
+                        self.filters
+                            .worktree_filter_text
+                            .insert_str(self.worktree_filter_cursor, ch);
+                        self.worktree_filter_cursor += ch.len();
+                        cx.notify();
+                    }
+                }
+            }
+        }
+    }
+
     pub(super) fn handle_repo_filter_key(
         &mut self,
         event: &KeyDownEvent,
@@ -3652,6 +3751,42 @@ impl GitSparkApp {
 
 fn ordered_range(a: usize, b: usize) -> (usize, usize) {
     if a <= b { (a, b) } else { (b, a) }
+}
+
+/// Backdrop + panel for the Current Worktree picker, anchored under its
+/// toolbar section. The panel sits at the left edge of the right-hand
+/// cluster, which is exactly where the worktree section starts.
+fn render_worktree_overlay(
+    app: &GitSparkApp,
+    filter_focused: bool,
+    cx: &mut Context<GitSparkApp>,
+) -> Div {
+    let backdrop = div()
+        .id("worktree-selector-backdrop")
+        .absolute()
+        .top(theme::z(theme::TOOLBAR_HEIGHT))
+        .left_0()
+        .w_full()
+        .bottom_0()
+        .on_click(cx.listener(|app, _evt, _win, cx| {
+            app.nav.show_worktree_selector = false;
+            cx.notify();
+        }));
+
+    let panel = worktree_selector::render_worktree_selector_panel(app, filter_focused, cx)
+        .id("worktree-selector-panel")
+        .on_click(|_evt, _win, cx| cx.stop_propagation())
+        .absolute()
+        .top(theme::z(theme::TOOLBAR_HEIGHT))
+        .left_0();
+
+    div()
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .child(backdrop)
+        .child(panel)
 }
 
 fn prev_char_boundary(s: &str, pos: usize) -> usize {

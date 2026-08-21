@@ -6,6 +6,7 @@ use gpui_component::{Icon, IconName, h_flex, v_flex};
 use crate::models::BranchInfo;
 use crate::ui::app::GitSparkApp;
 use crate::ui::ids::stable_id_slug;
+use crate::ui::kit;
 use crate::ui::theme;
 use crate::ui::ui_state::{ActiveDialog, BranchSelectorMode};
 
@@ -39,7 +40,9 @@ pub(super) fn render_branch_selector_overlay(
         .on_click(|_evt, _win, cx| cx.stop_propagation())
         .absolute()
         .top(theme::z(theme::TOOLBAR_HEIGHT))
-        .left_0()
+        // Anchored under the branch section, which the worktree section now
+        // pushes to the right.
+        .left(px(crate::ui::toolbar::branch_dropdown_left_offset()))
         .w(px(360.0))
         .h(px(486.0))
         .shadow_lg();
@@ -150,75 +153,17 @@ fn render_filter_input(
     focused: bool,
     cx: &mut Context<GitSparkApp>,
 ) -> AnyElement {
-    let filter_text = &app.filters.branch_filter_text;
-    let cursor = app.branch_filter_cursor;
-    let border_color = if focused {
-        theme::accent()
-    } else {
-        theme::surface_bg_alt()
-    };
-
-    let text_child = if filter_text.is_empty() && !focused {
-        div()
-            .text_size(theme::z(theme::FONT_SIZE))
-            .text_color(theme::text_muted())
-            .child("Filter")
-            .into_any_element()
-    } else {
-        let pos = cursor.min(filter_text.len());
-        let before = &filter_text[..pos];
-        let after = &filter_text[pos..];
-        h_flex()
-            .items_center()
-            .overflow_x_hidden()
-            .text_size(theme::z(theme::FONT_SIZE))
-            .child(
-                div()
-                    .text_color(theme::text_main())
-                    .whitespace_nowrap()
-                    .child(before.to_string()),
-            )
-            .child(if focused {
-                div()
-                    .w(px(1.0))
-                    .h(px(14.0))
-                    .bg(theme::text_main())
-                    .flex_shrink_0()
-                    .into_any_element()
-            } else {
-                div().into_any_element()
-            })
-            .child(
-                div()
-                    .text_color(theme::text_main())
-                    .whitespace_nowrap()
-                    .child(after.to_string()),
-            )
-            .into_any_element()
-    };
-
-    h_flex()
-        .id("branch-filter-input")
-        .track_focus(&app.branch_filter_focus)
-        .key_context("text-field")
-        .on_key_down(cx.listener(GitSparkApp::handle_branch_filter_key))
-        .flex_1()
-        .h(px(28.0))
-        .px(px(8.0))
-        .items_center()
-        .gap(px(6.0))
-        .rounded(theme::z(theme::CORNER_RADIUS))
-        .border_1()
-        .border_color(border_color)
-        .bg(theme::bg())
-        .cursor_text()
-        .child(
-            Icon::new(IconName::Search)
-                .size(px(14.0))
-                .text_color(theme::text_muted()),
-        )
-        .child(text_child)
-        .into_any_element()
+    kit::filter_input(
+        "branch-filter-input",
+        &app.branch_filter_focus,
+        &app.filters.branch_filter_text,
+        app.branch_filter_cursor,
+        focused,
+        "Filter",
+    )
+    .key_context("text-field")
+    .on_key_down(cx.listener(GitSparkApp::handle_branch_filter_key))
+    .into_any_element()
 }
 
 fn render_branch_list(

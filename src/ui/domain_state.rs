@@ -4,7 +4,7 @@ use crate::ui::diff_line_selection::DiffLineSelection;
 
 use crate::models::{
     BranchComparison, ChangeEntry, CommitSuggestion, DiffEntry, GitIdentity, GitOperationState,
-    RepoSnapshot,
+    RepoSnapshot, WorktreeInfo,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -59,6 +59,12 @@ impl NetworkAction {
 
 pub struct RepoState {
     pub snapshot: Option<RepoSnapshot>,
+    /// Worktrees for the open repository.
+    ///
+    /// Loaded lazily when the picker opens rather than on every refresh: it
+    /// is a separate `git worktree list` shell-out, and the toolbar can name
+    /// the current worktree from the repo path alone.
+    pub worktrees: Vec<WorktreeInfo>,
     pub identity: GitIdentity,
     pub local_identity: GitIdentity,
     pub global_identity: GitIdentity,
@@ -93,6 +99,7 @@ impl Default for RepoState {
     fn default() -> Self {
         Self {
             snapshot: None,
+            worktrees: Vec::new(),
             identity: GitIdentity::default(),
             local_identity: GitIdentity::default(),
             global_identity: GitIdentity::default(),

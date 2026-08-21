@@ -393,6 +393,49 @@ impl GitSparkApp {
         }
     }
 
+    /// Open the Current Worktree picker, loading the list on first open.
+    ///
+    /// Deliberately synchronous: `git worktree list` reads a handful of
+    /// administrative files and returns in single-digit milliseconds, so
+    /// spawning a thread and re-rendering would cost more than it saves — and
+    /// the list must be present in the frame the panel appears in, or the
+    /// picker opens empty and fills in late.
+    pub(crate) fn toggle_worktree_selector(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let opening = !self.nav.show_worktree_selector;
+        self.toggle_worktree_selector_headless(cx);
+        if opening {
+            window.focus(&self.worktree_filter_focus);
+        }
+    }
+
+    /// The half that needs no `Window`, so the automation channel can drive it.
+    pub(crate) fn toggle_worktree_selector_headless(&mut self, cx: &mut Context<Self>) {
+        self.nav.show_worktree_selector = !self.nav.show_worktree_selector;
+        self.nav.show_repo_selector = false;
+        self.nav.show_branch_selector = false;
+        self.nav.show_network_dropdown = false;
+
+        if self.nav.show_worktree_selector {
+            self.filters.worktree_filter_text.clear();
+            self.worktree_filter_cursor = 0;
+            if let Some(path) = self
+                .repo
+                .snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.repo.path.clone())
+            {
+                match GitClient::new().list_worktrees(&path) {
+                    Ok(worktrees) => self.repo.worktrees = worktrees,
+                    Err(error) => {
+                        self.messages.error_message = format!("Failed to list worktrees: {error}");
+                        self.repo.worktrees.clear();
+                    }
+                }
+            }
+        }
+        cx.notify();
+    }
+
     pub(crate) fn open_repo_with_notify(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.open_repo(path);
         cx.notify();
