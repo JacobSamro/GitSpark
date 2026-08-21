@@ -6,7 +6,7 @@
 
 use std::fs;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 

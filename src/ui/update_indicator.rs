@@ -5,10 +5,7 @@
 //! always-present "up to date" badge is noise in a strip the user looks at all
 //! day, and it trains people to ignore the one message that matters.
 
-use gpui::{
-    AnyElement, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
-    Styled, div, px,
-};
+use gpui::{AnyElement, InteractiveElement, IntoElement, ParentElement, Styled, div, px};
 use gpui_component::h_flex;
 
 use crate::update::UpdateState;
