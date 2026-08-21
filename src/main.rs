@@ -4,6 +4,7 @@
 mod ai;
 mod assets;
 mod git;
+mod gitoxide;
 mod models;
 mod storage;
 mod ui;
