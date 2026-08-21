@@ -2,7 +2,35 @@
 
 ## [Unreleased]
 
-Seven issues closed since v0.5.0. All on `dev`, none in a tagged release yet.
+## [0.6.0] - 2026-08-21
+
+Signed auto-update, plus the seven issues closed since v0.5.0.
+
+### Features
+
+- **Auto-update, Zed-style.** A check runs ten seconds after launch, downloads
+  and verifies in the background, and puts a **Restart to update** button at the
+  top right of the title bar. Clicking it replaces the installed application and
+  relaunches into it. Nothing is applied without the user asking: the download is
+  silent, the restart is not.
+
+  Two gates protect it, in this order. The channel manifest carries a detached
+  Ed25519 signature verified against a key compiled into the binary, so whoever
+  serves the metadata cannot substitute their own; then the artifact's SHA-256 is
+  checked against the digest in that verified manifest before anything is
+  unpacked. A build with no key baked in **refuses to check** rather than
+  accepting an unsigned manifest — accepting one would hand the metadata host the
+  ability to choose what code runs. The release workflow re-derives the public key
+  from the signing secret and fails the release if it does not match the key
+  shipped in the app.
+
+  Two channels, derived from the running build's own version rather than a stored
+  preference: a prerelease follows beta, everything else follows stable. There is
+  no setting to get out of sync.
+
+  **Note for existing installs:** v0.5.0 shipped without the updater, so it cannot
+  update itself to this release. 0.6.0 needs a manual install; updates are
+  automatic from here.
 
 ### Performance
 

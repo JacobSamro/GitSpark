@@ -327,6 +327,23 @@ pub fn commit_button_text() -> Hsla {
     on_accent()
 }
 
+/// Fill for the title-bar update button.
+///
+/// The one accent surface that does NOT follow [`accent`], for the reason
+/// spelled out on [`on_accent`]: the dark arm's accent is a light blue, and
+/// this button's label is white. Rather than knock the label to near-black in
+/// dark mode — which would make the same button read as two different
+/// controls between themes — the fill holds the deep blue in both arms, where
+/// white sits legibly. It stays inside the accent family, so it still reads
+/// as the app's call-to-action colour.
+pub fn update_button_bg() -> Hsla {
+    pick(0x4257c9, 0x4257c9)
+}
+
+pub fn update_button_hover_bg() -> Hsla {
+    pick(0x3a4eb8, 0x3a4eb8)
+}
+
 pub fn line_num_color() -> Hsla {
     pick(0x59606b, 0x9a9ca3)
 }

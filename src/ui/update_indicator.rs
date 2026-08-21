@@ -69,11 +69,10 @@ pub fn render(
 
     // Hand-rolled rather than `kit::button` for two reasons the kit should not
     // absorb: it has to fit a 38px title bar, and its label is white in both
-    // themes. The kit's Primary takes its text from `on_accent()`, which is
-    // near-black in dark mode because the dark accent is a light blue — right
-    // for the Commit button, wrong here.
+    // themes. That is why the fill is `update_button_bg()` and not `accent()`
+    // — see the note on that token.
     let (bg, hover_bg) = match variant {
-        Indicator::Primary => (theme::accent(), theme::commit_button_hover_bg()),
+        Indicator::Primary => (theme::update_button_bg(), theme::update_button_hover_bg()),
         Indicator::Secondary => (theme::surface_bg(), theme::toolbar_hover_bg()),
     };
 
