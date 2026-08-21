@@ -42,6 +42,59 @@
 
 pub mod channel;
 pub mod check;
+pub mod download;
 pub mod manifest;
 pub mod verify;
+
+use std::path::PathBuf;
+
+/// What the UI shows, and the only update state the app holds.
+///
+/// Deliberately linear: check, download, ready. There is no "paused" or
+/// "retry later" state because an update that failed is simply reported and
+/// the user can ask again — a half-resumable state machine would be more
+/// surface area than the feature is worth.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum UpdateState {
+    /// Nothing has been checked yet, or the app is up to date. Shows nothing.
+    #[default]
+    Idle,
+    /// A check is in flight.
+    Checking,
+    /// Newer version found; the download has not finished.
+    Downloading { version: String, percent: u8 },
+    /// Downloaded and verified. This is the "Restart to Update" state.
+    ReadyToInstall { version: String, artifact: PathBuf },
+    /// Something went wrong. Held so the user is told rather than left with a
+    /// silently dead indicator.
+    Failed { message: String },
+}
+
+impl UpdateState {
+    /// Text for the title-bar indicator, or `None` to show nothing.
+    ///
+    /// `Idle` renders nothing at all: an always-present "up to date" badge is
+    /// noise in a title bar the user looks at all day.
+    pub fn indicator_label(&self) -> Option<String> {
+        match self {
+            UpdateState::Idle => None,
+            UpdateState::Checking => Some("Checking for updates\u{2026}".to_string()),
+            UpdateState::Downloading { percent, .. } => {
+                Some(format!("Downloading update\u{2026} {percent}%"))
+            }
+            UpdateState::ReadyToInstall { version, .. } => {
+                Some(format!("Restart to update to {version}"))
+            }
+            UpdateState::Failed { .. } => Some("Update failed".to_string()),
+        }
+    }
+
+    /// Whether clicking the indicator should do something.
+    pub fn is_actionable(&self) -> bool {
+        matches!(
+            self,
+            UpdateState::ReadyToInstall { .. } | UpdateState::Failed { .. }
+        )
+    }
+}
 

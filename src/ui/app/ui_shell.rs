@@ -158,11 +158,18 @@ impl Render for GitSparkApp {
         let titlebar_height = if cfg!(target_os = "macos") { 38.0 } else { 0.0 };
 
         let titlebar_spacer = {
-            let spacer = div()
+            // The update indicator lives at the top right of this strip, the
+            // way Zed does it — the traffic lights own the left, and this is
+            // otherwise dead space.
+            let spacer = h_flex()
                 .id("window-titlebar-spacer")
                 .w_full()
                 .h(px(titlebar_height))
-                .flex_shrink_0();
+                .flex_shrink_0()
+                .items_center()
+                .justify_end()
+                .pr(theme::z(theme::SPACE_6))
+                .child(crate::ui::update_indicator::render(&self.update_state));
             #[cfg(target_os = "macos")]
             let spacer = spacer.on_click(|event: &ClickEvent, window: &mut Window, _| {
                 if event.click_count() == 2 {

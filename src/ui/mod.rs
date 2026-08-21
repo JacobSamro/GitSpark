@@ -28,6 +28,7 @@ pub mod status_bar;
 pub mod submodule_diff;
 pub mod text_field;
 pub mod theme;
+pub mod update_indicator;
 pub mod toolbar;
 pub mod ui_state;
 pub mod workspace;

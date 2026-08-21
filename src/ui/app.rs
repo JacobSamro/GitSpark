@@ -264,6 +264,9 @@ pub struct GitSparkApp {
     rem_size: f32,
     render_count: u32,
     was_window_active: bool,
+    /// What the title-bar update indicator shows. Owned here so a background
+    /// check can drive it through the normal event loop.
+    pub(crate) update_state: crate::update::UpdateState,
     /// Sends window bounds to a debounced background writer.
     ///
     /// Bounds change on essentially every frame of a resize or drag, and the
@@ -382,6 +385,7 @@ impl GitSparkApp {
             rem_size: DEFAULT_REM_SIZE,
             render_count: 0,
             was_window_active: false,
+            update_state: Default::default(),
             window_size_tx,
             pending_summary_focus: false,
             _automation: automation,
