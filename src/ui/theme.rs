@@ -230,6 +230,46 @@ pub fn danger_hover() -> Hsla {
 }
 
 // ---------------------------------------------------------------------------
+// List rows — GitHub Desktop's commit list
+//
+// The history card follows GitHub Desktop exactly, so its colours come from
+// the same source as the diff palette below: `_variables.scss` (light) and
+// `themes/_dark.scss`.
+// ---------------------------------------------------------------------------
+
+/// Row separator — `--box-border-color`.
+pub fn list_row_border() -> Hsla {
+    pick(0x141414, 0xe1e4e8)
+}
+
+/// A selected row in a focused list — `--box-selected-active-background-color`,
+/// which resolves to `$blue` in BOTH arms. GitHub Desktop does not darken it
+/// for light mode; the knocked-out white text carries it either way.
+pub fn list_selected_active_bg() -> Hsla {
+    pick(0x0366d6, 0x0366d6)
+}
+
+/// Text on a selected row — `--box-selected-active-text-color` (`$white`).
+pub fn list_selected_active_fg() -> Hsla {
+    pick(0xffffff, 0xffffff)
+}
+
+/// Badge behind a tag or unpushed marker — `--list-item-badge-background-color`.
+pub fn list_badge_bg() -> Hsla {
+    pick(0x586069, 0xe1e4e8)
+}
+
+/// The same badge on a selected row, where it must sit on the blue fill —
+/// `--list-item-selected-active-badge-background-color`.
+pub fn list_selected_badge_bg() -> Hsla {
+    pick(0xffffff, 0xd1d5da)
+}
+
+pub fn list_selected_badge_fg() -> Hsla {
+    pick(0x24292e, 0x24292e)
+}
+
+// ---------------------------------------------------------------------------
 // Diff-specific colors — GitHub Desktop's palette, exactly
 //
 // These are NOT derived from the Zed arm the rest of the app uses. The diff is

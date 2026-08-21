@@ -155,7 +155,10 @@ impl Render for GitSparkApp {
         window.set_rem_size(px(self.rem_size));
 
         // macOS titlebar spacer (traffic lights sit here)
-        let titlebar_height = if cfg!(target_os = "macos") { 38.0 } else { 0.0 };
+        // Just enough for the traffic lights (they are 12px in a 28px band)
+        // plus the update indicator. It was 38, which left a dead strip above
+        // the toolbar on every window.
+        let titlebar_height = if cfg!(target_os = "macos") { 30.0 } else { 0.0 };
 
         let titlebar_spacer = {
             // The update indicator lives at the top right of this strip, the
@@ -1244,6 +1247,10 @@ impl GitSparkApp {
             .w_full()
             .h(theme::z(theme::TOOLBAR_HEIGHT))
             .flex_shrink_0()
+            // Inset the section blocks and their dividers from the strip's
+            // edges; without it they run the full height and the toolbar
+            // reads as one solid slab.
+            .py(theme::z(theme::SPACE_2))
             .bg(theme::toolbar_bg())
             .border_b_1()
             .border_color(theme::toolbar_button_border())
@@ -1354,6 +1361,8 @@ impl GitSparkApp {
             .w_full()
             .h(theme::z(theme::TOOLBAR_HEIGHT))
             .flex_shrink_0()
+            // Matches `left` — see the note there.
+            .py(theme::z(theme::SPACE_2))
             .bg(theme::toolbar_bg())
             .border_b_1()
             .border_color(theme::toolbar_button_border())

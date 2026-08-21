@@ -1,7 +1,6 @@
 use gpui::*;
 use gpui_component::scroll::ScrollableElement;
-use gpui_component::tag::Tag;
-use gpui_component::{Icon, IconName, Sizable, h_flex, v_flex};
+use gpui_component::{Icon, IconName, h_flex, v_flex};
 
 use crate::models::{ChangeEntry, CommitInfo};
 use crate::ui::app::GitSparkApp;
@@ -17,8 +16,8 @@ use crate::ui::ui_state::SidebarTab;
 // ---------------------------------------------------------------------------
 
 const CHANGE_ROW_HEIGHT: f32 = 29.0;
-#[allow(dead_code)]
-const HISTORY_ROW_HEIGHT: f32 = 40.0; // summary + meta + padding
+// GitHub Desktop's `RowHeight` from app/src/ui/history/commit-list.tsx.
+const HISTORY_ROW_HEIGHT: f32 = 50.0;
 
 // ---------------------------------------------------------------------------
 // Color helpers
@@ -1102,56 +1101,163 @@ fn kbd_badge(key: &str) -> Div {
 // History list
 // ---------------------------------------------------------------------------
 
+/// One row of the history list, following GitHub Desktop's `.commit`
+/// (`app/styles/ui/history/_commit-list.scss`) exactly.
+///
+/// The metrics are theirs: a 50px row (`RowHeight` in `commit-list.tsx`),
+/// 10px of padding on the left and 15px on the right — the extra half-step
+/// makes room for the scrollbar — a `--box-border-color` rule underneath, a
+/// semibold summary, and a description line 3px below it. The `.info` block
+/// carries a -4px top margin, which is what optically centres two lines of
+/// different weights inside a 50px row.
 pub fn render_history_row(commit: &CommitInfo, selected: bool) -> Div {
+    // GitHub Desktop shows the blue only while the list has focus and a
+    // neutral grey otherwise. This app does not track list focus, and the
+    // blue is the state a user actually sees while working in the history,
+    // so it is the one modelled here.
     let bg = if selected {
-        theme::selected_bg()
+        theme::list_selected_active_bg()
     } else {
         gpui::transparent_black()
     };
 
-    // Text does not change with selection: the row is a surface, not an accent
-    // fill, so the normal colours stay legible on top of it.
-    let summary_color = theme::text_main();
-    let meta_color = theme::text_muted();
+    let (summary_color, meta_color) = if selected {
+        (
+            theme::list_selected_active_fg(),
+            theme::list_selected_active_fg(),
+        )
+    } else {
+        (theme::text_main(), theme::text_muted())
+    };
 
     let meta = format!("{} \u{00b7} {}", commit.author_name, commit.date);
 
-    let mut summary_row = h_flex().gap(z(6.0)).child(
-        div().flex_1().overflow_x_hidden().child(
+    // `.info` — the summary and description column.
+    let info = v_flex()
+        .flex_1()
+        .min_w(z(50.0))
+        .overflow_hidden()
+        // .info { margin-top: -4px }
+        .mt(z(-4.0))
+        .child(
             div()
-                .text_size(z(12.0))
+                .w_full()
+                .text_size(z(theme::FONT_SIZE_BODY))
                 .text_color(summary_color)
                 .font_weight(FontWeight::SEMIBOLD)
                 .whitespace_nowrap()
+                .overflow_x_hidden()
                 .child(commit.summary.clone()),
-        ),
-    );
+        )
+        .child(
+            // .description { display: flex; margin-top: 3px }
+            h_flex()
+                .w_full()
+                .mt(z(3.0))
+                .gap(z(5.0))
+                .items_center()
+                .overflow_hidden()
+                .child(render_commit_avatar(&commit.author_name, selected))
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(z(theme::FONT_SIZE_BODY))
+                        .text_color(meta_color)
+                        .whitespace_nowrap()
+                        .overflow_x_hidden()
+                        .child(meta),
+                ),
+        );
 
-    // Version tags
+    // `.commit-indicators` — tags and the HEAD marker, pinned right and
+    // capped at half the row so a long tag cannot crowd out the summary.
+    let mut indicators = h_flex()
+        .flex_shrink_0()
+        .ml(z(10.0))
+        .h(z(16.0))
+        .items_center()
+        .justify_end()
+        .gap(z(5.0));
+
     for tag in &commit.tags {
-        summary_row = summary_row.child(Tag::secondary().xsmall().child(tag.clone()));
+        indicators = indicators.child(render_commit_badge(SharedString::from(tag.clone()), selected));
     }
-
     if commit.is_head {
-        summary_row = summary_row.child(Tag::primary().xsmall().child("HEAD"));
+        indicators = indicators.child(render_commit_badge(SharedString::from("HEAD"), selected));
     }
 
-    v_flex()
+    h_flex()
         .w_full()
-        .px(z(10.0))
-        .py(z(6.0))
+        .h(z(HISTORY_ROW_HEIGHT))
+        .items_center()
+        .pl(z(10.0))
+        // padding-right: calc(var(--spacing) + var(--spacing-half))
+        .pr(z(15.0))
         .bg(bg)
         .border_b_1()
-        .border_color(theme::toolbar_button_border())
-        .gap(z(2.0))
-        .child(summary_row)
-        .child(
-            div()
-                .text_size(z(11.0))
-                .text_color(meta_color)
-                .whitespace_nowrap()
-                .child(meta),
-        )
+        .border_color(theme::list_row_border())
+        .child(info)
+        .child(indicators)
+}
+
+/// The author bubble in a commit's description line.
+///
+/// GitHub Desktop renders a real Gravatar here through `AvatarStack`. Fetching
+/// avatars would mean a network request per author, so this is an initial on a
+/// disc at the same 16px `AvatarStack--small` size — the layout GitHub Desktop
+/// has, without the network.
+fn render_commit_avatar(author: &str, selected: bool) -> Div {
+    let initial = author
+        .chars()
+        .find(|c| c.is_alphanumeric())
+        .map(|c| c.to_uppercase().to_string())
+        .unwrap_or_else(|| "?".to_string());
+
+    let (bg, fg) = if selected {
+        (theme::list_selected_badge_bg(), theme::list_selected_badge_fg())
+    } else {
+        (theme::accent(), theme::on_accent())
+    };
+
+    div()
+        .flex_shrink_0()
+        .w(z(16.0))
+        .h(z(16.0))
+        .rounded(z(999.0))
+        .bg(bg)
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_size(z(theme::FONT_SIZE_XS))
+        .text_color(fg)
+        .font_weight(FontWeight::SEMIBOLD)
+        .child(initial)
+}
+
+/// A tag or HEAD pill — GitHub Desktop's `.tag-name`.
+///
+/// `padding: 0 var(--spacing-half)`, `border-radius: var(--border-radius)`,
+/// on `--list-item-badge-background-color`. On a selected row the badge has to
+/// sit on the blue fill, so it swaps to the light `selected` pair.
+fn render_commit_badge(label: SharedString, selected: bool) -> Div {
+    let (bg, fg) = if selected {
+        (theme::list_selected_badge_bg(), theme::list_selected_badge_fg())
+    } else {
+        (theme::list_badge_bg(), theme::text_main())
+    };
+
+    div()
+        .flex_shrink_0()
+        .h(z(16.0))
+        .px(z(5.0))
+        .rounded(z(theme::CORNER_RADIUS))
+        .bg(bg)
+        .flex()
+        .items_center()
+        .text_size(z(theme::FONT_SIZE_SM))
+        .text_color(fg)
+        .whitespace_nowrap()
+        .child(label)
 }
 
 // ---------------------------------------------------------------------------

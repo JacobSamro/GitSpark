@@ -419,6 +419,35 @@ The list-row primitive behind changes, history, branches, stashes, and repos.
 - Every row is built inside `uniform_list` and carries a stable id derived from
   its file path / SHA / branch name.
 
+### 8.4a History row — `sidebar::render_history_row`
+
+Follows GitHub Desktop's `.commit` exactly
+(`app/styles/ui/history/_commit-list.scss`, and `RowHeight` in
+`app/src/ui/history/commit-list.tsx`).
+
+| Property | Value | Source |
+|---|---|---|
+| Row height | 50px | `RowHeight = 50` |
+| Padding | 10px left, 15px right | `--spacing` / `calc(--spacing + --spacing-half)` — the extra half-step clears the scrollbar |
+| Separator | 1px `list_row_border()` | `border-bottom: var(--base-border)` |
+| `.info` offset | `margin-top: -4px` | optically centres two lines of different weight in a 50px row |
+| Summary | 12px, weight **600** | `font-weight: var(--font-weight-semibold)` |
+| Description | 3px below the summary | `.description { margin-top: 3px }` |
+| Avatar | 16px disc | `AvatarStack--small` |
+| Badges | 16px tall, 5px padding, `CORNER_RADIUS` | `.tag-name` |
+| Selected | `list_selected_active_bg()` with white text | `--box-selected-active-background-color` |
+
+Two deliberate departures:
+
+- **The avatar is an initial on a disc, not a Gravatar.** GitHub Desktop
+  fetches a real avatar per author; doing that here would mean a network
+  request per row. The size and position are theirs, the content is not.
+- **Selection is always the focused blue.** GitHub Desktop shows
+  `--box-selected-background-color` (a neutral grey) when the list does not
+  have focus and the blue when it does. This app does not track list focus,
+  and the blue is the state a user actually sees while working in the
+  history, so that is the one modelled.
+
 ### 8.5 Tag — `kit::tag`
 
 The A/M/D status square and the HEAD marker. 16px square, `CORNER_RADIUS_SM`,
