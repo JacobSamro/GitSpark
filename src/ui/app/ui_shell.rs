@@ -179,7 +179,12 @@ impl Render for GitSparkApp {
                     window.titlebar_double_click();
                 }
             });
-            spacer.bg(theme::panel_bg())
+            // The title bar and the toolbar below it share `panel_bg`, so
+            // without a rule they read as one tall undifferentiated strip.
+            spacer
+                .bg(theme::panel_bg())
+                .border_b_1()
+                .border_color(theme::border())
         };
 
         let mut root = v_flex()
@@ -3631,11 +3636,9 @@ impl GitSparkApp {
                     .map(|ix| {
                         let entry = &diffs_snapshot[ix];
                         let is_selected = sel.as_deref() == Some(entry.path.as_str());
-                        let text_color = if is_selected {
-                            theme::on_accent()
-                        } else {
-                            theme::text_main()
-                        };
+                        // Selection is a surface now, not an accent fill, so
+                        // the label keeps its normal colour on top of it.
+                        let text_color = theme::text_main();
 
                         let path = entry.path.clone();
                         let id_path = stable_id_slug(&entry.path);
@@ -3648,21 +3651,24 @@ impl GitSparkApp {
                             .px(theme::z(10.0))
                             .items_center()
                             .bg(if is_selected {
-                                theme::accent()
+                                theme::selected_bg()
                             } else {
                                 gpui::transparent_black()
                             })
-                            // Blue left border for selected file
+                            // The border stays in the tree at both states so
+                            // selecting a row cannot shift its text sideways;
+                            // when selected it matches the fill rather than
+                            // drawing an edge the artifact does not have.
                             .border_l_2()
                             .border_color(if is_selected {
-                                theme::accent()
+                                theme::selected_bg()
                             } else {
                                 gpui::transparent_black()
                             })
                             .cursor_pointer()
                             .hover(move |s| {
                                 s.bg(if is_selected {
-                                    theme::accent()
+                                    theme::selected_bg()
                                 } else {
                                     theme::list_hover_bg()
                                 })

@@ -99,7 +99,7 @@ pub(super) fn render_repo_selector_panel(
                 .items_center()
                 .justify_center()
                 .rounded(theme::z(theme::CORNER_RADIUS))
-                .bg(theme::surface_bg())
+                .bg(theme::overlay_bg())
                 .border_1()
                 .border_color(theme::surface_bg_alt())
                 .cursor_pointer()

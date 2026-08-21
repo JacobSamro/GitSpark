@@ -35,19 +35,17 @@ fn accent_selection_bg() -> Hsla {
 
 /// Render a file status icon matching GitHub Desktop's style.
 /// Modified = square with dot (orange), Added = plus-square (green), Deleted = minus-square (red).
-/// When selected, icon is white.
-fn render_status_icon(status: &str, selected: bool) -> Div {
-    let (icon_path, normal_color): (&str, Hsla) = match status {
+///
+/// The colour no longer changes with selection. It did when a selected row was
+/// an accent fill and the status hue was unreadable on it; on the selection
+/// surface the hue is legible, and status is worth more than sameness — the
+/// whole point of the icon is which kind of change this is.
+fn render_status_icon(status: &str, _selected: bool) -> Div {
+    let (icon_path, color): (&str, Hsla) = match status {
         "M" => ("icons/dot-square.svg", theme::warning()),
         "A" => ("icons/dot-square.svg", theme::success()), // reuse dot-square for now
         "D" => ("icons/dot-square.svg", theme::danger()),
         _ => ("icons/dot-square.svg", theme::text_muted()),
-    };
-
-    let color = if selected {
-        theme::on_accent()
-    } else {
-        normal_color
     };
 
     div()
@@ -293,7 +291,7 @@ pub fn render_sidebar_interactive(
                                                     .cursor_pointer()
                                                     .hover(|s| {
                                                         s.bg(if is_selected {
-                                                            theme::accent()
+                                                            theme::selected_bg()
                                                         } else {
                                                             theme::list_hover_bg()
                                                         })
@@ -367,7 +365,7 @@ pub fn render_sidebar_interactive(
                                                 .cursor_pointer()
                                                 .hover(move |s| {
                                                     s.bg(if is_selected {
-                                                        theme::accent()
+                                                        theme::selected_bg()
                                                     } else {
                                                         theme::list_hover_bg()
                                                     })
@@ -512,19 +510,20 @@ pub fn render_change_row(
     checkbox_path: String,
 ) -> Div {
     let bg = if selected {
-        theme::with_alpha(theme::accent(), 0.38)
+        theme::selected_bg()
     } else {
         gpui::transparent_black()
     };
 
     let status_kind = status_label(&change.status);
 
-    let text_color = if selected {
-        theme::on_accent()
-    } else if !included {
-        theme::text_muted()
-    } else {
+    // Excluded files stay muted even when selected — that distinction carries
+    // real meaning for the next commit, and the selection surface underneath
+    // leaves it perfectly readable.
+    let text_color = if included {
         theme::text_main()
+    } else {
+        theme::text_muted()
     };
 
     // Interactive checkbox
@@ -568,8 +567,13 @@ pub fn render_change_row(
         .items_center()
         .bg(bg);
 
+    // The border is kept so the 2px it occupies comes out of the padding and
+    // the label does not jump sideways on selection, but it matches the fill:
+    // the spec's selected row is a plain surface with no accent edge.
     let row = if selected {
-        row.border_l_2().border_color(theme::accent()).pl(z(8.0))
+        row.border_l_2()
+            .border_color(theme::selected_bg())
+            .pl(z(8.0))
     } else {
         row
     };
@@ -1100,22 +1104,15 @@ fn kbd_badge(key: &str) -> Div {
 
 pub fn render_history_row(commit: &CommitInfo, selected: bool) -> Div {
     let bg = if selected {
-        theme::accent()
+        theme::selected_bg()
     } else {
         gpui::transparent_black()
     };
 
-    let summary_color = if selected {
-        theme::on_accent()
-    } else {
-        theme::text_main()
-    };
-
-    let meta_color = if selected {
-        theme::on_accent()
-    } else {
-        theme::text_muted()
-    };
+    // Text does not change with selection: the row is a surface, not an accent
+    // fill, so the normal colours stay legible on top of it.
+    let summary_color = theme::text_main();
+    let meta_color = theme::text_muted();
 
     let meta = format!("{} \u{00b7} {}", commit.author_name, commit.date);
 

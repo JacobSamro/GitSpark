@@ -232,17 +232,25 @@ pub fn danger_hover() -> Hsla {
 // ---------------------------------------------------------------------------
 // Diff-specific colors
 //
-// Row tints are the hue at ~13% over the buffer in dark, ~10% in light, then
-// flattened to an opaque value. A 10% green over #282c33 and over #0e1013 are
-// not the same signal — the deeper ground eats it, hence 13.
+// Row tints started at the spec's ~13% hue over the buffer, which is what the
+// mockup used. Side by side with GitHub Desktop — this project's reference UI
+// — on a real diff, 13% over a ground as deep as #0e1013 is almost invisible:
+// added and deleted rows were distinguishable from context only by looking
+// for them. The wash is the primary signal in a diff and it has to survive a
+// glance, so the row tint is now ~28% and the gutter ~45%, which reads at
+// arm's length without becoming the loudest thing on screen.
+//
+// The gutter is deliberately stronger than the row. It is a narrow column, so
+// it needs more saturation to carry the same weight as the wide row beside
+// it, and it is what the eye tracks when scanning down a hunk.
 // ---------------------------------------------------------------------------
 
 pub fn diff_add_bg() -> Hsla {
-    pick(0x212721, 0xecf3eb)
+    pick(0x1a3324, 0xd8f0dd)
 }
 
 pub fn diff_add_gutter_bg() -> Hsla {
-    pick(0x1b2419, 0xe3efe1)
+    pick(0x23492f, 0xb7e3bf)
 }
 
 pub fn diff_add_fg() -> Hsla {
@@ -250,11 +258,11 @@ pub fn diff_add_fg() -> Hsla {
 }
 
 pub fn diff_del_bg() -> Hsla {
-    pick(0x271d20, 0xf9ebea)
+    pick(0x3a1d21, 0xfbdedd)
 }
 
 pub fn diff_del_gutter_bg() -> Hsla {
-    pick(0x2e1e20, 0xf5dfdd)
+    pick(0x57252a, 0xf6c3c0)
 }
 
 pub fn diff_del_fg() -> Hsla {
@@ -301,6 +309,61 @@ pub fn hover_bg() -> Hsla {
 
 pub fn list_hover_bg() -> Hsla {
     pick(0x262a31, 0xe0e0e3) // rows sit on panel_bg, so one step further
+}
+
+/// The fill for a selected list row — Zed's `element.selected`.
+///
+/// NOT [`accent`]. A selected row is a *surface*, one step above hover, and it
+/// keeps [`text_main`] on top; an accent fill is GitHub Desktop's language and
+/// turns the current row into the loudest thing on screen, which is backwards
+/// when every list has one selected at all times. The whole point of a row
+/// being selected is "this is the one you are looking at", not "look here".
+pub fn selected_bg() -> Hsla {
+    pick(0x2b3039, 0xd8deef)
+}
+
+/// Dropdown and popover panels — one step above [`surface_bg`].
+///
+/// Overlays float above content that already sits on `surface_bg`, so sharing
+/// that value flattens the two together and the panel loses its edge.
+pub fn overlay_bg() -> Hsla {
+    pick(0x1c1f25, 0xffffff)
+}
+
+// ---------------------------------------------------------------------------
+// Syntax
+//
+// Zed One Dark and One Light, as the design spec pins them. The light arm is
+// Atom/Zed One LIGHT rather than the dark hues lightened: the dark keyword
+// purple and function blue are both far too pale to read on white, so those
+// two in particular are re-picked rather than flipped.
+//
+// `text_main()` is the base — anything the parser does not classify keeps the
+// normal text colour rather than being forced into one of these.
+// ---------------------------------------------------------------------------
+
+pub fn syntax_keyword() -> Hsla {
+    pick(0xb477cf, 0xa626a4)
+}
+
+pub fn syntax_function() -> Hsla {
+    pick(0x73ade9, 0x3f72e0)
+}
+
+pub fn syntax_string() -> Hsla {
+    pick(0xa1c181, 0x3f8a3a)
+}
+
+pub fn syntax_type() -> Hsla {
+    pick(0x6eb4bf, 0xb07a08)
+}
+
+pub fn syntax_comment() -> Hsla {
+    pick(0x5d636f, 0x9a9ca3)
+}
+
+pub fn syntax_number() -> Hsla {
+    pick(0xbf956a, 0x8a5a00)
 }
 
 pub fn commit_button_bg() -> Hsla {

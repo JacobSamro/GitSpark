@@ -141,7 +141,7 @@ fn render_filter_bar(
                     .items_center()
                     .justify_center()
                     .rounded(theme::z(theme::CORNER_RADIUS))
-                    .bg(theme::surface_bg())
+                    .bg(theme::overlay_bg())
                     .border_1()
                     .border_color(theme::surface_bg_alt())
                     .cursor_pointer()
@@ -399,7 +399,7 @@ fn render_bottom_bar(app: &GitSparkApp, branch_selector_target: String) -> AnyEl
         .border_t_1()
         .border_color(theme::toolbar_button_border())
         .px(px(10.0))
-        .bg(theme::surface_bg())
+        .bg(theme::overlay_bg())
         .items_center()
         .justify_center()
         .child(

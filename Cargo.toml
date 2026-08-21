@@ -31,6 +31,7 @@ hex = "0.4"
 # Read-path git backend. Writes stay on the `git` binary — see
 # examples/git_backends.rs for the benchmark this choice rests on.
 gix = { version = "0.86", features = ["status", "revision"] }
+two-face = "0.5.2"
 
 [build-dependencies]
 embed-resource = "3.0"

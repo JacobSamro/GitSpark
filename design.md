@@ -105,6 +105,30 @@ probably the wrong size or the wrong surface.
 | `hover_bg()` | `#22262d` | `#e6e6e8` | Zed's `element.hover`. |
 | `list_hover_bg()` | `#262a31` | `#e0e0e3` | Rows sit on `panel_bg`, so one step further. |
 | `toolbar_hover_bg()` | = `hover_bg()` | = `hover_bg()` | |
+| `selected_bg()` | `#2b3039` | `#d8deef` | Zed's `element.selected`. The fill for a selected list row — a surface, **not** `accent()`. See §8.4. |
+| `overlay_bg()` | `#1c1f25` | `#ffffff` | Dropdown and popover panels, one step above `surface_bg()`. Sharing `surface_bg()` flattens a panel into the content it floats over. |
+| `update_button_bg()` | `#4257c9` | `#4257c9` | The title-bar update button. The one accent surface that does not follow `accent()`: its label is white in both arms, and white on the dark arm's light-blue accent is unreadable. |
+
+### 3.3 Syntax
+
+Zed One Dark and One Light. Six hues, and the light arm is Atom/Zed One
+**Light** rather than the dark hues lightened — the dark keyword purple and
+function blue are both far too pale to read on white.
+
+| Token | Dark | Light | Scopes |
+|---|---|---|---|
+| `syntax_keyword()` | `#b477cf` | `#a626a4` | `keyword`, `storage.modifier`, `variable.language` |
+| `syntax_function()` | `#73ade9` | `#3f72e0` | `entity.name.function`, `support.function`, `meta.function-call` |
+| `syntax_string()` | `#a1c181` | `#3f8a3a` | `string`, `constant.character` |
+| `syntax_type()` | `#6eb4bf` | `#b07a08` | `entity.name.type`/`.class`/`.struct`/`.enum`/`.trait`, `support.type`, `storage.type` |
+| `syntax_comment()` | `#5d636f` | `#9a9ca3` | `comment` |
+| `syntax_number()` | `#bf956a` | `#8a5a00` | `constant.numeric`, `constant.language` |
+
+Anything the parser does not classify keeps the row's own foreground, so a
+deleted line stays on `diff_del_fg()` rather than being forced to the body
+colour. `src/ui/syntax.rs` maps syntect **scopes** onto these tokens rather
+than using a syntect theme, which is what lets highlighting survive a theme
+switch: the cache stores the token class, not a colour.
 
 **The accent cannot be shared between arms.** `#74ade8` measures about 1.9:1
 on white — unreadable. Any "token swap" that changes surfaces and leaves the
@@ -130,22 +154,31 @@ The diff has its own palette because it needs four simultaneous backgrounds
 
 | Token | Dark | Light | Use |
 |---|---|---|---|
-| `diff_add_bg()` / `diff_add_gutter_bg()` | `#212721` / `#1b2419` | `#ecf3eb` / `#e3efe1` | Added line body / its gutter. |
-| `diff_del_bg()` / `diff_del_gutter_bg()` | `#271d20` / `#2e1e20` | `#f9ebea` / `#f5dfdd` | Deleted line body / its gutter. |
+| `diff_add_bg()` / `diff_add_gutter_bg()` | `#1a3324` / `#23492f` | `#d8f0dd` / `#b7e3bf` | Added line body / its gutter. |
+| `diff_del_bg()` / `diff_del_gutter_bg()` | `#3a1d21` / `#57252a` | `#fbdedd` / `#f6c3c0` | Deleted line body / its gutter. |
 | `diff_add_fg()` / `diff_del_fg()` | = `text_main()` | = `text_main()` | The background carries the signal, not the text. |
 | `diff_hunk_bg()` | = `surface_bg()` | = `surface_bg()` | `@@` hunk header strip. |
 | `diff_gutter_bg()` | `#121519` | `#fafafb` | Line-number gutter on context lines. |
 | `diff_selected_bg()` | `#1c2a39` | `#dbe4f4` | Line-selection for partial commits. |
 
-Row tints are the hue at ~13% over the buffer in dark and ~10% in light, then
-flattened to an opaque value. The two are **not** the same number: a 10% green
-over `#282c33` and over `#0e1013` are not the same signal — the deeper ground
-eats it.
+Row tints are the hue at ~28% over the buffer, and the gutter at ~45%, then
+flattened to an opaque value. These started at the mockup's ~13% and were
+raised after comparing a real diff against GitHub Desktop, this project's
+reference UI: at 13% over a ground as deep as `#0e1013` the wash was almost
+invisible, and added and deleted rows could only be told from context by
+hunting for them. The wash is the diff's primary signal and has to survive a
+glance.
 
-`diff_selected_bg()` is deliberately quiet. It fills the *whole gutter* on
-every selected line and every line starts selected, so a saturated value turns
-the gutter into the loudest thing in the diff — backwards, since selection is
-the default state and the code is the content.
+The gutter is deliberately stronger than the row. It is a narrow column, so it
+needs more saturation to carry the same weight as the wide row beside it, and
+it is what the eye tracks when scanning down a hunk.
+
+`diff_selected_bg()` is deliberately quiet, and it tints only the **check
+column** — not the whole gutter. Every line starts selected, so a saturated
+value would make selection the loudest thing in the diff; and repainting the
+full gutter erased the add/delete tint behind the line numbers, which is the
+one thing there that says what kind of change the line is. GitHub Desktop
+tints the check column alone for the same reason.
 
 ### 3.5 Push suggestion card
 
@@ -359,8 +392,16 @@ The list-row primitive behind changes, history, branches, stashes, and repos.
 `ROW_HEIGHT` (or `ROW_HEIGHT_COMPACT`), `SPACE_5` horizontal padding,
 `SPACE_4` gap, `CORNER_RADIUS`.
 
-- Rest: transparent · Hover: `list_hover_bg()` · Selected: `accent()` fill with
-  `text_main()` label and icons (GitHub Desktop fills the whole row).
+- Rest: transparent · Hover: `list_hover_bg()` · Selected: `selected_bg()`
+  fill, with `text_main()` label and icons keeping their normal colours.
+
+  A selected row is a **surface**, not an accent fill. This spec previously
+  said `accent()` — GitHub Desktop's language — and the app followed it, which
+  put a saturated light-blue bar under the current row of every list. That is
+  backwards for a Zed-derived design where every list has something selected
+  at all times: the selected row means "this is the one you are looking at",
+  not "look here". Status icons keep their own hue for the same reason; they
+  were being knocked to `on_accent()` purely to survive the old fill.
 - Leading slot (checkbox / status tag / avatar), title (truncating, `flex_1`),
   trailing slot (metadata, count, chevron).
 - Every row is built inside `uniform_list` and carries a stable id derived from

@@ -198,7 +198,7 @@ pub(super) fn render_worktree_selector_panel(
 
     v_flex()
         .w(px(PANEL_WIDTH))
-        .bg(theme::panel_bg())
+        .bg(theme::overlay_bg())
         .rounded(theme::z(theme::CORNER_RADIUS))
         .border_1()
         .border_color(theme::border())

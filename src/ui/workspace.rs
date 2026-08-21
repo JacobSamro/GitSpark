@@ -679,6 +679,58 @@ fn diff_row_id(file_path: &str, line: &DiffLine) -> String {
     )
 }
 
+/// Render code text with syntax colours, falling back to one flat run.
+///
+/// `base` is what unclassified text keeps, so a deleted row can stay on its
+/// own foreground rather than being forced to the shared body colour.
+///
+/// Returns a single child when there is nothing to colour — a file with no
+/// known syntax, or a line the parser classified as entirely plain — so the
+/// common case does not pay for a wrapper element per row.
+fn render_code_text(content: &str, file_path: &str, base: Hsla) -> AnyElement {
+    let Some(syntax) = crate::ui::syntax::syntax_for_path(file_path) else {
+        return div()
+            .text_color(base)
+            .child(content.to_string())
+            .into_any_element();
+    };
+
+    let spans = crate::ui::syntax::highlight_line(content, syntax);
+    if spans.len() <= 1 {
+        return div()
+            .text_color(base)
+            .child(content.to_string())
+            .into_any_element();
+    }
+
+    let mut row = h_flex().flex_shrink_0();
+    let mut at = 0usize;
+    for span in spans.iter() {
+        let end = (at + span.len).min(content.len());
+        // The spans are byte lengths from the same string, so this slice is
+        // always on a char boundary; the guard is for a caller that ever
+        // passes content the spans were not built from.
+        if !content.is_char_boundary(at) || !content.is_char_boundary(end) {
+            return div()
+                .text_color(base)
+                .child(content.to_string())
+                .into_any_element();
+        }
+        let text = &content[at..end];
+        at = end;
+        if text.is_empty() {
+            continue;
+        }
+        row = row.child(
+            div()
+                .flex_shrink_0()
+                .text_color(span.class.color().unwrap_or(base))
+                .child(text.to_string()),
+        );
+    }
+    row.into_any_element()
+}
+
 /// Render a single diff line as a horizontal flex row.
 fn render_diff_line(
     file_path: &str,
@@ -693,8 +745,12 @@ fn render_diff_line(
         .min_h(z(theme::DIFF_ROW_HEIGHT))
         .flex_shrink_0()
         .font_family("monospace")
-        .text_size(z(12.0))
-        .py(z(2.0)); // match GitHub Desktop: padding 2px 0
+        .text_size(z(12.0));
+    // NOTE: no vertical padding on the row. The row paints the add/delete
+    // wash, and the gutter paints its own fill on top; padding here insets the
+    // gutter's fill by 2px top and bottom, leaving a stripe of the wash above
+    // and below every gutter — which reads as gaps between highlighted lines.
+    // The breathing room lives on the content children instead.
 
     let selection_target = diff_line_selection_target(file_path, line);
     let line_included = selection_target
@@ -724,24 +780,33 @@ fn render_diff_line(
             row = row.bg(theme::diff_add_bg()).child(
                 div()
                     .flex_1()
+                    .py(z(2.0))
                     .pl(z(5.0))
-                    .text_color(theme::diff_add_fg())
-                    .child(line.content.clone()),
+                    .child(render_code_text(
+                        &line.content,
+                        file_path,
+                        theme::diff_add_fg(),
+                    )),
             );
         }
         DiffLineKind::Deleted => {
             row = row.bg(theme::diff_del_bg()).child(
                 div()
                     .flex_1()
+                    .py(z(2.0))
                     .pl(z(5.0))
-                    .text_color(theme::diff_del_fg())
-                    .child(line.content.clone()),
+                    .child(render_code_text(
+                        &line.content,
+                        file_path,
+                        theme::diff_del_fg(),
+                    )),
             );
         }
         DiffLineKind::HunkHeader => {
             row = row.bg(theme::diff_hunk_bg()).child(
                 div()
                     .flex_1()
+                    .py(z(2.0))
                     .pl(z(5.0))
                     .text_color(theme::text_muted())
                     .child(line.content.clone()),
@@ -751,9 +816,14 @@ fn render_diff_line(
             row = row.child(
                 div()
                     .flex_1()
+                    .py(z(2.0))
                     .pl(z(5.0))
-                    .text_color(theme::text_main()) // --diff-text-color: var(--text-color)
-                    .child(line.content.clone()),
+                    // --diff-text-color: var(--text-color)
+                    .child(render_code_text(
+                        &line.content,
+                        file_path,
+                        theme::text_main(),
+                    )),
             );
         }
         DiffLineKind::Modified {
@@ -799,15 +869,22 @@ fn render_diff_line(
 }
 
 fn render_unified_line_gutter(line: &DiffLine, selected: bool, selectable: bool) -> Div {
-    let gutter_bg = if selected {
+    // The line-number columns keep the add/delete tint even when selected.
+    // Selection used to repaint the whole 112px gutter, which erased the one
+    // colour that says what kind of change this line is — and since every line
+    // starts selected, that meant the gutter was almost never showing it.
+    // GitHub Desktop, the reference here, tints only the check column.
+    let gutter_bg = match line.kind {
+        DiffLineKind::Added => theme::diff_add_gutter_bg(),
+        DiffLineKind::Deleted => theme::diff_del_gutter_bg(),
+        DiffLineKind::HunkHeader => theme::diff_hunk_bg(),
+        _ => theme::diff_gutter_bg(),
+    };
+
+    let mark_bg = if selected {
         theme::diff_selected_bg()
     } else {
-        match line.kind {
-            DiffLineKind::Added => theme::diff_add_gutter_bg(),
-            DiffLineKind::Deleted => theme::diff_del_gutter_bg(),
-            DiffLineKind::HunkHeader => theme::diff_hunk_bg(),
-            _ => theme::diff_gutter_bg(),
-        }
+        gutter_bg
     };
 
     h_flex()
@@ -822,7 +899,7 @@ fn render_unified_line_gutter(line: &DiffLine, selected: bool, selectable: bool)
         } else {
             theme::line_num_color()
         })
-        .child(render_unified_selection_mark(selected, selectable))
+        .child(render_unified_selection_mark(selected, selectable, mark_bg))
         .child(
             h_flex()
                 .w(z(46.0))
@@ -853,20 +930,31 @@ fn render_line_number_text(line: Option<usize>) -> Div {
     text
 }
 
-fn render_unified_selection_mark(selected: bool, selectable: bool) -> Div {
+fn render_unified_selection_mark(selected: bool, selectable: bool, bg: Hsla) -> Div {
     if !selectable {
         return div().w(z(20.0)).flex_shrink_0();
     }
 
-    let mark = div()
+    // h_flex, not div: `items_center`/`justify_center` need a flex container to
+    // mean anything, and on a plain div the check drifted to the top-left
+    // corner of its cell instead of sitting in the middle of the row.
+    // Full row height so the selection tint on this column is a solid block
+    // against the add/delete tint beside it, with no stripe above or below.
+    let mark = h_flex()
         .w(z(20.0))
         .flex_shrink_0()
+        .min_h(z(theme::DIFF_ROW_HEIGHT))
         .items_center()
-        .justify_center();
+        .justify_center()
+        .bg(bg);
 
     if selected {
-        mark.text_size(z(11.0))
+        // Bold: at 11px the plain check is a thin hairline that reads as a
+        // smudge rather than a mark, and this is the control telling the user
+        // what will actually go into the commit.
+        mark.text_size(z(12.0))
             .text_color(theme::text_main())
+            .font_weight(FontWeight::BOLD)
             .child("✓")
     } else {
         mark
