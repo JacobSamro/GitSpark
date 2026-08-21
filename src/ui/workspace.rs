@@ -102,9 +102,19 @@ enum ExpansionType {
 }
 
 /// Determine expansion type for each hunk based on boundaries and file length.
-fn compute_expansion_types(hunks: &[HunkBounds], _file_line_count: usize) -> Vec<ExpansionType> {
-    if hunks.is_empty() {
-        return vec![];
+/// Decide which expand affordance, if any, each hunk header should offer.
+///
+/// `can_expand` is false when the diff has no file contents to expand FROM —
+/// a deleted file, or one that could not be read. The expansion action returns
+/// early in that case, so offering the control anyway produced a visibly dead
+/// button. No contents, no affordance.
+fn compute_expansion_types(
+    hunks: &[HunkBounds],
+    _file_line_count: usize,
+    can_expand: bool,
+) -> Vec<ExpansionType> {
+    if hunks.is_empty() || !can_expand {
+        return vec![ExpansionType::None; hunks.len()];
     }
     let mut types = Vec::with_capacity(hunks.len());
 
@@ -1062,9 +1072,15 @@ fn render_hunk_header(
                         });
                     });
 
-                return v_flex()
+                // `Both` renders two stacked affordances, so the menu binds
+                // to the container rather than either row. Without an id this
+                // is a plain Div and cannot carry one — which is why this arm
+                // used to be one of the paths with no route back to collapse.
+                let row = v_flex()
+                    .id(SharedString::from(format!("hunk-both-{hunk_index}")))
                     .child(expand_up_row)
-                    .child(expand_down_row)
+                    .child(expand_down_row);
+                return add_hunk_context_menu(row, vh, file_path, hunk_index, has_original_diff)
                     .into_any_element();
             }
             ExpansionType::Short => {
@@ -1100,8 +1116,12 @@ fn render_hunk_header(
         }
     }
 
-    // Fallback: non-interactive hunk header
-    h_flex()
+    // Fallback header: no inline expand affordance, but it must still carry
+    // the context menu. `Both` and `None` used to return here bare, which was
+    // the only route back to `collapse_diff` — so certain expansion sequences
+    // left the diff expanded with no way in the UI to collapse it again.
+    let row = h_flex()
+        .id(SharedString::from(format!("hunk-plain-{hunk_index}")))
         .w_full()
         .h(row_h)
         .flex_shrink_0()
@@ -1113,8 +1133,13 @@ fn render_hunk_header(
                 .w(z(theme::DIFF_LINE_NUM_WIDTH * 2.0))
                 .flex_shrink_0(),
         )
-        .child(hunk_text)
-        .into_any_element()
+        .child(hunk_text);
+
+    match view {
+        Some(vh) => add_hunk_context_menu(row, vh, file_path, hunk_index, has_original_diff)
+            .into_any_element(),
+        None => row.into_any_element(),
+    }
 }
 
 /// Add right-click context menu to a hunk row.
@@ -1440,7 +1465,11 @@ pub fn render_workspace(
                 .filter_map(|l| parse_hunk_header(l))
                 .collect();
             let file_line_count = entry.file_contents.as_ref().map(|c| c.len()).unwrap_or(0);
-            let expansion_types = compute_expansion_types(&hunk_bounds, file_line_count);
+            // Expansion reads from the working-tree file. Without it the
+            // action is a no-op, so the affordances must not appear either.
+            let can_expand = entry.file_contents.is_some();
+            let expansion_types =
+                compute_expansion_types(&hunk_bounds, file_line_count, can_expand);
 
             if show_side_by_side {
                 // Virtualized too; `list` is its own scroller, so there is no
@@ -1670,4 +1699,62 @@ fn meaningful_diff_line_count(lines: &[DiffLine]) -> usize {
 
 fn whitespace_normalized(value: &str) -> String {
     value.chars().filter(|ch| !ch.is_whitespace()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ExpansionType, HunkBounds, compute_expansion_types};
+
+    fn hunk(new_start: usize, new_count: usize) -> HunkBounds {
+        HunkBounds {
+            new_start,
+            new_count,
+            old_start: new_start,
+            old_count: new_count,
+        }
+    }
+
+    #[test]
+    fn offers_expansion_when_file_contents_are_available() {
+        // A hunk starting well past line 1 has room to expand upwards.
+        let hunks = vec![hunk(40, 5)];
+        let types = compute_expansion_types(&hunks, 200, true);
+        assert_eq!(types.len(), 1);
+        assert_ne!(
+            types[0],
+            ExpansionType::None,
+            "a mid-file hunk with contents should offer an expand control"
+        );
+    }
+
+    #[test]
+    fn offers_nothing_when_file_contents_are_missing() {
+        // Deleted or unreadable file: the expand action returns early, so the
+        // control would be visibly dead. Same hunks as above.
+        let hunks = vec![hunk(40, 5), hunk(120, 5)];
+        let types = compute_expansion_types(&hunks, 200, false);
+        assert_eq!(
+            types,
+            vec![ExpansionType::None, ExpansionType::None],
+            "no contents to expand from means no affordance"
+        );
+    }
+
+    #[test]
+    fn returns_one_entry_per_hunk_in_both_modes() {
+        // The caller indexes this by hunk position, so a short vec would
+        // silently mis-assign controls to the wrong hunks.
+        let hunks = vec![hunk(10, 2), hunk(60, 2), hunk(140, 2)];
+        assert_eq!(compute_expansion_types(&hunks, 300, true).len(), hunks.len());
+        assert_eq!(
+            compute_expansion_types(&hunks, 300, false).len(),
+            hunks.len()
+        );
+    }
+
+    #[test]
+    fn handles_an_empty_hunk_list() {
+        assert!(compute_expansion_types(&[], 0, true).is_empty());
+        assert!(compute_expansion_types(&[], 0, false).is_empty());
+    }
 }
