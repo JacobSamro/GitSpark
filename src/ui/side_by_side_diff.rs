@@ -363,7 +363,7 @@ fn render_side_cell(text: Option<&str>, bg: Hsla, fg: Hsla) -> Div {
         .py(z(4.0))
         .bg(bg)
         .text_size(z(12.0))
-        .font_family("SF Mono, Monaco, Menlo, Consolas, monospace")
+        .font_family(theme::mono_family())
         .text_color(fg)
         .child(text.unwrap_or("").to_string())
 }

@@ -553,6 +553,35 @@ pub const FONT_SIZE_MD: f32 = 14.0;
 pub const FONT_SIZE_LG: f32 = 28.0;
 
 // ---------------------------------------------------------------------------
+// Font families
+// ---------------------------------------------------------------------------
+
+/// The monospace family for diffs, SHAs and paths.
+///
+/// GitHub Desktop — the reference UI — asks for
+/// `SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace`
+/// (`app/styles/_variables.scss`). GPUI takes ONE family name, not a CSS
+/// fallback list: a comma-separated string is looked up verbatim as a family,
+/// matches nothing, and silently falls back to the default font. So the stack
+/// is resolved here, per platform, to the entry that actually exists.
+///
+/// On stock macOS that is Menlo, not SF Mono: SF Mono ships only inside
+/// Terminal.app's Resources directory and is not a registered family, so
+/// GitHub Desktop's own first choice does not resolve either and it lands on
+/// Menlo too. Naming Menlo directly is therefore what actually matches it.
+pub fn mono_family() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "Menlo"
+    } else if cfg!(target_os = "windows") {
+        "Consolas"
+    } else {
+        // Liberation Mono is the usual metric-compatible default; the generic
+        // is the backstop where it is absent.
+        "Liberation Mono"
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Typography helpers
 // ---------------------------------------------------------------------------
 

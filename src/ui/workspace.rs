@@ -744,7 +744,7 @@ fn render_diff_line(
         .w_full()
         .min_h(z(theme::DIFF_ROW_HEIGHT))
         .flex_shrink_0()
-        .font_family("monospace")
+        .font_family(theme::mono_family())
         .text_size(z(12.0));
     // NOTE: no vertical padding on the row. The row paints the add/delete
     // wash, and the gutter paints its own fill on top; padding here insets the
@@ -1057,7 +1057,7 @@ fn render_hunk_header(
                     .w_full()
                     .h(row_h)
                     .flex_shrink_0()
-                    .font_family("monospace")
+                    .font_family(theme::mono_family())
                     .text_size(z(12.0))
                     .bg(theme::diff_hunk_bg())
                     .cursor_pointer()
@@ -1082,7 +1082,7 @@ fn render_hunk_header(
                     .w_full()
                     .h(row_h)
                     .flex_shrink_0()
-                    .font_family("monospace")
+                    .font_family(theme::mono_family())
                     .text_size(z(12.0))
                     .bg(theme::diff_hunk_bg())
                     .cursor_pointer()
@@ -1122,7 +1122,7 @@ fn render_hunk_header(
                         div()
                             .flex_1()
                             .pl(z(5.0))
-                            .font_family("monospace")
+                            .font_family(theme::mono_family())
                             .text_size(z(12.0))
                             .text_color(theme::text_muted()),
                     )
@@ -1139,7 +1139,7 @@ fn render_hunk_header(
                     .w_full()
                     .h(row_h)
                     .flex_shrink_0()
-                    .font_family("monospace")
+                    .font_family(theme::mono_family())
                     .text_size(z(12.0))
                     .bg(theme::diff_hunk_bg())
                     .cursor_pointer()
@@ -1179,7 +1179,7 @@ fn render_hunk_header(
                     .w_full()
                     .h(row_h)
                     .flex_shrink_0()
-                    .font_family("monospace")
+                    .font_family(theme::mono_family())
                     .text_size(z(12.0))
                     .bg(theme::diff_hunk_bg())
                     .cursor_pointer()
@@ -1213,7 +1213,7 @@ fn render_hunk_header(
         .w_full()
         .h(row_h)
         .flex_shrink_0()
-        .font_family("monospace")
+        .font_family(theme::mono_family())
         .text_size(z(12.0))
         .bg(theme::diff_hunk_bg())
         .child(
