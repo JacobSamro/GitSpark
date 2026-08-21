@@ -1442,7 +1442,7 @@ impl GitSparkApp {
                                     .rounded(theme::z(4.0))
                                     .bg(theme::accent())
                                     .text_size(theme::z(11.0))
-                                    .text_color(gpui::white())
+                                    .text_color(theme::on_accent())
                                     .cursor_pointer()
                                     .hover(|s| s.bg(theme::commit_button_hover_bg()))
                                     .on_click(cx.listener(|app, _evt, _win, cx| {
@@ -2895,7 +2895,7 @@ impl GitSparkApp {
                 // Selected text with highlight
                 if !selected.is_empty() {
                     let mut el = div()
-                        .text_color(gpui::white())
+                        .text_color(theme::on_accent())
                         .bg(sel_highlight)
                         .child(selected.to_string());
                     if nowrap {
@@ -3437,6 +3437,7 @@ impl GitSparkApp {
                                     false,
                                     &self.selection.selected_diff_lines,
                                     None, // History diffs are read-only, no expand controls
+                                    &self.diff_list_history,
                                 ),
                             )),
                     ),
@@ -3455,6 +3456,7 @@ impl GitSparkApp {
                         self.nav.show_diff_options_menu,
                         &self.selection.selected_diff_lines,
                         Some(&view),
+                        &self.diff_list_changes,
                     )),
                 )
                 .into_any_element();
@@ -3617,7 +3619,7 @@ impl GitSparkApp {
                         let entry = &diffs_snapshot[ix];
                         let is_selected = sel.as_deref() == Some(entry.path.as_str());
                         let text_color = if is_selected {
-                            gpui::white().into()
+                            theme::on_accent()
                         } else {
                             theme::text_main()
                         };

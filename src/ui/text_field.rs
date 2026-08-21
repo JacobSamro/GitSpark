@@ -316,7 +316,7 @@ pub fn render_text_content(
         }
         if !selected.is_empty() {
             let mut el = div()
-                .text_color(gpui::white())
+                .text_color(theme::on_accent())
                 .bg(sel_bg)
                 .child(selected.to_string());
             if nowrap {

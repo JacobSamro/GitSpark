@@ -1511,7 +1511,7 @@ fn render_model_option(
                 .rounded_full()
                 .border_1()
                 .border_color(if selected {
-                    gpui::white()
+                    theme::on_accent()
                 } else {
                     theme::text_muted()
                 })
@@ -1524,7 +1524,7 @@ fn render_model_option(
                             .w(theme::z(8.0))
                             .h(theme::z(8.0))
                             .rounded_full()
-                            .bg(gpui::white()),
+                            .bg(theme::on_accent()),
                     )
                 }),
         )
@@ -1537,7 +1537,7 @@ fn render_model_option(
                     div()
                         .text_size(theme::z(13.0))
                         .text_color(if selected {
-                            gpui::white().into()
+                            theme::on_accent()
                         } else {
                             theme::text_main()
                         })
@@ -1549,7 +1549,7 @@ fn render_model_option(
                     div()
                         .text_size(theme::z(11.0))
                         .text_color(if selected {
-                            theme::with_alpha(gpui::white().into(), 0.7)
+                            theme::with_alpha(theme::on_accent(), 0.7)
                         } else {
                             theme::text_muted()
                         })

@@ -45,7 +45,7 @@ fn render_status_icon(status: &str, selected: bool) -> Div {
     };
 
     let color = if selected {
-        gpui::white().into()
+        theme::on_accent()
     } else {
         normal_color
     };
@@ -520,7 +520,7 @@ pub fn render_change_row(
     let status_kind = status_label(&change.status);
 
     let text_color = if selected {
-        gpui::white().into()
+        theme::on_accent()
     } else if !included {
         theme::text_muted()
     } else {
@@ -798,7 +798,7 @@ pub fn render_no_changes_state(
                                 .rounded(z(theme::CORNER_RADIUS))
                                 .bg(theme::commit_button_bg())
                                 .text_size(z(13.0))
-                                .text_color(gpui::white())
+                                .text_color(theme::on_accent())
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .cursor_pointer()
                                 .hover(|s| s.bg(theme::commit_button_hover_bg()))
@@ -1106,13 +1106,13 @@ pub fn render_history_row(commit: &CommitInfo, selected: bool) -> Div {
     };
 
     let summary_color = if selected {
-        gpui::white().into()
+        theme::on_accent()
     } else {
         theme::text_main()
     };
 
     let meta_color = if selected {
-        gpui::white().into()
+        theme::on_accent()
     } else {
         theme::text_muted()
     };

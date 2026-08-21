@@ -493,6 +493,25 @@ div().flex_1().overflow_y_scroll().child(
 )
 ```
 
+**The diff is virtualized with `list`, not `uniform_list`.** Diff rows are
+`DIFF_ROW_HEIGHT`, hunk headers are taller, and wrapped lines taller still —
+`uniform_list` needs one height for every row, so it does not apply. GPUI's
+`list` + `ListState` handles variable heights.
+
+`ListState` must live **across renders** (the view owns it — it caches
+measured heights there) and must be **reset when the content changes**, or a
+new diff opens scrolled into the middle of nowhere. `DiffListHandle` does
+both, keyed on file + row count + options. Changes and History hold separate
+handles because they can show the same file path.
+
+Measured on a 4001-row diff, in release: building every row cost **14–21ms per
+frame** — the entire 60fps budget, on every frame of every scroll. Virtualized,
+the same diff flattens in **0.08–0.19ms**. Parsing the diff text was never the
+problem at 0.3ms; it was constructing elements nobody could see.
+
+**Known debt:** side-by-side diff is still built eagerly and needs the same
+treatment.
+
 **Long lists are `uniform_list`.** Any list that can exceed ~20 items —
 changes, history, files, branches — is virtualized. A `for` loop that pushes
 hundreds of children is a bug. `uniform_list` needs an exact row height, which

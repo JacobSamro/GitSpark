@@ -1,6 +1,8 @@
 use gpui::*;
 use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
 use gpui_component::{h_flex, v_flex};
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -33,6 +35,61 @@ struct HunkBounds {
     old_start: usize,
     /// Number of lines in this hunk in the old file.
     old_count: usize,
+}
+
+/// Virtualized-list state for the unified diff.
+///
+/// `gpui::list` needs its `ListState` to LIVE ACROSS RENDERS — it caches
+/// measured item heights there — so the view owns this and hands out clones.
+/// `uniform_list` was not an option: diff rows are `DIFF_ROW_HEIGHT` but hunk
+/// headers are taller and wrapped lines taller still, and `uniform_list`
+/// requires one height for every row.
+///
+/// The key is what the list was last built for. When it changes — different
+/// file, different row count, split/unified toggled — the cached heights and
+/// scroll offset belong to the old content and must be thrown away, or the
+/// new diff opens scrolled into the middle of nowhere.
+pub(crate) struct DiffListHandle {
+    state: ListState,
+    key: RefCell<String>,
+}
+
+impl Default for DiffListHandle {
+    fn default() -> Self {
+        Self {
+            state: ListState::new(0, ListAlignment::Top, px(600.0)),
+            key: RefCell::new(String::new()),
+        }
+    }
+}
+
+impl DiffListHandle {
+    fn sync(&self, key: String, count: usize) -> ListState {
+        let mut current = self.key.borrow_mut();
+        if *current != key {
+            self.state.reset(count);
+            *current = key;
+        }
+        self.state.clone()
+    }
+}
+
+/// One row of the unified diff, resolved ahead of virtualization.
+///
+/// The list renders arbitrary indices on demand, so nothing can depend on
+/// walking the rows in order — the hunk index in particular used to be a
+/// counter incremented by the loop, and is now baked into the row.
+enum DiffRow {
+    Hunk {
+        line: DiffLine,
+        index: usize,
+        expansion: ExpansionType,
+    },
+    Line(DiffLine),
+    WhitespaceHidden,
+    ExpandEof {
+        last_hunk: usize,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -809,6 +866,53 @@ fn render_unified_selection_mark(selected: bool, selectable: bool) -> Div {
 
 /// Render a hunk header row. The entire row is clickable to expand.
 /// For Both type, the row is split into two clickable halves.
+/// The "expand to end of file" affordance below the last hunk.
+///
+/// Extracted from the old inline loop so the virtualized list can build it on
+/// demand like any other row.
+fn render_expand_eof_row(
+    file_path: &str,
+    last_hunk: usize,
+    view: Option<&Entity<GitSparkApp>>,
+) -> AnyElement {
+    let Some(view) = view else {
+        return div().into_any_element();
+    };
+    let view = view.clone();
+    let file_path = file_path.to_string();
+    let row_h = z(theme::DIFF_ROW_HEIGHT);
+
+    h_flex()
+        .id("expand-eof")
+        .w_full()
+        .h(row_h)
+        .flex_shrink_0()
+        .bg(theme::diff_hunk_bg())
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::accent()))
+        .child(
+            h_flex()
+                .w(z(theme::DIFF_LINE_NUM_WIDTH * 2.0))
+                .flex_shrink_0()
+                .items_center()
+                .justify_center()
+                .child(
+                    gpui::svg()
+                        .path("icons/chevrons-down.svg")
+                        .size(z(16.0))
+                        .text_color(theme::text_muted()),
+                ),
+        )
+        .on_click(move |_evt, _win, cx| {
+            let file_path = file_path.clone();
+            view.update(cx, |app, cx| {
+                app.expand_diff_context(file_path, last_hunk, DiffExpandDirection::Down);
+                cx.notify();
+            });
+        })
+        .into_any_element()
+}
+
 fn render_hunk_header(
     line: &DiffLine,
     hunk_index: usize,
@@ -1277,6 +1381,7 @@ pub fn render_workspace(
     show_diff_options_menu: bool,
     excluded_lines: &HashSet<DiffLineSelection>,
     view: Option<&Entity<GitSparkApp>>,
+    diff_list: &DiffListHandle,
 ) -> Div {
     let Some(file_path) = selected_file else {
         return render_empty_state();
@@ -1338,121 +1443,131 @@ pub fn render_workspace(
             let file_line_count = entry.file_contents.as_ref().map(|c| c.len()).unwrap_or(0);
             let expansion_types = compute_expansion_types(&hunk_bounds, file_line_count);
 
-            let mut scroll_content = if show_side_by_side {
-                crate::ui::side_by_side_diff::render_side_by_side_diff(
+            if show_side_by_side {
+                // Side-by-side is still built eagerly — see the note in
+                // design.md §11; it needs the same treatment.
+                let scroll_content = crate::ui::side_by_side_diff::render_side_by_side_diff(
                     file_path,
                     &entry.diff,
                     hide_whitespace_changes,
                     excluded_lines,
                     view,
-                )
+                );
+                div()
+                    .w_full()
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        div()
+                            .id("diff-scroll")
+                            .size_full()
+                            .overflow_y_scrollbar()
+                            .child(scroll_content.pb(z(300.0))),
+                    )
+                    .into_any_element()
             } else {
-                div().flex().flex_col().w_full()
-            };
-            let mut hunk_index = 0usize;
-            if !show_side_by_side {
+                // Flatten every row up front, then virtualize. Building the
+                // element for each of these cost ~15ms on a 4000-row diff, on
+                // EVERY frame — including every frame of a scroll — which is
+                // the whole frame budget at 60fps. Now only the visible
+                // handful are built.
+                let mut rows: Vec<DiffRow> = Vec::with_capacity(visible_lines.len() + 2);
+                let mut hunk_index = 0usize;
                 for line in &visible_lines {
                     if matches!(line.kind, DiffLineKind::HunkHeader) {
-                        let exp_type = expansion_types
-                            .get(hunk_index)
-                            .copied()
-                            .unwrap_or(ExpansionType::None);
-                        scroll_content = scroll_content.child(render_hunk_header(
-                            line,
-                            hunk_index,
-                            exp_type,
-                            file_path,
-                            view,
-                            entry.original_diff.is_some(),
-                        ));
+                        rows.push(DiffRow::Hunk {
+                            line: line.clone(),
+                            index: hunk_index,
+                            expansion: expansion_types
+                                .get(hunk_index)
+                                .copied()
+                                .unwrap_or(ExpansionType::None),
+                        });
                         hunk_index += 1;
                     } else {
-                        scroll_content = scroll_content.child(render_diff_line(
-                            file_path,
-                            line,
-                            view,
-                            excluded_lines,
-                            hide_whitespace_changes,
-                        ));
+                        rows.push(DiffRow::Line(line.clone()));
                     }
                 }
-            }
 
-            if meaningful_diff_line_count(&visible_lines) == 0 && hide_whitespace_changes {
-                scroll_content = scroll_content.child(
-                    h_flex()
-                        .id("diff-whitespace-hidden-empty")
-                        .w_full()
-                        .h(z(theme::DIFF_ROW_HEIGHT * 2.0))
-                        .items_center()
-                        .justify_center()
-                        .text_size(z(12.0))
-                        .text_color(theme::text_muted())
-                        .child("Only whitespace changes hidden."),
+                if meaningful_diff_line_count(&visible_lines) == 0 && hide_whitespace_changes {
+                    rows.push(DiffRow::WhitespaceHidden);
+                }
+
+                if let Some(last_bounds) = hunk_bounds.last() {
+                    let last_end = last_bounds.new_start + last_bounds.new_count;
+                    if last_end <= file_line_count
+                        && entry.file_contents.is_some()
+                        && view.is_some()
+                    {
+                        rows.push(DiffRow::ExpandEof {
+                            last_hunk: hunk_index.saturating_sub(1),
+                        });
+                    }
+                }
+
+                let key = format!(
+                    "{file_path}|{}|{}|{}",
+                    rows.len(),
+                    hide_whitespace_changes,
+                    entry.original_diff.is_some()
                 );
-            }
+                let state = diff_list.sync(key, rows.len());
 
-            // Expand-down row after the last hunk if file has more lines
-            if !show_side_by_side && let Some(last_bounds) = hunk_bounds.last() {
-                let last_end = last_bounds.new_start + last_bounds.new_count;
-                if last_end <= file_line_count && entry.file_contents.is_some() {
-                    if let Some(vh) = view {
-                        let vh_click = vh.clone();
-                        let fp = file_path.to_string();
-                        let last_hi = hunk_index.saturating_sub(1);
-                        let row_h = z(theme::DIFF_ROW_HEIGHT);
-                        let hover_blue = |s: StyleRefinement| s.bg(theme::accent());
-                        scroll_content = scroll_content.child(
-                            h_flex()
-                                .id("expand-eof")
-                                .w_full()
-                                .h(row_h)
-                                .flex_shrink_0()
-                                .bg(theme::diff_hunk_bg())
-                                .cursor_pointer()
-                                .hover(hover_blue)
-                                .child(
-                                    h_flex()
-                                        .w(z(theme::DIFF_LINE_NUM_WIDTH * 2.0))
-                                        .flex_shrink_0()
-                                        .items_center()
-                                        .justify_center()
-                                        .child(
-                                            gpui::svg()
-                                                .path("icons/chevrons-down.svg")
-                                                .size(z(16.0))
-                                                .text_color(theme::text_muted()),
-                                        ),
-                                )
-                                .on_click(move |_evt, _win, cx| {
-                                    let fp = fp.clone();
-                                    vh_click.update(cx, |app, cx| {
-                                        app.expand_diff_context(
-                                            fp,
-                                            last_hi,
-                                            DiffExpandDirection::Down,
-                                        );
-                                        cx.notify();
-                                    });
-                                })
-                                .into_any_element(),
-                        );
+                let rows = Rc::new(rows);
+                let owned_path = file_path.to_string();
+                let owned_excluded = excluded_lines.clone();
+                let owned_view = view.cloned();
+                let has_original = entry.original_diff.is_some();
+
+                let list_element = list(state, move |ix, _window, _cx| {
+                    let Some(row) = rows.get(ix) else {
+                        return div().into_any_element();
+                    };
+                    match row {
+                        DiffRow::Hunk {
+                            line,
+                            index,
+                            expansion,
+                        } => render_hunk_header(
+                            line,
+                            *index,
+                            *expansion,
+                            &owned_path,
+                            owned_view.as_ref(),
+                            has_original,
+                        ),
+                        DiffRow::Line(line) => render_diff_line(
+                            &owned_path,
+                            line,
+                            owned_view.as_ref(),
+                            &owned_excluded,
+                            hide_whitespace_changes,
+                        )
+                        .into_any_element(),
+                        DiffRow::WhitespaceHidden => h_flex()
+                            .id("diff-whitespace-hidden-empty")
+                            .w_full()
+                            .h(z(theme::DIFF_ROW_HEIGHT * 2.0))
+                            .items_center()
+                            .justify_center()
+                            .text_size(z(12.0))
+                            .text_color(theme::text_muted())
+                            .child("Only whitespace changes hidden.")
+                            .into_any_element(),
+                        DiffRow::ExpandEof { last_hunk } => {
+                            render_expand_eof_row(&owned_path, *last_hunk, owned_view.as_ref())
+                        }
                     }
-                }
-            }
+                })
+                .with_sizing_behavior(ListSizingBehavior::Auto);
 
-            div()
-                .w_full()
-                .flex_1()
-                .min_h_0()
-                .child(
-                    div()
-                        .id("diff-scroll")
-                        .size_full()
-                        .overflow_y_scrollbar()
-                        .child(scroll_content.pb(z(300.0))),
-                )
-                .into_any_element()
+                div()
+                    .w_full()
+                    .flex_1()
+                    .min_h_0()
+                    .child(list_element.w_full().h_full())
+                    .into_any_element()
+            }
         }
         None => div()
             .w_full()

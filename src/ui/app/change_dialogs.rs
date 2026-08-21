@@ -115,7 +115,7 @@ pub(super) fn render_discard_changes_dialog(
                         .child(
                             div()
                                 .text_size(theme::z(12.0))
-                                .text_color(gpui::white())
+                                .text_color(theme::on_accent())
                                 .child("Discard Changes"),
                         )
                         .on_click(cx.listener(|app, _evt, _win, cx| {

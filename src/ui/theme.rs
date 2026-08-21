@@ -311,10 +311,20 @@ pub fn commit_button_hover_bg() -> Hsla {
     pick(0x8cbcec, 0x3a4eb8)
 }
 
-/// Text on the accent fill. Theme-dependent: the dark arm's accent is light
-/// enough to need near-black text, the light arm's needs white.
-pub fn commit_button_text() -> Hsla {
+/// Text and glyphs knocked out of an `accent()` fill.
+///
+/// Theme-dependent, and this is the trap: the dark arm's accent (`#74ade8`)
+/// is LIGHT, so white text on it is barely legible — it needs near-black. The
+/// light arm's accent is dark and needs white. A literal `gpui::white()` on a
+/// selected row is therefore a bug in dark mode, not just in light.
+pub fn on_accent() -> Hsla {
     pick(0x0e1013, 0xffffff)
+}
+
+/// The commit CTA's label. Same thing as [`on_accent`]; kept as its own name
+/// because that is what the callsites read as.
+pub fn commit_button_text() -> Hsla {
+    on_accent()
 }
 
 pub fn line_num_color() -> Hsla {
