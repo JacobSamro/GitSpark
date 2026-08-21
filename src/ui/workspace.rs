@@ -1,6 +1,6 @@
 use gpui::*;
 use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
-use gpui_component::{h_flex, v_flex};
+use gpui_component::{Icon, IconName, h_flex, v_flex};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::collections::HashSet;
@@ -1376,16 +1376,41 @@ fn render_diff_header(
 
     if let Some(vh) = diff_options_view {
         let menu_view = vh.clone();
-        header = header.child(diff_header_button(
-            "diff-options-menu",
-            "⚙ ▾",
-            move |_evt, _win, cx| {
-                menu_view.update(cx, |app, cx| {
-                    app.nav.show_diff_options_menu = !app.nav.show_diff_options_menu;
-                    cx.notify();
-                });
-            },
-        ));
+        // A real 16px gear plus a caret, borderless — GitHub Desktop's
+        // `.diff-options-component` renders `octicons.gear` next to
+        // `octicons.triangleDown` with no border or fill. This used to be the
+        // literal string "⚙ ▾" set at 11px inside a bordered pill, which drew
+        // a gear a third the size of every other icon in the app.
+        header = header.child(
+            h_flex()
+                .id("diff-options-menu")
+                .flex_none()
+                .h(z(24.0))
+                .px(z(theme::SPACE_3))
+                .mr(z(8.0))
+                .gap(z(theme::SPACE_1))
+                .items_center()
+                .justify_center()
+                .rounded(z(theme::CORNER_RADIUS_SM))
+                .cursor_pointer()
+                .hover(|style| style.bg(theme::toolbar_hover_bg()))
+                .child(
+                    Icon::new(IconName::Settings)
+                        .size(z(16.0))
+                        .text_color(theme::text_main()),
+                )
+                .child(
+                    Icon::new(IconName::ChevronDown)
+                        .size(z(12.0))
+                        .text_color(theme::text_muted()),
+                )
+                .on_click(move |_evt, _win, cx| {
+                    menu_view.update(cx, |app, cx| {
+                        app.nav.show_diff_options_menu = !app.nav.show_diff_options_menu;
+                        cx.notify();
+                    });
+                }),
+        );
     }
 
     header
