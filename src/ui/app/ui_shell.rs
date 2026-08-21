@@ -155,40 +155,54 @@ impl Render for GitSparkApp {
         window.set_rem_size(px(self.rem_size));
 
         // macOS titlebar spacer (traffic lights sit here)
-        // Just enough for the traffic lights plus the update indicator. It was
-        // 38, which left a dead strip above the toolbar on every window.
-        let titlebar_height = if cfg!(target_os = "macos") {
-            theme::TITLEBAR_HEIGHT
-        } else {
-            0.0
-        };
-
-        let titlebar_spacer = {
-            // The update indicator lives at the top right of this strip, the
-            // way Zed does it — the traffic lights own the left, and this is
-            // otherwise dead space.
-            let spacer = h_flex()
+        // The repository tabs live in the window's title-bar row, to the
+        // right of the traffic lights, with the update indicator at the far
+        // end. That band used to hold nothing but those two, while a separate
+        // tab strip below it spent another 36px — this reclaims that.
+        //
+        // On platforms without a native title bar there are no traffic lights
+        // to clear, so the row is the tab strip and nothing else.
+        let titlebar_row = {
+            let row = h_flex()
                 .id("window-titlebar-spacer")
                 .w_full()
-                .h(px(titlebar_height))
+                .h(theme::z(theme::TITLEBAR_HEIGHT))
                 .flex_shrink_0()
-                .items_center()
-                .justify_end()
-                .pr(theme::z(theme::SPACE_6))
-                .child(crate::ui::update_indicator::render(
-                    &self.update_state,
-                    cx.listener(Self::handle_update_indicator_click),
-                ));
+                // No `items_center`: the tabs stretch to the row's full
+                // height so the active one reads as a tab — its fill meets the
+                // toolbar below and its accent rail sits on the window's top
+                // edge, rather than floating in the middle of the band.
+                .child(crate::ui::repo_tab_bar::render_if_needed(
+                    self,
+                    cx.entity().clone(),
+                ))
+                .child(
+                    h_flex()
+                        .flex_shrink_0()
+                        .h_full()
+                        .items_center()
+                        .pl(theme::z(theme::SPACE_4))
+                        .pr(theme::z(theme::SPACE_6))
+                        .child(crate::ui::update_indicator::render(
+                            &self.update_state,
+                            cx.listener(Self::handle_update_indicator_click),
+                        )),
+                );
+
             #[cfg(target_os = "macos")]
-            let spacer = spacer.on_click(|event: &ClickEvent, window: &mut Window, _| {
-                if event.click_count() == 2 {
-                    window.titlebar_double_click();
-                }
-            });
-            // The title bar and the toolbar below it share `panel_bg`, so
-            // without a rule they read as one tall undifferentiated strip.
-            spacer
-                .bg(theme::panel_bg())
+            let row = row
+                .pl(theme::z(theme::TRAFFIC_LIGHT_INSET))
+                .on_click(|event: &ClickEvent, window: &mut Window, _| {
+                    // Double-click still zooms the window. The tabs stop the
+                    // event themselves, so this only fires on the bare strip.
+                    if event.click_count() == 2 {
+                        window.titlebar_double_click();
+                    }
+                });
+
+            // The row and the toolbar below it share `panel_bg`, so without a
+            // rule they read as one tall undifferentiated strip.
+            row.bg(theme::panel_bg())
                 .border_b_1()
                 .border_color(theme::border())
         };
@@ -199,13 +213,7 @@ impl Render for GitSparkApp {
             .bg(theme::bg())
             .font_family(".SystemUIFont")
             .text_size(theme::z(theme::FONT_SIZE))
-            .child(titlebar_spacer) // slightly lighter than bg for titlebar strip
-            // Between the title bar and the toolbar: the tabs choose the
-            // repository, and everything below reads from it.
-            .child(crate::ui::repo_tab_bar::render_if_needed(
-                self,
-                cx.entity().clone(),
-            ))
+            .child(titlebar_row)
             .child(
                 div().w_full().flex_1().min_h_0().child(
                     h_resizable("main-panels")

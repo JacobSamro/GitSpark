@@ -574,7 +574,17 @@ pub const SPACE_8: f32 = 24.0;
 /// macOS title-bar strip. The traffic lights are positioned against this in
 /// `main.rs`, so the two must move together — they were 38 and 12 before, and
 /// shrinking the strip alone left the lights sitting high.
-pub const TITLEBAR_HEIGHT: f32 = 30.0;
+///
+/// 36 rather than 30 because the repository tabs live in this row: the band
+/// was otherwise empty apart from the lights and the update indicator, and a
+/// separate strip below it spent another 36px saying nothing.
+pub const TITLEBAR_HEIGHT: f32 = 36.0;
+
+/// Left inset that clears the macOS traffic lights.
+///
+/// Three 14px buttons from x=10 with 6px between them end at 66; the rest is
+/// breathing room before the first tab.
+pub const TRAFFIC_LIGHT_INSET: f32 = 76.0;
 
 /// Height of a macOS traffic-light button, used to centre them in the strip.
 pub const TRAFFIC_LIGHT_DIAMETER: f32 = 14.0;

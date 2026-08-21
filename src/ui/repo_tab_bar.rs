@@ -17,10 +17,6 @@ use crate::ui::ids::stable_id_slug;
 use crate::ui::theme;
 use crate::ui::theme::z;
 
-/// Height of the strip. Tall enough for a 16px control with room around it,
-/// short enough that it does not read as a second toolbar.
-pub const TAB_BAR_HEIGHT: f32 = 36.0;
-
 /// A tab never grows past this, so one long repository name cannot push the
 /// rest of the strip off screen.
 const TAB_MAX_WIDTH: f32 = 210.0;
@@ -29,7 +25,12 @@ const TAB_MAX_WIDTH: f32 = 210.0;
 /// reveals the ×.
 const TAB_GROUP: &str = "repo-tab";
 
-pub fn render(app: &GitSparkApp, view: Entity<GitSparkApp>) -> Div {
+/// The tabs and the `+`, with no surrounding chrome.
+///
+/// Separated from any background or border because on macOS this is embedded
+/// directly in the window's title-bar row, beside the traffic lights, rather
+/// than sitting in a strip of its own.
+pub fn render_strip(app: &GitSparkApp, view: Entity<GitSparkApp>) -> Div {
     let active = app.active_tab;
 
     // The strip scrolls rather than shrinking tabs to illegibility or wrapping
@@ -39,6 +40,7 @@ pub fn render(app: &GitSparkApp, view: Entity<GitSparkApp>) -> Div {
         .id("repo-tab-strip")
         .flex_1()
         .min_w_0()
+        .h_full()
         .overflow_x_scroll();
 
     for (index, tab) in app.tabs.iter().enumerate() {
@@ -53,12 +55,9 @@ pub fn render(app: &GitSparkApp, view: Entity<GitSparkApp>) -> Div {
     }
 
     h_flex()
-        .w_full()
-        .h(z(TAB_BAR_HEIGHT))
-        .flex_shrink_0()
-        .bg(theme::panel_bg())
-        .border_b_1()
-        .border_color(theme::border())
+        .flex_1()
+        .min_w_0()
+        .h_full()
         .child(strip)
         .child(render_add_button(view))
 }
@@ -77,6 +76,7 @@ fn render_tab(
     let mut tab = h_flex()
         .id(SharedString::from(format!("repo-tab-{slug}")))
         .flex_shrink_0()
+        .h_full()
         .max_w(z(TAB_MAX_WIDTH))
         .min_w_0()
         .relative()
@@ -176,6 +176,7 @@ fn render_add_button(view: Entity<GitSparkApp>) -> gpui::Stateful<Div> {
     h_flex()
         .id("repo-tab-add")
         .flex_shrink_0()
+        .h_full()
         .w(z(34.0))
         .items_center()
         .justify_center()
@@ -198,8 +199,9 @@ pub fn should_render(app: &GitSparkApp) -> bool {
 
 pub fn render_if_needed(app: &GitSparkApp, view: Entity<GitSparkApp>) -> AnyElement {
     if should_render(app) {
-        render(app, view).into_any_element()
+        render_strip(app, view).into_any_element()
     } else {
-        div().into_any_element()
+        // Still take the row's width so the update indicator stays right.
+        div().flex_1().h_full().into_any_element()
     }
 }

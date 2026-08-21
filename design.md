@@ -450,18 +450,26 @@ Two deliberate departures:
 
 ### 8.4b Repository tab strip — `ui::repo_tab_bar`
 
-One tab per open repository, between the title bar and the toolbar.
+One tab per open repository, **in the window's title-bar row**, to the right
+of the traffic lights, with the update indicator at the far end.
 
-That placement is the design, not a convenience: worktree, branch and fetch
+Above the toolbar is the design, not a convenience: worktree, branch and fetch
 state all belong to *one* repository, so the control that chooses the
 repository has to sit above the controls that read from it. Switching a tab
-visibly changes everything beneath it. It cannot go in the title bar either —
-the traffic lights own that band on macOS, and Windows gives it a different
-shape entirely.
+visibly changes everything beneath it.
+
+Sharing the title bar rather than taking a strip below it is deliberate too.
+That band held nothing but the traffic lights and the update indicator, and a
+separate strip underneath spent another 36px saying nothing. The row is
+`TITLEBAR_HEIGHT`, inset by `TRAFFIC_LIGHT_INSET` on macOS to clear the
+lights; on platforms with no native title bar there is nothing to clear and
+the row is the strip alone. Tabs stretch to the full row height, so the active
+one's fill meets the toolbar and its accent rail sits on the window's top
+edge.
 
 | Property | Value |
 |---|---|
-| Strip height | `TAB_BAR_HEIGHT` (36) |
+| Row height | `theme::TITLEBAR_HEIGHT` (36) |
 | Tab width | shrink-to-fit, capped at 210px, then the label truncates |
 | Active mark | 2px `accent()` rail on the top edge, `bg()` fill |
 | Inactive | `text_muted()`, `hover_bg()` on hover |
