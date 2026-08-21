@@ -324,6 +324,16 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
         run: |
+          # Same tag shape that picks the manifest channel below: a
+          # pre-release identifier (v0.8.0-beta.1) means beta. Without this
+          # a beta would land as a full GitHub release, and every "latest
+          # release" link and download button would point users at it.
+          prerelease=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            prerelease=(--prerelease)
+            echo "$RELEASE_TAG is a pre-release tag; marking the release accordingly"
+          fi
+
           if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" dist/* --repo "$GH_REPO" --clobber
           else
@@ -331,7 +341,8 @@ jobs:
               --repo "$GH_REPO" \
               --verify-tag \
               --generate-notes \
-              --title "$RELEASE_TAG"
+              --title "$RELEASE_TAG" \
+              "${prerelease[@]}"
           fi
 
       # ------------------------------------------------------------------
