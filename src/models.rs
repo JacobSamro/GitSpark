@@ -178,7 +178,66 @@ pub struct RepoSnapshot {
 
 #[cfg(test)]
 mod tests {
-    use super::git_author_name_is_valid;
+    use super::{AiProvider, endpoint_for_provider_change, git_author_name_is_valid};
+
+    #[test]
+    fn switching_away_from_openrouter_stops_pointing_at_openrouter() {
+        // The reported bug: pick OpenRouter, then switch to OpenAI-compatible,
+        // and requests kept going to OpenRouter's URL with an OpenAI key.
+        let endpoint = endpoint_for_provider_change(
+            AiProvider::OpenRouter.default_endpoint(),
+            &AiProvider::OpenAICompatible,
+        );
+        assert_eq!(
+            endpoint.as_deref(),
+            Some(AiProvider::OpenAICompatible.default_endpoint())
+        );
+    }
+
+    #[test]
+    fn switching_to_openrouter_uses_its_endpoint() {
+        let endpoint = endpoint_for_provider_change(
+            AiProvider::OpenAICompatible.default_endpoint(),
+            &AiProvider::OpenRouter,
+        );
+        assert_eq!(
+            endpoint.as_deref(),
+            Some(AiProvider::OpenRouter.default_endpoint())
+        );
+    }
+
+    #[test]
+    fn an_empty_endpoint_is_filled_in() {
+        assert_eq!(
+            endpoint_for_provider_change("   ", &AiProvider::OpenAICompatible).as_deref(),
+            Some(AiProvider::OpenAICompatible.default_endpoint())
+        );
+    }
+
+    #[test]
+    fn a_custom_endpoint_is_preserved() {
+        // Someone running a local llama.cpp or vLLM must not have their
+        // endpoint reset because they toggled the provider.
+        assert_eq!(
+            endpoint_for_provider_change("http://localhost:8080/v1/chat/completions",
+                &AiProvider::OpenAICompatible),
+            None
+        );
+        assert_eq!(
+            endpoint_for_provider_change("https://my-proxy.internal/v1/chat/completions",
+                &AiProvider::OpenRouter),
+            None
+        );
+    }
+
+    #[test]
+    fn a_default_endpoint_is_recognized_regardless_of_case_or_padding() {
+        let padded = format!("  {}  ", AiProvider::OpenRouter.default_endpoint().to_uppercase());
+        assert!(
+            endpoint_for_provider_change(&padded, &AiProvider::OpenAICompatible).is_some(),
+            "a default typed with different case should still be replaced"
+        );
+    }
 
     #[test]
     fn validates_git_author_name_like_git_ident() {
@@ -219,6 +278,27 @@ impl Default for AiSettings {
     }
 }
 
+/// The endpoint to use after switching provider, or `None` to keep the
+/// current one.
+///
+/// Switching used to replace the endpoint only when it was empty, so going
+/// OpenRouter -> OpenAI-compatible left the endpoint pointing at OpenRouter.
+/// Requests then went to OpenRouter's URL carrying an OpenAI key, which fails
+/// authentication — the whole provider looked broken.
+///
+/// A default belongs to the provider that supplied it, so any value matching
+/// a known default is replaced. Anything else is a URL the user typed, and is
+/// kept: someone running a local llama.cpp or vLLM does not want their
+/// endpoint silently reset because they toggled the provider.
+pub fn endpoint_for_provider_change(current: &str, next: &AiProvider) -> Option<String> {
+    let current = current.trim();
+    let is_a_default = AiProvider::all_default_endpoints()
+        .iter()
+        .any(|known| known.eq_ignore_ascii_case(current));
+
+    (current.is_empty() || is_a_default).then(|| next.default_endpoint().to_string())
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AiProvider {
     OpenRouter,
@@ -239,6 +319,18 @@ impl AiProvider {
             Self::OpenRouter => "https://openrouter.ai/api/v1/chat/completions",
             Self::OpenAICompatible => "https://api.openai.com/v1/chat/completions",
         }
+    }
+
+    /// Every provider's default endpoint.
+    ///
+    /// Used to tell "the default we filled in" apart from "a URL the user
+    /// typed", which is the distinction [`endpoint_for_provider_change`]
+    /// needs.
+    pub fn all_default_endpoints() -> [&'static str; 2] {
+        [
+            Self::OpenRouter.default_endpoint(),
+            Self::OpenAICompatible.default_endpoint(),
+        ]
     }
 
     pub fn api_key_hint(&self) -> &'static str {

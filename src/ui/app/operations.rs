@@ -343,15 +343,15 @@ impl GitSparkApp {
                 self.settings_modal.git_user_email_selection = None;
             }
             SettingsAction::ChangeProvider(provider) => {
-                self.settings.ai.provider = provider;
-                if self.settings.ai.provider == AiProvider::OpenRouter
-                    || self.settings.ai.endpoint.trim().is_empty()
-                {
-                    self.settings.ai.endpoint =
-                        self.settings.ai.provider.default_endpoint().to_string();
+                if let Some(endpoint) = crate::models::endpoint_for_provider_change(
+                    &self.settings.ai.endpoint,
+                    &provider,
+                ) {
+                    self.settings.ai.endpoint = endpoint;
                     self.settings_modal.ai_endpoint_cursor = self.settings.ai.endpoint.len();
                     self.settings_modal.ai_endpoint_selection = None;
                 }
+                self.settings.ai.provider = provider;
                 self.filters.openrouter_model_filter.clear();
                 self.settings_modal.openrouter_model_filter_cursor = 0;
                 if self.settings.ai.provider == AiProvider::OpenRouter {
