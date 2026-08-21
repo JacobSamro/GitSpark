@@ -423,6 +423,72 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    /// Add a worktree: pick a folder, let git name the branch after it.
+    ///
+    /// Synchronous like the listing — `worktree add` writes a checkout, so it
+    /// is not instant, but the folder picker has already blocked the UI and
+    /// returning to a stale list would be worse than the wait.
+    pub(crate) fn add_worktree_dialog(&mut self, cx: &mut Context<Self>) {
+        let Some(repo_path) = self
+            .repo
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.repo.path.clone())
+        else {
+            return;
+        };
+        let Some(path) = FileDialog::new().pick_folder() else {
+            return;
+        };
+        match GitClient::new().add_worktree_at(&repo_path, &path) {
+            Ok(worktrees) => {
+                let name = path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                self.repo.worktrees = worktrees;
+                self.messages.error_message.clear();
+                self.messages.status_message = format!("Added worktree {name}.");
+            }
+            Err(error) => {
+                self.messages.error_message = format!("Failed to add worktree: {error}");
+            }
+        }
+        cx.notify();
+    }
+
+    /// Drop administrative entries for worktrees whose directory is gone.
+    ///
+    /// Safe by construction: `git worktree prune` only removes bookkeeping for
+    /// directories that no longer exist, so it cannot discard work.
+    pub(crate) fn prune_worktrees(&mut self, cx: &mut Context<Self>) {
+        let Some(repo_path) = self
+            .repo
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.repo.path.clone())
+        else {
+            return;
+        };
+        let before = self.repo.worktrees.len();
+        match GitClient::new().prune_worktrees(&repo_path) {
+            Ok(worktrees) => {
+                let removed = before.saturating_sub(worktrees.len());
+                self.repo.worktrees = worktrees;
+                self.messages.error_message.clear();
+                self.messages.status_message = if removed == 0 {
+                    "Nothing to prune.".to_string()
+                } else {
+                    format!("Pruned {removed} stale worktree entr{}.", if removed == 1 { "y" } else { "ies" })
+                };
+            }
+            Err(error) => {
+                self.messages.error_message = format!("Failed to prune worktrees: {error}");
+            }
+        }
+        cx.notify();
+    }
+
     /// Refresh `repo.worktrees` from git, for an explicit path.
     fn reload_worktrees_for(&mut self, path: &std::path::Path) {
         match GitClient::new().list_worktrees(path) {

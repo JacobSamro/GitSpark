@@ -175,6 +175,27 @@ pub(super) fn render_worktree_selector_panel(
             .into_any_element()
     };
 
+    let footer = h_flex()
+        .w_full()
+        .flex_shrink_0()
+        .border_t_1()
+        .border_color(theme::border())
+        .child(
+            footer_button("worktree-add", "Add worktree\u{2026}").on_click(cx.listener(
+                |app, _evt, _win, cx| {
+                    app.nav.show_worktree_selector = false;
+                    app.add_worktree_dialog(cx);
+                },
+            )),
+        )
+        .child(
+            footer_button("worktree-prune", "Prune").on_click(cx.listener(
+                |app, _evt, _win, cx| {
+                    app.prune_worktrees(cx);
+                },
+            )),
+        );
+
     v_flex()
         .w(px(PANEL_WIDTH))
         .bg(theme::panel_bg())
@@ -193,4 +214,21 @@ pub(super) fn render_worktree_selector_panel(
                 .child("Worktrees"),
         )
         .child(list)
+        .child(footer)
+}
+
+/// One footer action. Two of them split the panel width evenly, matching the
+/// picker footers in the other selectors.
+fn footer_button(id: &'static str, label: &'static str) -> Stateful<Div> {
+    h_flex()
+        .id(id)
+        .flex_1()
+        .h(px(34.0))
+        .items_center()
+        .justify_center()
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::hover_bg()))
+        .text_size(theme::z(theme::FONT_SIZE))
+        .text_color(theme::text_muted())
+        .child(label)
 }

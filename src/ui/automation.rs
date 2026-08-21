@@ -626,6 +626,7 @@ enum AutomationNodeAction {
     ChangeAiProvider(AiProvider),
     SetAppearance(theme::Appearance),
     ShowWorktreeSelector(bool),
+    PruneWorktrees,
     ShowOpenRouterModelPicker,
     SelectOpenRouterModel(String),
     GenerateAiCommit,
@@ -1162,6 +1163,14 @@ impl GitSparkApp {
                 )),
             )
             .enabled(self.repo.snapshot.is_some()),
+            automation_node(
+                "worktree-prune",
+                AutomationRole::Button,
+                Some("worktree-prune"),
+                Some("Prune"),
+                Some(AutomationNodeAction::PruneWorktrees),
+            )
+            .visible(self.nav.show_worktree_selector),
             automation_node(
                 "branch-selector-toggle",
                 AutomationRole::Button,
@@ -3191,6 +3200,9 @@ impl GitSparkApp {
                 if show != self.nav.show_worktree_selector {
                     self.toggle_worktree_selector_headless(cx);
                 }
+            }
+            AutomationNodeAction::PruneWorktrees => {
+                self.prune_worktrees(cx);
             }
             AutomationNodeAction::SetAppearance(pref) => {
                 self.set_appearance(pref, None, cx);

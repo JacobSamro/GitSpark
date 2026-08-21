@@ -507,9 +507,20 @@ impl GitClient {
         Ok(parse_worktree_list(&output, &current))
     }
 
-    // add/remove/prune back the picker's footer actions, which land with the
-    // next increment. Kept here because they are the other half of the
-    // `worktree` surface and belong beside `list_worktrees`.
+    /// Create a worktree at `path`, letting git name the branch.
+    ///
+    /// `git worktree add <path>` with no commit-ish and no `-b` creates a new
+    /// branch named after the directory, based on HEAD — that is git's own
+    /// documented convenience, not a guess we are making, which is why the UI
+    /// can offer "pick a folder" as the whole interaction.
+    pub fn add_worktree_at(&self, repo_path: &Path, path: &Path) -> Result<Vec<WorktreeInfo>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let path_arg = path.to_string_lossy().to_string();
+        self.run_git(&repo_path, &["worktree", "add", path_arg.as_str()])
+            .context("failed to add worktree")?;
+        self.list_worktrees(&repo_path)
+    }
+
     /// Create a worktree at `path`.
     ///
     /// `create_branch` maps to `-b`. Git refuses to check out a branch that is
@@ -557,7 +568,6 @@ impl GitClient {
     }
 
     /// Drop administrative entries for worktrees whose directory is gone.
-    #[allow(dead_code)]
     pub fn prune_worktrees(&self, repo_path: &Path) -> Result<Vec<WorktreeInfo>> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         self.run_git(&repo_path, &["worktree", "prune"])

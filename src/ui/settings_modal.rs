@@ -1316,6 +1316,10 @@ fn render_openrouter_models(
                     .child("Loading OpenRouter models..."),
             )
             .into_any_element(),
+        // The catalogue is a live network fetch, so failure is routine — no
+        // network, bad key, rate limit. Show the model that is STILL
+        // configured alongside the error, or the panel reads as though AI is
+        // broken when in fact the saved model keeps working.
         OpenRouterModelsState::Error(message) => v_flex()
             .w_full()
             .gap(theme::z(12.0))
@@ -1324,6 +1328,28 @@ fn render_openrouter_models(
                     .text_size(theme::z(12.0))
                     .text_color(theme::danger())
                     .child(message.clone()),
+            )
+            .child(
+                v_flex()
+                    .w_full()
+                    .gap(theme::z(3.0))
+                    .child(
+                        div()
+                            .text_size(theme::z(11.0))
+                            .text_color(theme::text_muted())
+                            .child("Still using your saved model"),
+                    )
+                    .child(
+                        div()
+                            .text_size(theme::z(12.0))
+                            .text_color(theme::text_main())
+                            .child(if app.settings.ai.model.trim().is_empty() {
+                                "None set \u{2014} type a model id in the field above."
+                                    .to_string()
+                            } else {
+                                app.settings.ai.model.clone()
+                            }),
+                    ),
             )
             .child(
                 render_primary_button("settings-openrouter-retry", "Retry", true, cx).on_click(

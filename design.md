@@ -551,6 +551,13 @@ recoverable from the code:
 - **The worktree list is lazy, the label is not.** The toolbar reads the
   current worktree name from the snapshot; the list is fetched when the picker
   opens. One shell-out per open beats one per refresh.
+- **"Add worktree" is a folder picker and nothing else.** `git worktree add
+  <path>` with no commit-ish and no `-b` creates a branch named after the
+  directory, based on HEAD — that is git's own documented convenience, so the
+  UI does not have to invent a naming rule or ask for one.
+- **Prune needs no confirmation.** `git worktree prune` only removes
+  bookkeeping for directories that are already gone; it cannot discard work,
+  so a confirm step would be theatre.
 - **The duplicate Worktree section stays.** With one worktree it repeats the
   repository name. A stable toolbar position is worth more than the reclaimed
   space, and the section is where a second worktree becomes discoverable —
