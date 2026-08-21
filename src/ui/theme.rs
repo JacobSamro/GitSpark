@@ -230,74 +230,100 @@ pub fn danger_hover() -> Hsla {
 }
 
 // ---------------------------------------------------------------------------
-// Diff-specific colors
+// Diff-specific colors — GitHub Desktop's palette, exactly
 //
-// Row tints started at the spec's ~13% hue over the buffer, which is what the
-// mockup used. Side by side with GitHub Desktop — this project's reference UI
-// — on a real diff, 13% over a ground as deep as #0e1013 is almost invisible:
-// added and deleted rows were distinguishable from context only by looking
-// for them. The wash is the primary signal in a diff and it has to survive a
-// glance, so the row tint is now ~28% and the gutter ~45%, which reads at
-// arm's length without becoming the loudest thing on screen.
+// These are NOT derived from the Zed arm the rest of the app uses. The diff is
+// the one surface where GitHub Desktop is the stated reference UI, and every
+// attempt to approximate it from the Zed hues produced something visibly
+// duller: Zed's `created`/`deleted` are muted olive and brick, where GitHub's
+// are saturated true green and red, which is what makes a diff readable at a
+// glance.
 //
-// The gutter is deliberately stronger than the row. It is a narrow column, so
-// it needs more saturation to carry the same weight as the wide row beside
-// it, and it is what the eye tracks when scanning down a hunk.
+// Values come from `desktop/app/styles/themes/_dark.scss` and
+// `_variables.scss`, with the Primer palette resolved and SCSS `darken()`
+// applied. Kept as literals rather than recomputed so they can be diffed
+// against the source directly.
+//
+// Two things here are the OPPOSITE of the obvious guess, and both were wrong
+// in this file before:
+//
+//   1. The gutter is DARKER than the row, not lighter. It reads as a recessed
+//      channel beside the content, not a brighter rail.
+//   2. Deleted text is tinted (`$red-100`) in dark. The row background is not
+//      the only signal on a delete.
 // ---------------------------------------------------------------------------
 
+// darken($green-900, 3%) / darken($green-000, 2%)
 pub fn diff_add_bg() -> Hsla {
-    pick(0x1a3324, 0xd8f0dd)
+    pick(0x113a1b, 0xe6ffed)
 }
 
+// darken($green-900, 8%) / darken($green-100, 3%)
 pub fn diff_add_gutter_bg() -> Hsla {
-    pick(0x23492f, 0xb7e3bf)
+    pick(0x0b2611, 0xcdffd8)
 }
 
 pub fn diff_add_fg() -> Hsla {
-    text_main() // the background carries the signal, not the text
+    text_main() // --diff-add-text-color: var(--diff-text-color)
 }
 
+// darken($red-900, 15%) / $red-000
 pub fn diff_del_bg() -> Hsla {
-    pick(0x3a1d21, 0xfbdedd)
+    pick(0x450c0f, 0xffeef0)
 }
 
+// darken($red-900, 20%) / $red-100
 pub fn diff_del_gutter_bg() -> Hsla {
-    pick(0x57252a, 0xf6c3c0)
+    pick(0x2f090a, 0xffdce0)
 }
 
+/// Deleted-line text. `$red-100` in dark, plain body text in light — matching
+/// `--diff-delete-text-color`, which is tinted in the dark theme only.
 pub fn diff_del_fg() -> Hsla {
-    text_main()
+    pick(0xffdce0, 0x383a41)
 }
 
+// darken($gray-900, 3%) / $blue-000. GitHub tints the hunk header BLUE in
+// light, not grey; it is a navigational strip, not another surface.
 pub fn diff_hunk_bg() -> Hsla {
-    surface_bg()
+    pick(0x1d2125, 0xf1f8ff)
 }
 
+pub fn diff_hunk_fg() -> Hsla {
+    pick(0x868d99, 0x586069) // --diff-hunk-text-color
+}
+
+// darken($gray-900, 3%) / the plain background
 pub fn diff_gutter_bg() -> Hsla {
-    pick(0x121519, 0xfafafb)
+    pick(0x1d2125, 0xffffff)
 }
 
-/// Intra-line highlight for the changed characters inside a modified line.
-///
-/// A step stronger than the row tint, so the word-level diff reads through it.
+/// Intra-line (word-level) highlight. `$green-600` / `$red-700` in dark are
+/// fully saturated on purpose: this marks the exact characters that changed
+/// inside an already-tinted row, so it has to beat the row it sits on.
 pub fn diff_add_highlight_bg() -> Hsla {
-    pick(0x2f5c3c, 0xc7e6c9)
+    pick(0x22863a, 0xacf2bd)
 }
 
 pub fn diff_del_highlight_bg() -> Hsla {
-    pick(0x6a3236, 0xf6c9c5)
+    pick(0xb31d28, 0xfdb8c0)
 }
 
-/// Line-selection fill for partial commits.
+/// Line-selection for partial commits — `$blue-700` / `$blue-400`.
 ///
-/// Deliberately quiet. This fills the WHOLE gutter on every selected line,
-/// and every line starts selected, so a saturated value turns the gutter into
-/// the loudest thing in the diff — which is backwards, since selection is the
-/// default state and the code is the content. One step above the gutter with
-/// a blue cast is enough to read as "included".
+/// A real blue, and it fills the line-number cells the way GitHub Desktop
+/// does. Every line starts selected, so this is on screen constantly; that is
+/// true in GitHub Desktop too, and the blue channel down the side is how a
+/// user sees at a glance what is going into the commit.
 pub fn diff_selected_bg() -> Hsla {
-    pick(0x1c2a39, 0xdbe4f4)
+    pick(0x044289, 0x2188ff)
 }
+
+/// Text on a selected line-number cell, knocked out of the blue fill.
+pub fn diff_selected_fg() -> Hsla {
+    pick(0xd3d7de, 0xffffff)
+}
+
 
 // ---------------------------------------------------------------------------
 // Interactive colors

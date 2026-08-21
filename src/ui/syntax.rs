@@ -340,6 +340,27 @@ mod tests {
     }
 
     #[test]
+    fn a_whole_line_comment_is_one_span_that_is_still_a_comment() {
+        // The renderer has a fast path for lines that need only one colour.
+        // It used to key off `spans.len() <= 1` alone and paint them in the
+        // row's base colour, which silently dropped the comment tint from
+        // every full-line comment. The class on a lone span matters.
+        let line = "// just a comment across the whole line";
+        let spans = highlight_line(line, rust());
+        assert_covers(line, &spans);
+        assert_eq!(spans.len(), 1, "expected a single run: {spans:?}");
+        assert_eq!(
+            spans[0].class,
+            TokenClass::Comment,
+            "a lone span still carries its class"
+        );
+        assert!(
+            spans[0].class.color().is_some(),
+            "a comment must resolve to a colour, not fall through to the base"
+        );
+    }
+
+    #[test]
     fn an_empty_line_has_no_spans() {
         assert!(highlight_line("", rust()).is_empty());
     }

@@ -149,36 +149,48 @@ means the repo is in a state the user must resolve. Never use them for emphasis.
 
 ### 3.4 Diff
 
-The diff has its own palette because it needs four simultaneous backgrounds
-(add / delete / context / hunk) that all stay legible under 13px mono text.
+**The diff does not use the Zed palette.** It is the one surface where GitHub
+Desktop is the reference UI outright, and every attempt to derive it from the
+Zed hues came out visibly duller — Zed's `created`/`deleted` are a muted olive
+and brick where GitHub's are saturated true green and red, and saturation is
+what makes a diff readable at a glance.
 
-| Token | Dark | Light | Use |
+Values are taken from `desktop/app/styles/themes/_dark.scss` and
+`_variables.scss` with the Primer palette resolved and SCSS `darken()`
+applied, then kept as literals so they can be diffed against the source.
+
+| Token | Dark | Light | Source |
 |---|---|---|---|
-| `diff_add_bg()` / `diff_add_gutter_bg()` | `#1a3324` / `#23492f` | `#d8f0dd` / `#b7e3bf` | Added line body / its gutter. |
-| `diff_del_bg()` / `diff_del_gutter_bg()` | `#3a1d21` / `#57252a` | `#fbdedd` / `#f6c3c0` | Deleted line body / its gutter. |
-| `diff_add_fg()` / `diff_del_fg()` | = `text_main()` | = `text_main()` | The background carries the signal, not the text. |
-| `diff_hunk_bg()` | = `surface_bg()` | = `surface_bg()` | `@@` hunk header strip. |
-| `diff_gutter_bg()` | `#121519` | `#fafafb` | Line-number gutter on context lines. |
-| `diff_selected_bg()` | `#1c2a39` | `#dbe4f4` | Line-selection for partial commits. |
+| `diff_add_bg()` | `#113a1b` | `#e6ffed` | `darken($green-900, 3%)` / `darken($green-000, 2%)` |
+| `diff_add_gutter_bg()` | `#0b2611` | `#cdffd8` | `darken($green-900, 8%)` / `darken($green-100, 3%)` |
+| `diff_del_bg()` | `#450c0f` | `#ffeef0` | `darken($red-900, 15%)` / `$red-000` |
+| `diff_del_gutter_bg()` | `#2f090a` | `#ffdce0` | `darken($red-900, 20%)` / `$red-100` |
+| `diff_add_highlight_bg()` | `#22863a` | `#acf2bd` | `$green-600` — intra-line |
+| `diff_del_highlight_bg()` | `#b31d28` | `#fdb8c0` | `$red-700` — intra-line |
+| `diff_selected_bg()` | `#044289` | `#2188ff` | `$blue-700` / `$blue-400` |
+| `diff_hunk_bg()` | `#1d2125` | `#f1f8ff` | `darken($gray-900, 3%)` / `$blue-000` |
+| `diff_gutter_bg()` | `#1d2125` | `#ffffff` | `darken($gray-900, 3%)` / background |
+| `diff_add_fg()` | = `text_main()` | = `text_main()` | |
+| `diff_del_fg()` | `#ffdce0` | = `text_main()` | `$red-100` in dark only |
+| `diff_hunk_fg()` | `#868d99` | `#586069` | |
 
-Row tints are the hue at ~28% over the buffer, and the gutter at ~45%, then
-flattened to an opaque value. These started at the mockup's ~13% and were
-raised after comparing a real diff against GitHub Desktop, this project's
-reference UI: at 13% over a ground as deep as `#0e1013` the wash was almost
-invisible, and added and deleted rows could only be told from context by
-hunting for them. The wash is the diff's primary signal and has to survive a
-glance.
+Three of these are the **opposite** of the obvious guess, and all three were
+wrong here before:
 
-The gutter is deliberately stronger than the row. It is a narrow column, so it
-needs more saturation to carry the same weight as the wide row beside it, and
-it is what the eye tracks when scanning down a hunk.
+1. **The gutter is darker than the row, not lighter.** It reads as a recessed
+   channel beside the content rather than a brighter rail.
+2. **Deleted text is tinted in dark** (`$red-100`). The row background is not
+   the only signal on a delete.
+3. **Selection is a real blue, and it fills the line-number cells** — not the
+   row, and not the check column. GitHub Desktop scopes it to
+   `.diff-line-gutter.diff-line-selected .diff-line-number`. Every line starts
+   selected, so that blue channel down the side is permanently on screen, and
+   that is the point: it is how a user sees at a glance what is going into the
+   commit. The check column keeps the line's own add/delete tint so that
+   signal survives beside it.
 
-`diff_selected_bg()` is deliberately quiet, and it tints only the **check
-column** — not the whole gutter. Every line starts selected, so a saturated
-value would make selection the loudest thing in the diff; and repainting the
-full gutter erased the add/delete tint behind the line numbers, which is the
-one thing there that says what kind of change the line is. GitHub Desktop
-tints the check column alone for the same reason.
+The hunk header is tinted **blue** in light (`$blue-000`), not grey — it is a
+navigational strip, not another surface.
 
 ### 3.5 Push suggestion card
 

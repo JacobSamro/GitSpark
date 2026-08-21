@@ -696,9 +696,19 @@ fn render_code_text(content: &str, file_path: &str, base: Hsla) -> AnyElement {
     };
 
     let spans = crate::ui::syntax::highlight_line(content, syntax);
-    if spans.len() <= 1 {
+
+    // Fast path only when a single run would render in `base` anyway. Testing
+    // just `len() <= 1` dropped the colour from any line that is ONE token all
+    // the way across — every whole-line comment in the codebase, which is a
+    // lot of them.
+    let single_colour = match spans.as_slice() {
+        [] => Some(base),
+        [only] => Some(only.class.color().unwrap_or(base)),
+        _ => None,
+    };
+    if let Some(colour) = single_colour {
         return div()
-            .text_color(base)
+            .text_color(colour)
             .child(content.to_string())
             .into_any_element();
     }
@@ -808,7 +818,7 @@ fn render_diff_line(
                     .flex_1()
                     .py(z(2.0))
                     .pl(z(5.0))
-                    .text_color(theme::text_muted())
+                    .text_color(theme::diff_hunk_fg())
                     .child(line.content.clone()),
             );
         }
@@ -869,23 +879,28 @@ fn render_diff_line(
 }
 
 fn render_unified_line_gutter(line: &DiffLine, selected: bool, selectable: bool) -> Div {
-    // The line-number columns keep the add/delete tint even when selected.
-    // Selection used to repaint the whole 112px gutter, which erased the one
-    // colour that says what kind of change this line is — and since every line
-    // starts selected, that meant the gutter was almost never showing it.
-    // GitHub Desktop, the reference here, tints only the check column.
-    let gutter_bg = match line.kind {
+    // GitHub Desktop applies the selection blue to the LINE-NUMBER cells
+    // (`.diff-line-gutter.diff-line-selected .diff-line-number`), not to the
+    // check column and not to the row. That blue channel running down the
+    // side is how a user sees at a glance what is going into the commit —
+    // every line starts selected, there and here.
+    let kind_gutter_bg = match line.kind {
         DiffLineKind::Added => theme::diff_add_gutter_bg(),
         DiffLineKind::Deleted => theme::diff_del_gutter_bg(),
         DiffLineKind::HunkHeader => theme::diff_hunk_bg(),
         _ => theme::diff_gutter_bg(),
     };
 
-    let mark_bg = if selected {
+    let number_bg = if selected {
         theme::diff_selected_bg()
     } else {
-        gutter_bg
+        kind_gutter_bg
     };
+
+    // The check column keeps the line's own kind tint; only the numbers go
+    // blue, which is what keeps the add/delete signal visible beside it.
+    let gutter_bg = kind_gutter_bg;
+    let mark_bg = kind_gutter_bg;
 
     h_flex()
         .w(z(112.0))
@@ -895,7 +910,7 @@ fn render_unified_line_gutter(line: &DiffLine, selected: bool, selectable: bool)
         .bg(gutter_bg)
         .text_size(z(12.0))
         .text_color(if selected {
-            theme::text_main()
+            theme::diff_selected_fg()
         } else {
             theme::line_num_color()
         })
@@ -904,8 +919,11 @@ fn render_unified_line_gutter(line: &DiffLine, selected: bool, selectable: bool)
             h_flex()
                 .w(z(46.0))
                 .flex_shrink_0()
+                .min_h(z(theme::DIFF_ROW_HEIGHT))
+                .items_center()
                 .justify_end()
                 .pr(z(5.0))
+                .bg(number_bg)
                 .whitespace_nowrap()
                 .child(render_line_number_text(line.old_line)),
         )
@@ -913,8 +931,11 @@ fn render_unified_line_gutter(line: &DiffLine, selected: bool, selectable: bool)
             h_flex()
                 .w(z(46.0))
                 .flex_shrink_0()
+                .min_h(z(theme::DIFF_ROW_HEIGHT))
+                .items_center()
                 .justify_end()
                 .pr(z(5.0))
+                .bg(number_bg)
                 .whitespace_nowrap()
                 .child(render_line_number_text(line.new_line)),
         )
