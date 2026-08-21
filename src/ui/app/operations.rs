@@ -740,37 +740,7 @@ impl GitSparkApp {
         let tx = self.event_tx.clone();
 
         thread::spawn(move || {
-            let git = GitClient::new();
-            let mut last_fingerprint = git.read_watch_fingerprint(&path).ok();
-
-            while generation.load(Ordering::SeqCst) == token {
-                thread::sleep(Duration::from_millis(3000));
-
-                if generation.load(Ordering::SeqCst) != token {
-                    break;
-                }
-
-                let Ok(current_fingerprint) = git.read_watch_fingerprint(&path) else {
-                    continue;
-                };
-
-                let changed = match &last_fingerprint {
-                    Some(previous) => previous != &current_fingerprint,
-                    None => true,
-                };
-
-                if !changed {
-                    continue;
-                }
-
-                last_fingerprint = Some(current_fingerprint);
-                let res = git.refresh_repo(&path).map_err(|e| e.to_string());
-                let _ = tx.send(AppEvent::RepoRefreshed(
-                    path.clone(),
-                    res,
-                    RepoRefreshReason::Watch,
-                ));
-            }
+            watch_repository(path, token, generation, tx);
         });
     }
 
@@ -3288,5 +3258,140 @@ impl GitSparkApp {
             .diffs
             .iter()
             .find(|diff| &diff.path == selected_change)
+    }
+}
+
+// ----------------------------------------------------------------------
+// Repository watching
+// ----------------------------------------------------------------------
+
+/// Quiet period after a filesystem event before checking the repository.
+///
+/// A single save can produce several events, and a build or a checkout
+/// produces thousands. Waiting for the storm to pass turns all of them into
+/// one refresh.
+const WATCH_DEBOUNCE: Duration = Duration::from_millis(400);
+
+/// Interval for the fallback poll, used only when the OS watcher will not
+/// start — network mounts and some container filesystems do not support it.
+const WATCH_POLL_INTERVAL: Duration = Duration::from_millis(3000);
+
+/// Watch `path` and refresh when it actually changes.
+///
+/// Replaces a 3-second poll that ran `git status` forever regardless of
+/// activity. The fingerprint check is kept even with real events: editors
+/// write temp files, builds churn ignored directories, and `.git` is touched
+/// by operations that change nothing the UI shows — comparing the fingerprint
+/// is far cheaper than a full refresh, and stops those from causing one.
+fn watch_repository(
+    path: PathBuf,
+    token: u64,
+    generation: Arc<AtomicU64>,
+    tx: NotifySender,
+) {
+    let git = GitClient::new();
+    let mut last_fingerprint = git.read_watch_fingerprint(&path).ok();
+
+    let (event_tx, event_rx) = mpsc::channel::<()>();
+    // Held for the lifetime of this thread; dropping it stops the watcher.
+    let _watcher = match start_os_watcher(&path, event_tx) {
+        Some(watcher) => Some(watcher),
+        None => {
+            // No OS watching available. Fall back to the old poll rather than
+            // silently never refreshing.
+            return poll_repository(path, token, generation, tx, git, last_fingerprint);
+        }
+    };
+
+    while generation.load(Ordering::SeqCst) == token {
+        // Block until something happens, with a timeout so cancellation is
+        // still noticed on a completely idle repository.
+        match event_rx.recv_timeout(Duration::from_millis(1000)) {
+            Ok(()) => {}
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+
+        // Drain the burst: a checkout or a build emits events continuously,
+        // and only the settled state is worth looking at.
+        while event_rx.recv_timeout(WATCH_DEBOUNCE).is_ok() {
+            if generation.load(Ordering::SeqCst) != token {
+                return;
+            }
+        }
+
+        if generation.load(Ordering::SeqCst) != token {
+            return;
+        }
+
+        let Ok(current_fingerprint) = git.read_watch_fingerprint(&path) else {
+            continue;
+        };
+        if last_fingerprint.as_ref() == Some(&current_fingerprint) {
+            continue;
+        }
+        last_fingerprint = Some(current_fingerprint);
+
+        let res = git.refresh_repo(&path).map_err(|e| e.to_string());
+        let _ = tx.send(AppEvent::RepoRefreshed(
+            path.clone(),
+            res,
+            RepoRefreshReason::Watch,
+        ));
+    }
+}
+
+/// Start an OS watcher over the working tree and `.git`.
+///
+/// Returns `None` when the platform backend refuses the path, which is the
+/// signal to fall back to polling.
+fn start_os_watcher(
+    path: &Path,
+    event_tx: mpsc::Sender<()>,
+) -> Option<notify::RecommendedWatcher> {
+    use notify::{RecursiveMode, Watcher};
+
+    // The event payload is discarded deliberately: the fingerprint decides
+    // whether anything changed, so all this needs to say is "look again".
+    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        if res.is_ok() {
+            let _ = event_tx.send(());
+        }
+    })
+    .ok()?;
+
+    watcher.watch(path, RecursiveMode::Recursive).ok()?;
+    Some(watcher)
+}
+
+/// The previous behaviour, kept for filesystems the OS watcher cannot handle.
+fn poll_repository(
+    path: PathBuf,
+    token: u64,
+    generation: Arc<AtomicU64>,
+    tx: NotifySender,
+    git: GitClient,
+    mut last_fingerprint: Option<String>,
+) {
+    while generation.load(Ordering::SeqCst) == token {
+        thread::sleep(WATCH_POLL_INTERVAL);
+        if generation.load(Ordering::SeqCst) != token {
+            break;
+        }
+
+        let Ok(current_fingerprint) = git.read_watch_fingerprint(&path) else {
+            continue;
+        };
+        if last_fingerprint.as_ref() == Some(&current_fingerprint) {
+            continue;
+        }
+        last_fingerprint = Some(current_fingerprint);
+
+        let res = git.refresh_repo(&path).map_err(|e| e.to_string());
+        let _ = tx.send(AppEvent::RepoRefreshed(
+            path.clone(),
+            res,
+            RepoRefreshReason::Watch,
+        ));
     }
 }
