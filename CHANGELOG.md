@@ -1,5 +1,46 @@
 # Changelog
 
+## [Unreleased]
+
+Seven issues closed since v0.5.0. All on `dev`, none in a tagged release yet.
+
+### Performance
+
+- **Batched diff calls** (#7) — `build_diffs` ran two `git diff` subprocesses
+  per changed file. It now runs two in total and splits the output per path.
+  Measured with 20 modified files: **40 diff subprocesses down to 2**.
+- **OS-level file watching** (#8) — replaced the 3-second `git status` poll with
+  FSEvents / inotify / ReadDirectoryChangesW via `notify`. Measured on an idle
+  repository: **zero git calls across 12 seconds**, where the poll ran four, and
+  a new file is detected in ~700ms rather than up to 3s. The poll survives as a
+  fallback for filesystems the watcher refuses.
+- **Window bounds no longer written from `render()`** (#9) — persisting ran a
+  `create_dir_all`, a TOML serialize and a blocking `fs::write` on the UI thread
+  on essentially every frame of a resize. Writes are now debounced onto a
+  background thread: **one write across 40 resize steps**.
+
+### Bug fixes
+
+- **AI: OpenAI-compatible provider was unusable** (#5) — switching provider only
+  reset the endpoint when it was empty, so going OpenRouter → OpenAI-compatible
+  left requests pointed at `openrouter.ai` carrying an OpenAI key. A value
+  matching a known provider default is now replaced; a genuinely custom endpoint
+  (local llama.cpp, vLLM) is preserved.
+- **AI requests could hang forever** (#6) — no HTTP timeouts, so an unreachable
+  endpoint blocked its worker thread permanently and the UI sat on "Generating
+  commit details..." Connect 10s, send 30s, receive 120s. The model-catalogue
+  fetch had the same defect and is fixed too.
+- **Untracked-file diffs were malformed** (#10) — the body was truncated to 400
+  lines while the hunk header reported the file's full line count. The header now
+  describes what is actually emitted, and the cap rises to 5000 now that the diff
+  view is virtualized.
+- **Collapse could become unreachable** (#11) — the "Collapse Expanded Lines"
+  menu was attached in three of five hunk-header paths, so some expansion
+  sequences left no route back.
+- **Dead expand controls** (#12) — expansion reads the working-tree file, so for
+  a deleted or unreadable one the action returned early while the control was
+  still drawn. No contents, no affordance.
+
 ## [0.5.0] - 2026-08-21
 
 169 commits since 0.4.0. Grouped by theme rather than listed individually.
