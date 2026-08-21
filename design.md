@@ -509,9 +509,6 @@ frame** — the entire 60fps budget, on every frame of every scroll. Virtualized
 the same diff flattens in **0.08–0.19ms**. Parsing the diff text was never the
 problem at 0.3ms; it was constructing elements nobody could see.
 
-**Known debt:** side-by-side diff is still built eagerly and needs the same
-treatment.
-
 **Long lists are `uniform_list`.** Any list that can exceed ~20 items —
 changes, history, files, branches — is virtualized. A `for` loop that pushes
 hundreds of children is a bug. `uniform_list` needs an exact row height, which
@@ -542,10 +539,15 @@ recoverable from the code:
   `open_repo_with_notify`. The branch changes as a *consequence* of the
   directory changing, which is git's model, not ours.
 - **A branch checked out in another worktree is unavailable here.** Git
-  enforces this — `add_worktree` returns an error, covered by
-  `refuses_to_check_out_a_branch_already_checked_out_elsewhere`. Each worktree
-  row therefore names its branch, so the constraint is visible before it is
-  hit. Greying the branch out in the Branch picker is the follow-up.
+  enforces this — covered by
+  `refuses_to_check_out_a_branch_already_checked_out_elsewhere`. The Branch
+  picker greys those rows, tags them `in <worktree>`, and drops their click
+  handler, so a guaranteed error becomes an explanation.
+- **Worktrees load with the snapshot, not lazily.** The first cut loaded them
+  when the worktree picker opened. Once the branch list needed them too, every
+  path that opens a panel — click, automation, keyboard — had to remember to
+  load first, and one did not: the branch list silently showed nothing. State
+  that two views depend on belongs on the refresh path.
 - **The worktree list is lazy, the label is not.** The toolbar reads the
   current worktree name from the snapshot; the list is fetched when the picker
   opens. One shell-out per open beats one per refresh.

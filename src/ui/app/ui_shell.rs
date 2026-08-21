@@ -1272,7 +1272,10 @@ impl GitSparkApp {
                 return;
             }
             app.nav.show_branch_selector = !app.nav.show_branch_selector;
-            if !app.nav.show_branch_selector {
+            if app.nav.show_branch_selector {
+                // The branch list marks branches held by another worktree.
+                app.reload_worktrees();
+            } else {
                 app.repo.pending_cherry_pick_oid = None;
             }
             app.nav.branch_selector_mode = BranchSelectorMode::Switch;

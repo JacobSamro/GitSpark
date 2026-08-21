@@ -8,7 +8,6 @@ use std::path::Path;
 
 use crate::models::DiffEntry;
 use crate::ui::app::{DiffExpandDirection, GitSparkApp};
-use gpui_component::scroll::ScrollableElement;
 
 use crate::ui::binary_diff::render_binary_diff_panel;
 use crate::ui::diff_line_selection::{DiffLineSelection, DiffLineSelectionKind};
@@ -64,7 +63,7 @@ impl Default for DiffListHandle {
 }
 
 impl DiffListHandle {
-    fn sync(&self, key: String, count: usize) -> ListState {
+    pub(crate) fn sync(&self, key: String, count: usize) -> ListState {
         let mut current = self.key.borrow_mut();
         if *current != key {
             self.state.reset(count);
@@ -1444,26 +1443,20 @@ pub fn render_workspace(
             let expansion_types = compute_expansion_types(&hunk_bounds, file_line_count);
 
             if show_side_by_side {
-                // Side-by-side is still built eagerly — see the note in
-                // design.md §11; it needs the same treatment.
-                let scroll_content = crate::ui::side_by_side_diff::render_side_by_side_diff(
-                    file_path,
-                    &entry.diff,
-                    hide_whitespace_changes,
-                    excluded_lines,
-                    view,
-                );
+                // Virtualized too; `list` is its own scroller, so there is no
+                // outer overflow container here.
                 div()
                     .w_full()
                     .flex_1()
                     .min_h_0()
-                    .child(
-                        div()
-                            .id("diff-scroll")
-                            .size_full()
-                            .overflow_y_scrollbar()
-                            .child(scroll_content.pb(z(300.0))),
-                    )
+                    .child(crate::ui::side_by_side_diff::render_side_by_side_diff(
+                        file_path,
+                        &entry.diff,
+                        hide_whitespace_changes,
+                        excluded_lines,
+                        view,
+                        diff_list,
+                    ))
                     .into_any_element()
             } else {
                 // Flatten every row up front, then virtualize. Building the

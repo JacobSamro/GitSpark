@@ -7,6 +7,7 @@ use crate::models::BranchInfo;
 use crate::ui::app::GitSparkApp;
 use crate::ui::ids::stable_id_slug;
 use crate::ui::kit;
+use std::collections::HashMap;
 use crate::ui::theme;
 use crate::ui::ui_state::{ActiveDialog, BranchSelectorMode};
 
@@ -82,7 +83,21 @@ fn render_branch_selector_panel(
     let default_branch_name = app.default_branch_name();
     let branch_selector_target = current_branch.clone();
     let filter_bar = render_filter_bar(app, branch_filter_focused, target_mode, cx);
-    let branch_list = render_branch_list(local_branches, default_branch_name, cx);
+    // Branches checked out in a DIFFERENT worktree cannot be checked out
+    // here; map them to the worktree that holds them so the rows can say so.
+    let held_by: HashMap<String, String> = app
+        .repo
+        .worktrees
+        .iter()
+        .filter(|worktree| !worktree.is_current)
+        .filter_map(|worktree| {
+            worktree
+                .branch
+                .clone()
+                .map(|branch| (branch, worktree.name.clone()))
+        })
+        .collect();
+    let branch_list = render_branch_list(local_branches, default_branch_name, held_by, cx);
     let bottom_bar = render_bottom_bar(app, branch_selector_target);
 
     v_flex()
@@ -169,6 +184,7 @@ fn render_filter_input(
 fn render_branch_list(
     local_branches: Vec<&BranchInfo>,
     default_branch_name: String,
+    held_by: HashMap<String, String>,
     cx: &mut Context<GitSparkApp>,
 ) -> AnyElement {
     let mut default_branches: Vec<BranchInfo> = Vec::new();
@@ -233,9 +249,11 @@ fn render_branch_list(
                             BranchListItem::SectionHeader(title) => {
                                 render_section_header(ix, title)
                             }
-                            BranchListItem::Branch(branch) => {
-                                render_branch_row(branch, view.clone())
-                            }
+                            BranchListItem::Branch(branch) => render_branch_row(
+                                branch,
+                                held_by.get(&branch.name).cloned(),
+                                view.clone(),
+                            ),
                         })
                         .collect()
                 }
@@ -262,8 +280,20 @@ fn render_section_header(ix: usize, title: &str) -> AnyElement {
         .into_any_element()
 }
 
-fn render_branch_row(branch: &BranchInfo, view: Entity<GitSparkApp>) -> AnyElement {
+/// `held_by` names the OTHER worktree that has this branch checked out.
+///
+/// Git refuses to check out a branch that is already checked out elsewhere
+/// (see `refuses_to_check_out_a_branch_already_checked_out_elsewhere`), so
+/// clicking such a row could only ever produce an error. The row says which
+/// worktree holds it and stops being clickable, which turns a failure into an
+/// explanation.
+fn render_branch_row(
+    branch: &BranchInfo,
+    held_by: Option<String>,
+    view: Entity<GitSparkApp>,
+) -> AnyElement {
     let is_current = branch.is_current;
+    let locked = held_by.is_some();
     let name = branch.name.clone();
     let ctx_name = branch.name.clone();
     let updated = branch.updated.clone();
@@ -277,8 +307,9 @@ fn render_branch_row(branch: &BranchInfo, view: Entity<GitSparkApp>) -> AnyEleme
         .px(px(10.0))
         .items_center()
         .gap(px(8.0))
-        .cursor_pointer()
-        .hover(|s| s.bg(theme::hover_bg()))
+        .when(!locked, |el| {
+            el.cursor_pointer().hover(|s| s.bg(theme::hover_bg()))
+        })
         .bg(if is_current {
             theme::hover_bg()
         } else {
@@ -303,11 +334,26 @@ fn render_branch_row(branch: &BranchInfo, view: Entity<GitSparkApp>) -> AnyEleme
             div().flex_1().overflow_x_hidden().child(
                 div()
                     .text_size(theme::z(theme::FONT_SIZE))
-                    .text_color(theme::text_main())
+                    .text_color(if locked {
+                        theme::text_muted()
+                    } else {
+                        theme::text_main()
+                    })
                     .whitespace_nowrap()
                     .child(branch.name.clone()),
             ),
         )
+        .children(held_by.map(|worktree| {
+            div()
+                .flex_shrink_0()
+                .px(theme::z(theme::SPACE_3))
+                .rounded(theme::z(theme::RADIUS_PILL))
+                .border_1()
+                .border_color(theme::with_alpha(theme::warning(), 0.35))
+                .text_size(theme::z(theme::FONT_SIZE_XS))
+                .text_color(theme::warning())
+                .child(format!("in {worktree}"))
+        }))
         .children(updated.map(|updated| {
             div()
                 .flex_shrink_0()
@@ -315,11 +361,13 @@ fn render_branch_row(branch: &BranchInfo, view: Entity<GitSparkApp>) -> AnyEleme
                 .text_color(theme::text_muted())
                 .child(updated)
         }))
-        .on_click(move |_evt, _win, cx| {
-            let name = name.clone();
-            vh.update(cx, |app, cx| {
-                app.select_branch_from_selector(name, cx);
-            });
+        .when(!locked, |el| {
+            el.on_click(move |_evt, _win, cx| {
+                let name = name.clone();
+                vh.update(cx, |app, cx| {
+                    app.select_branch_from_selector(name, cx);
+                });
+            })
         });
 
     crate::ui::branch_context_menu::bind_branch_context_click(row, view, ctx_name)

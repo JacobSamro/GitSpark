@@ -1,12 +1,14 @@
 use std::collections::HashSet;
+use std::rc::Rc;
 
 use gpui::*;
-use gpui_component::{h_flex, v_flex};
+use gpui_component::h_flex;
 
 use crate::ui::GitSparkApp;
 use crate::ui::diff_line_selection::{DiffLineSelection, DiffLineSelectionKind};
 use crate::ui::theme;
 use crate::ui::theme::z;
+use crate::ui::workspace::DiffListHandle;
 
 #[derive(Clone)]
 struct RawDiffLine {
@@ -33,27 +35,48 @@ enum SideBySideRow {
     },
 }
 
+/// Virtualized split diff.
+///
+/// Same reasoning as the unified view (design.md §11): building every row on
+/// every frame costs the whole frame budget on a large file, and rows here
+/// are variable height too, so this is `list` rather than `uniform_list`.
 pub fn render_side_by_side_diff(
     file_path: &str,
     diff_text: &str,
     hide_whitespace_changes: bool,
     excluded_lines: &HashSet<DiffLineSelection>,
     view: Option<&Entity<GitSparkApp>>,
+    diff_list: &DiffListHandle,
 ) -> Div {
     let rows = side_by_side_rows(file_path, diff_text, hide_whitespace_changes);
-    let mut content = v_flex().w_full();
 
-    for (ix, row) in rows.iter().enumerate() {
-        content = content.child(render_side_by_side_row(
+    // Keyed on the same axes as the unified view, plus a marker so toggling
+    // split/unified for one file still counts as a content change.
+    let key = format!("split|{file_path}|{}|{hide_whitespace_changes}", rows.len());
+    let state = diff_list.sync(key, rows.len());
+
+    let rows = Rc::new(rows);
+    let owned_excluded = excluded_lines.clone();
+    let owned_view = view.cloned();
+
+    let list_element = list(state, move |ix, _window, _cx| {
+        let Some(row) = rows.get(ix) else {
+            return div().into_any_element();
+        };
+        render_side_by_side_row(
             row,
             ix,
             hide_whitespace_changes,
-            excluded_lines,
-            view,
-        ));
-    }
+            &owned_excluded,
+            owned_view.as_ref(),
+        )
+    })
+    .with_sizing_behavior(ListSizingBehavior::Auto);
 
-    content
+    div()
+        .w_full()
+        .h_full()
+        .child(list_element.w_full().h_full())
 }
 
 fn side_by_side_rows(

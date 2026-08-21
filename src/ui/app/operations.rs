@@ -418,22 +418,40 @@ impl GitSparkApp {
         if self.nav.show_worktree_selector {
             self.filters.worktree_filter_text.clear();
             self.worktree_filter_cursor = 0;
-            if let Some(path) = self
-                .repo
-                .snapshot
-                .as_ref()
-                .map(|snapshot| snapshot.repo.path.clone())
-            {
-                match GitClient::new().list_worktrees(&path) {
-                    Ok(worktrees) => self.repo.worktrees = worktrees,
-                    Err(error) => {
-                        self.messages.error_message = format!("Failed to list worktrees: {error}");
-                        self.repo.worktrees.clear();
-                    }
-                }
-            }
+            self.reload_worktrees();
         }
         cx.notify();
+    }
+
+    /// Refresh `repo.worktrees` from git, for an explicit path.
+    fn reload_worktrees_for(&mut self, path: &std::path::Path) {
+        match GitClient::new().list_worktrees(path) {
+            Ok(worktrees) => self.repo.worktrees = worktrees,
+            Err(_) => self.repo.worktrees.clear(),
+        }
+    }
+
+    /// Refresh `repo.worktrees` from git.
+    ///
+    /// Called when either the worktree OR the branch picker opens: the branch
+    /// list needs it to mark branches that another worktree already holds,
+    /// which git will refuse to check out here.
+    pub(crate) fn reload_worktrees(&mut self) {
+        let Some(path) = self
+            .repo
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.repo.path.clone())
+        else {
+            return;
+        };
+        match GitClient::new().list_worktrees(&path) {
+            Ok(worktrees) => self.repo.worktrees = worktrees,
+            Err(error) => {
+                self.messages.error_message = format!("Failed to list worktrees: {error}");
+                self.repo.worktrees.clear();
+            }
+        }
     }
 
     pub(crate) fn open_repo_with_notify(&mut self, path: PathBuf, cx: &mut Context<Self>) {
@@ -2800,6 +2818,13 @@ impl GitSparkApp {
 
     fn adopt_snapshot(&mut self, snapshot: RepoSnapshot) {
         let previous_commit = self.selection.selected_commit.clone();
+        // Worktrees are refreshed with the snapshot rather than lazily when a
+        // picker opens. Two consumers need them now — the worktree picker and
+        // the branch list, which marks branches another worktree holds — and
+        // loading at each open meant every code path that flips the panel
+        // (click, automation, keyboard) had to remember to do it. One of them
+        // did not, and the branch list silently showed nothing.
+        let worktree_path = snapshot.repo.path.clone();
         let previous_commit_file = self.selection.selected_commit_file.clone();
         let previous_branch = self
             .repo
@@ -2863,6 +2888,7 @@ impl GitSparkApp {
             self.repo.stash_files.clear();
         }
         self.repo.snapshot = Some(snapshot);
+        self.reload_worktrees_for(&worktree_path);
         self.reconcile_commit_inclusions(&changed_paths);
 
         self.selection.commit_diffs = None;
