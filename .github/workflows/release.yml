@@ -138,11 +138,6 @@ jobs:
         if: runner.os != 'macOS'
         run: cargo build --release --locked --target ${{ matrix.target }}
 
-      - name: Show sccache stats
-        if: always()
-        shell: bash
-        run: sccache --show-stats || true
-
       - name: Build universal macOS binary
         if: runner.os == 'macOS'
         shell: bash
@@ -156,6 +151,14 @@ jobs:
             target/aarch64-apple-darwin/release/${{ matrix.binary }} \
             -output target/universal2-apple-darwin/release/${{ matrix.binary }}
           lipo -info target/universal2-apple-darwin/release/${{ matrix.binary }}
+
+      # After both build steps, not between them: sitting in the middle meant
+      # the macOS job reported its stats before compiling anything and always
+      # printed zero.
+      - name: Show sccache stats
+        if: always()
+        shell: bash
+        run: sccache --show-stats || true
 
       - name: Package Linux artifact
         if: runner.os == 'Linux'

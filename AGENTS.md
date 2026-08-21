@@ -221,6 +221,25 @@ A UI change is not done unless:
 - `src/ui/app.rs` is simpler, not more crowded
 
 
+## Releasing
+
+Tagging is not the last step. After every release:
+
+1. **Write the GitHub release notes.** The workflow creates the release with
+   `--generate-notes`, which produces nothing but a compare link. Replace it:
+   `gh release edit vX.Y.Z --notes-file <file> --title "vX.Y.Z — <headline>"`.
+   Write for someone deciding whether to update — what changed and why it
+   matters — not a commit log. Say plainly what is still broken or unsigned.
+2. **Check the update manifest published.** `updates/<channel>/latest.json`
+   must be committed to `master` AND serving from Pages, and its `version` must
+   match the tag. Two releases shipped without a usable manifest before this was
+   caught, so verify it rather than assuming:
+   `curl -s https://jacobsamro.github.io/GitSpark/updates/release/latest.json`
+3. **Confirm every platform asset uploaded**, and that the checksums in the
+   manifest match `SHA256SUMS.txt`.
+4. **Update `CHANGELOG.md`** — it is the source the notes are written from, and
+   it should be edited before the tag, not after.
+
 ## Guidelines
 
 - Do not change existing comments, remove them only if its irrelavent
