@@ -2712,6 +2712,45 @@ impl GitSparkApp {
         }
     }
 
+    /// Apply an appearance preference, persist it, and re-theme immediately.
+    ///
+    /// This is the whole of light mode at the app level: our own tokens
+    /// re-resolve through `theme::resolve`, and gpui-component's global theme
+    /// is pointed at the same answer so its stock widgets don't stay on the
+    /// old palette (design.md §13 — a swap, never a fork).
+    /// `window` is optional so the automation channel — which has no Window
+    /// in scope — can drive this exactly like a click does.
+    pub fn set_appearance(
+        &mut self,
+        pref: theme::Appearance,
+        window: Option<&mut Window>,
+        cx: &mut Context<Self>,
+    ) {
+        theme::set_appearance(pref);
+        let system_appearance = match window.as_ref() {
+            Some(window) => window.appearance(),
+            None => cx.window_appearance(),
+        };
+        let dark = theme::resolve(matches!(
+            system_appearance,
+            WindowAppearance::Dark | WindowAppearance::VibrantDark
+        ));
+
+        self.settings.appearance = Some(pref.as_str().to_string());
+        self.persist_settings();
+
+        gpui_component::Theme::change(
+            if dark {
+                gpui_component::ThemeMode::Dark
+            } else {
+                gpui_component::ThemeMode::Light
+            },
+            window,
+            cx,
+        );
+        cx.notify();
+    }
+
     // ------------------------------------------------------------------
     // Snapshot adoption
     // ------------------------------------------------------------------

@@ -503,11 +503,36 @@ fn main() {
         Err(_) => models::AppSettings::default(),
     };
 
+    // Load the appearance preference before anything draws, so the first
+    // frame is already in the right palette rather than flashing and
+    // correcting. Resolution against the OS happens once the app exists.
+    // Defaults to Dark, not System, deliberately: the app shipped dark-only,
+    // so following the OS here would silently flip every existing user on a
+    // light Mac. System is one click away in Settings ▸ Appearance.
+    ui::theme::set_appearance(ui::theme::Appearance::from_str(
+        settings.appearance.as_deref().unwrap_or("dark"),
+    ));
+
     let app = Application::new().with_assets(assets::CombinedAssets);
     app.run(move |cx| {
         gpui_component::init(cx);
-        // Force dark theme on gpui-component to match our GitHub Dark theme
-        gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
+
+        // Resolve System against the OS, then keep gpui-component's own theme
+        // in step — without this its stock components follow the system
+        // appearance while ours follow the preference.
+        let dark = ui::theme::resolve(matches!(
+            cx.window_appearance(),
+            WindowAppearance::Dark | WindowAppearance::VibrantDark
+        ));
+        gpui_component::Theme::change(
+            if dark {
+                gpui_component::ThemeMode::Dark
+            } else {
+                gpui_component::ThemeMode::Light
+            },
+            None,
+            cx,
+        );
         let app_view = cx.new(|cx| GitSparkApp::new(settings.clone(), cx));
         configure_native_menus(cx, app_view.clone());
 

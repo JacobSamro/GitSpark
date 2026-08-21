@@ -164,7 +164,7 @@ pub(crate) fn render_settings_modal(
             render_git_section(app, window, repo_scope.as_deref(), cx).into_any_element()
         }
         SettingsSection::Ai => render_ai_section(app, window, cx).into_any_element(),
-        SettingsSection::Appearance => render_appearance_section().into_any_element(),
+        SettingsSection::Appearance => render_appearance_section(cx).into_any_element(),
         SettingsSection::Integrations => render_integrations_section().into_any_element(),
     };
 
@@ -852,14 +852,16 @@ fn render_git_scope_radio(
         )
 }
 
-fn render_appearance_section() -> impl IntoElement {
+fn render_appearance_section(cx: &mut Context<GitSparkApp>) -> impl IntoElement {
+    let current = theme::appearance();
+
     v_flex()
         .w_full()
         .gap(theme::z(22.0))
         .child(render_section_header(
             "Appearance",
             "Theme",
-            "GitSpark uses the GitHub Desktop dark palette for the native macOS interface.",
+            "Light and dark are the same tokens resolved differently — see design.md \u{00A7}13.",
         ))
         .child(
             v_flex()
@@ -875,20 +877,26 @@ fn render_appearance_section() -> impl IntoElement {
                             "settings-theme-light",
                             "Light",
                             false,
-                            false,
+                            current == theme::Appearance::Light,
+                            theme::Appearance::Light,
+                            cx,
                         ))
                         .child(render_theme_option(
                             "settings-theme-dark",
                             "Dark",
                             true,
-                            true,
+                            current == theme::Appearance::Dark,
+                            theme::Appearance::Dark,
+                            cx,
                         )),
                 )
                 .child(render_theme_option(
                     "settings-theme-system",
                     "System",
-                    false,
-                    false,
+                    theme::is_dark(),
+                    current == theme::Appearance::System,
+                    theme::Appearance::System,
+                    cx,
                 )),
         )
         .child(
@@ -910,31 +918,54 @@ fn render_theme_option(
     label: &'static str,
     dark_preview: bool,
     selected: bool,
+    pref: theme::Appearance,
+    cx: &mut Context<GitSparkApp>,
 ) -> impl IntoElement {
     let border = if selected {
         theme::accent()
     } else {
         theme::border()
     };
-    let shell_bg = if dark_preview {
-        theme::surface_bg()
+    // A preview card depicts ONE arm, and must keep depicting it while the app
+    // is in the other — so it cannot read live tokens. These literals are the
+    // only sanctioned ones outside theme.rs, and they mirror it exactly.
+    // (The System card passes `dark_preview = theme::is_dark()`, so it
+    // correctly previews whatever the OS currently resolves to.)
+    let arm: [Hsla; 7] = if dark_preview {
+        [
+            gpui::rgb(0x1a1d22).into(), // shell
+            gpui::rgb(0x0e1013).into(), // buffer
+            gpui::rgb(0x868d99).into(), // muted
+            gpui::rgb(0x74ade8).into(), // accent
+            gpui::rgb(0xa1c181).into(), // added
+            gpui::rgb(0xd07277).into(), // deleted
+            gpui::rgb(0xd3d7de).into(), // text — the card labels itself
+        ]
     } else {
-        gpui::rgb(0xf6f8fa).into()
+        [
+            gpui::rgb(0xeaeaeb).into(),
+            gpui::rgb(0xffffff).into(),
+            gpui::rgb(0x6b6d76).into(),
+            gpui::rgb(0x4257c9).into(),
+            gpui::rgb(0x3f8a3a).into(),
+            gpui::rgb(0xc0392e).into(),
+            gpui::rgb(0x383a41).into(),
+        ]
     };
-    let sidebar_bg = if dark_preview {
-        theme::bg()
-    } else {
-        gpui::rgb(0xffffff).into()
-    };
+    let [shell_bg, sidebar_bg, bar_muted, bar_accent, bar_add, bar_del, bar_text] = arm;
     v_flex()
         .id(id)
+        .cursor_pointer()
+        .on_click(cx.listener(move |app, _evt, window, cx| {
+            app.set_appearance(pref, Some(window), cx);
+        }))
         .flex_1()
         .max_w(theme::z(274.0))
         .min_h(theme::z(126.0))
         .rounded(theme::z(theme::CORNER_RADIUS))
         .border_1()
         .border_color(border)
-        .bg(theme::bg())
+        .bg(sidebar_bg)
         .overflow_hidden()
         .child(
             v_flex()
@@ -948,10 +979,10 @@ fn render_theme_option(
                         .px(theme::z(8.0))
                         .gap(theme::z(5.0))
                         .items_center()
-                        .child(theme_preview_dot(theme::text_muted()))
-                        .child(theme_preview_bar(theme::z(28.0), theme::text_muted()))
-                        .child(theme_preview_dot(theme::text_muted()))
-                        .child(theme_preview_bar(theme::z(34.0), theme::text_muted())),
+                        .child(theme_preview_dot(bar_muted))
+                        .child(theme_preview_bar(theme::z(28.0), bar_muted))
+                        .child(theme_preview_dot(bar_muted))
+                        .child(theme_preview_bar(theme::z(34.0), bar_muted)),
                 )
                 .child(
                     h_flex()
@@ -963,12 +994,9 @@ fn render_theme_option(
                                 .p(theme::z(6.0))
                                 .gap(theme::z(5.0))
                                 .bg(sidebar_bg)
-                                .child(theme_preview_bar(theme::z(38.0), theme::text_muted()))
-                                .child(theme_preview_bar(theme::z(32.0), theme::text_muted()))
-                                .child(theme_preview_bar(
-                                    theme::z(42.0),
-                                    theme::commit_button_bg(),
-                                )),
+                                .child(theme_preview_bar(theme::z(38.0), bar_muted))
+                                .child(theme_preview_bar(theme::z(32.0), bar_muted))
+                                .child(theme_preview_bar(theme::z(42.0), bar_accent)),
                         )
                         .child(
                             v_flex()
@@ -976,9 +1004,9 @@ fn render_theme_option(
                                 .h_full()
                                 .p(theme::z(8.0))
                                 .gap(theme::z(5.0))
-                                .child(theme_preview_bar(theme::z(72.0), theme::success()))
-                                .child(theme_preview_bar(theme::z(48.0), theme::danger()))
-                                .child(theme_preview_bar(theme::z(60.0), theme::danger())),
+                                .child(theme_preview_bar(theme::z(72.0), bar_add))
+                                .child(theme_preview_bar(theme::z(48.0), bar_del))
+                                .child(theme_preview_bar(theme::z(60.0), bar_del)),
                         ),
                 ),
         )
@@ -994,11 +1022,7 @@ fn render_theme_option(
                         .h(theme::z(14.0))
                         .rounded_full()
                         .border_1()
-                        .border_color(if selected {
-                            theme::accent()
-                        } else {
-                            theme::text_muted()
-                        })
+                        .border_color(if selected { bar_accent } else { bar_muted })
                         .flex()
                         .items_center()
                         .justify_center()
@@ -1008,14 +1032,14 @@ fn render_theme_option(
                                     .w(theme::z(7.0))
                                     .h(theme::z(7.0))
                                     .rounded_full()
-                                    .bg(theme::accent()),
+                                    .bg(bar_accent),
                             )
                         }),
                 )
                 .child(
                     div()
                         .text_size(theme::z(13.0))
-                        .text_color(theme::text_main())
+                        .text_color(bar_text)
                         .font_weight(FontWeight::SEMIBOLD)
                         .child(label),
                 ),

@@ -272,6 +272,10 @@ pub struct AppSettings {
     /// Default branch name for new repos (persisted locally).
     #[serde(default)]
     pub default_branch: Option<String>,
+    /// Appearance preference: "system", "light" or "dark". Resolved against
+    /// the OS at startup by `ui::theme::resolve`.
+    #[serde(default)]
+    pub appearance: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -281,6 +285,7 @@ impl Default for AppSettings {
             ai: AiSettings::default(),
             window_size: WindowSize::default(),
             default_branch: None,
+            appearance: None,
         }
     }
 }

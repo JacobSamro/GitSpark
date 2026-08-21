@@ -551,15 +551,6 @@ fn find_changed_ranges(old_line: &str, new_line: &str) -> (Option<CharRange>, Op
 
 // --- Rendering ---
 
-/// Brighter highlight background for intra-line changed characters.
-fn diff_add_highlight_bg() -> Hsla {
-    gpui::rgb(0x1a5c2e).into()
-}
-
-fn diff_del_highlight_bg() -> Hsla {
-    gpui::rgb(0x6e2b25).into()
-}
-
 /// Render text with an optional highlighted character range.
 ///
 /// Splits the text into up to 3 spans: before, highlighted, after.
@@ -708,14 +699,14 @@ fn render_diff_line(
                 &line.content,
                 old_highlight.as_ref(),
                 theme::diff_del_fg(),
-                diff_del_highlight_bg(),
+                theme::diff_del_highlight_bg(),
             );
             let new_text = line.new_content.as_deref().unwrap_or("");
             let new_content = render_highlighted_text(
                 new_text,
                 new_highlight.as_ref(),
                 theme::diff_add_fg(),
-                diff_add_highlight_bg(),
+                theme::diff_add_highlight_bg(),
             );
             row = row.child(
                 h_flex()
@@ -850,7 +841,7 @@ fn render_hunk_header(
         .text_color(theme::text_muted())
         .child(line.content.clone());
 
-    let hover_blue = |s: StyleRefinement| s.bg(gpui::rgb(0x0969da));
+    let hover_blue = |s: StyleRefinement| s.bg(theme::accent());
 
     if let Some(vh) = view {
         let content = line.content.clone();
@@ -1410,7 +1401,7 @@ pub fn render_workspace(
                         let fp = file_path.to_string();
                         let last_hi = hunk_index.saturating_sub(1);
                         let row_h = z(theme::DIFF_ROW_HEIGHT);
-                        let hover_blue = |s: StyleRefinement| s.bg(gpui::rgb(0x0969da));
+                        let hover_blue = |s: StyleRefinement| s.bg(theme::accent());
                         scroll_content = scroll_content.child(
                             h_flex()
                                 .id("expand-eof")

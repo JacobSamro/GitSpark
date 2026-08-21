@@ -1,11 +1,19 @@
 # GitSpark — Desktop Design System
 
-The visual language for the GPUI desktop client. It is a port of **GitHub
-Desktop Dark**, built on Primer's dark neutral scale.
+The visual language for the GPUI desktop client. It is **Zed One Dark,
+deepened**, with a **One Light** arm — chosen because GPUI *is* Zed's
+framework, so every measurement here is one the renderer already ships in
+production, and the implementation has a reference you can open and compare
+against.
 
-The goal is a client that reads as GitHub Desktop, not as a generic Rust GUI:
-dense information, quiet chrome, one blue accent, hairline separators, no
-decoration. Reference UI source lives in `tmp/` (GitHub Desktop).
+Surfaces are a darkened derivation: stock One Dark bottoms out at `#282c33`,
+a fairly light "dark", so the ramp sits about two stops below it. The *hues* —
+`created` / `modified` / `deleted` / `player` and the syntax set — are Zed's
+literal values in both arms.
+
+The goal is a client that reads as a first-class editor-adjacent tool: dense
+information, quiet chrome, one blue accent, hairline separators, no
+decoration.
 
 > **Scope of this doc:** tokens + component specs + how they map to GPUI /
 > gpui-component. It defines the *what*. `src/ui/theme.rs` is the tokens made
@@ -19,9 +27,9 @@ decoration. Reference UI source lives in `tmp/` (GitHub Desktop).
 1. **Density over comfort.** This is a tool people keep open all day next to an
    editor. Rows are 22–32px, body text is 13px, padding is tight. Whitespace is
    earned, not default.
-2. **One accent.** `accent` (`#1f6feb`) is the single interactive blue;
-   `commit_button_bg` (`#0969da`) is the one call-to-action blue. Nothing else
-   is blue. Green/red/yellow are **status only** — never chrome.
+2. **One accent.** `accent()` — Zed's `player[0]` — is the single interactive
+   blue, and the commit CTA reuses it. Nothing else is blue. Green/red/yellow
+   are **status only**, never chrome.
 3. **Structure by hairline, not by shadow.** A 1px `border()` line separates
    surfaces. Shadows exist only for things that genuinely float (dialogs,
    dropdowns, context menus) — see §7.
@@ -39,17 +47,22 @@ decoration. Reference UI source lives in `tmp/` (GitHub Desktop).
 ## 2. Surfaces
 
 The window is: toolbar across the top, sidebar left, workspace right, status
-bar across the bottom. The surface ramp is Primer's dark neutral scale — each
-step is a token, and the ordering is the hierarchy.
+bar across the bottom. Each step of the ramp is a token, and the ordering is
+the hierarchy.
 
-| Surface | Token | Hex | Notes |
-|---|---|---|---|
-| Toolbar | `toolbar_bg()` | `#0a0e14` | Darkest. `darken($gray-900, 3%)`. |
-| Window / diff body | `bg()` | `#0d1117` | neutral-1. The reading surface. |
-| Sidebar, panels, dialogs | `panel_bg()` | `#151b23` | neutral-2. |
-| Raised control (button, field) | `surface_bg()` | `#212830` | neutral-3. |
-| Raised control border / pressed | `surface_bg_alt()` | `#2a313c` | neutral-5. |
-| Recessed (hunk header, gutter) | `surface_bg_muted()` | `#010409` | Pure black-ish. |
+| Surface | Token | Dark | Light | Notes |
+|---|---|---|---|---|
+| Diff body / buffer | `bg()` | `#0e1013` | `#ffffff` | The reading surface. |
+| Chrome — toolbar, sidebar, dialogs, status bar | `panel_bg()` / `toolbar_bg()` | `#15171b` | `#f2f2f3` | |
+| Raised control — inputs, buttons, hunk headers | `surface_bg()` | `#1a1d22` | `#eaeaeb` | |
+| Raised border / pressed | `surface_bg_alt()` | `#262a31` | `#dfdfe0` | |
+| Recessed | `surface_bg_muted()` | `#0a0c0f` | `#f7f7f8` | |
+| Border | `border()` | `#2a2f37` | `#c9c9ca` | |
+
+**Depth inverts between the arms.** In dark the buffer is the *darkest* thing
+on screen and the chrome sits above it; in light it is the *brightest*. Depth
+means "furthest from the chrome", not "darker than it". Getting this backwards
+is the single most common way a light arm ends up looking broken.
 
 **Rule:** a surface never sits on a surface of the same value. If two adjacent
 regions share a token, one of them needs a `border()` hairline instead.
@@ -64,43 +77,48 @@ component fork (§13). **No component may write `rgb(0x…)`.**
 
 ### 3.1 Text
 
-| Token | Hex | Use |
-|---|---|---|
-| `text_main()` | `#d1d7e0` | Primary labels, file names, commit summaries, diff code. |
-| `text_muted()` | `#9198a1` | Metadata, timestamps, paths, placeholders, idle icons. |
-| `line_num_color()` | `#656c76` | Diff line numbers only. The faintest readable step. |
-| `commit_button_text()` | `#ffffff` | Text on the accent CTA. Pure white, nothing else uses it. |
+| Token | Dark | Light | Use |
+|---|---|---|---|
+| `text_main()` | `#d3d7de` | `#383a41` | Primary labels, file names, commit summaries, diff code. |
+| `text_muted()` | `#868d99` | `#6b6d76` | Metadata, timestamps, paths, placeholders, idle icons. |
+| `line_num_color()` | `#59606b` | `#9a9ca3` | Diff line numbers only. The faintest readable step. |
+| `commit_button_text()` | `#0e1013` | `#ffffff` | Text on the accent fill — see the note below. |
+
+`commit_button_text()` is **not** a constant white. The dark arm's accent is
+light enough to need near-black text on it; the light arm's needs white. A
+token that hardcodes white here is a light-mode bug.
 
 Three steps of text is the whole ramp. If a label needs a fourth, it is
 probably the wrong size or the wrong surface.
 
 ### 3.2 Accent & interactive
 
-| Token | Hex | Use |
-|---|---|---|
-| `accent()` | `#1f6feb` | Selection fill, focus ring, active tab underline, links. |
-| `accent_muted()` | `#0969da` | Pressed accent. |
-| `commit_button_bg()` | `#0969da` | The commit CTA and primary dialog buttons. |
-| `commit_button_hover_bg()` | `#0b7bef` | Its hover. `lighten($blue, 5%)`. |
-| `checkbox_selected_bg()` | `#58a6ff` | Checked checkbox fill (lighter — it is a small target). |
-| `checkbox_selected_fg()` | = `bg()` | The check glyph, knocked out of the fill. |
-| `text_selection_bg()` | `#264f78` | Text selection inside fields and the diff. |
-| `hover_bg()` | `#151b23` | Hover on chrome. |
-| `list_hover_bg()` | `#1c2128` | Hover on list rows — one step brighter, because rows sit on `panel_bg`. |
-| `toolbar_hover_bg()` | `#262c36` | Hover in the toolbar, which is darker to begin with. |
+| Token | Dark | Light | Use |
+|---|---|---|---|
+| `accent()` | `#74ade8` | `#4257c9` | Zed's `player[0]`. Selection, focus, links, the commit CTA. |
+| `accent_muted()` | `#5b93cc` | `#35489f` | Pressed accent. |
+| `commit_button_bg()` | = `accent()` | = `accent()` | The CTA reuses the one accent. |
+| `commit_button_hover_bg()` | `#8cbcec` | `#3a4eb8` | Note the direction flips: dark hovers *lighter*, light hovers *darker*. |
+| `checkbox_selected_bg()` | = `accent()` | = `accent()` | |
+| `checkbox_selected_fg()` | = `bg()` | = `bg()` | The check glyph knocked out of the fill — resolving to `bg()` is correct in both arms. |
+| `text_selection_bg()` | `#2f4c6b` | `#d8deef` | Text selection inside fields. |
+| `hover_bg()` | `#22262d` | `#e6e6e8` | Zed's `element.hover`. |
+| `list_hover_bg()` | `#262a31` | `#e0e0e3` | Rows sit on `panel_bg`, so one step further. |
+| `toolbar_hover_bg()` | = `hover_bg()` | = `hover_bg()` | |
 
-Three hover tokens is deliberate: hover must be visible against whatever it
-sits on, and the three chrome surfaces differ. Pick by surface, not by taste.
+**The accent cannot be shared between arms.** `#74ade8` measures about 1.9:1
+on white — unreadable. Any "token swap" that changes surfaces and leaves the
+accent alone produces an unusable light mode.
 
 ### 3.3 Status
 
-| Token | Hex | Use |
-|---|---|---|
-| `success()` | `#3fb950` | Added files, ahead count, clean state. |
-| `warning()` | `#d29922` | Conflicts pending, detached HEAD, stale branch. |
-| `warning_bg()` | `#2d2307` | Fill behind a warning banner. |
-| `danger()` | `#f85149` | Deleted files, destructive buttons, errors. |
-| `danger_hover()` | `#ff6961` | Hover on a destructive button. |
+| Token | Dark | Light | Use |
+|---|---|---|---|
+| `success()` | `#a1c181` | `#3f8a3a` | Zed's `created`. Added files, ahead count, clean state. |
+| `warning()` | `#dec184` | `#b07a08` | Zed's `modified`. Conflicts, detached HEAD, stale branch. |
+| `warning_bg()` | `#2a2415` | `#fbf3df` | Fill behind a warning banner. |
+| `danger()` | `#d07277` | `#c0392e` | Zed's `deleted`. Deleted files, destructive buttons, errors. |
+| `danger_hover()` | `#dc8a8e` | `#a82f26` | Hover on a destructive button. |
 
 Status colors carry meaning. A red button means data loss; a yellow banner
 means the repo is in a state the user must resolve. Never use them for emphasis.
@@ -110,26 +128,32 @@ means the repo is in a state the user must resolve. Never use them for emphasis.
 The diff has its own palette because it needs four simultaneous backgrounds
 (add / delete / context / hunk) that all stay legible under 13px mono text.
 
-| Token | Hex | Use |
-|---|---|---|
-| `diff_add_bg()` / `diff_add_gutter_bg()` | `#0d3a1a` / `#072d14` | Added line body / its gutter. |
-| `diff_del_bg()` / `diff_del_gutter_bg()` | `#3d1f1a` / `#2a120f` | Deleted line body / its gutter. |
-| `diff_add_fg()` | `#c9d1d9` | Added line text (neutral — the background carries the signal). |
-| `diff_del_fg()` | `#ffd7d5` | Deleted line text (soft pink — GitHub's `$red-100`). |
-| `diff_hunk_bg()` | `#010409` | `@@` hunk header strip. |
-| `diff_gutter_bg()` | `#0a0e14` | Line-number gutter on context lines. |
-| `diff_selected_bg()` | `#0969da` | Line-selection highlight for partial commits. |
+| Token | Dark | Light | Use |
+|---|---|---|---|
+| `diff_add_bg()` / `diff_add_gutter_bg()` | `#212721` / `#1b2419` | `#ecf3eb` / `#e3efe1` | Added line body / its gutter. |
+| `diff_del_bg()` / `diff_del_gutter_bg()` | `#271d20` / `#2e1e20` | `#f9ebea` / `#f5dfdd` | Deleted line body / its gutter. |
+| `diff_add_fg()` / `diff_del_fg()` | = `text_main()` | = `text_main()` | The background carries the signal, not the text. |
+| `diff_hunk_bg()` | = `surface_bg()` | = `surface_bg()` | `@@` hunk header strip. |
+| `diff_gutter_bg()` | `#121519` | `#fafafb` | Line-number gutter on context lines. |
+| `diff_selected_bg()` | `#1c2a39` | `#dbe4f4` | Line-selection for partial commits. |
 
-The gutter of a changed line is always *darker* than its body — that is what
-makes the gutter read as a separate column without a border.
+Row tints are the hue at ~13% over the buffer in dark and ~10% in light, then
+flattened to an opaque value. The two are **not** the same number: a 10% green
+over `#282c33` and over `#0e1013` are not the same signal — the deeper ground
+eats it.
+
+`diff_selected_bg()` is deliberately quiet. It fills the *whole gutter* on
+every selected line and every line starts selected, so a saturated value turns
+the gutter into the loudest thing in the diff — backwards, since selection is
+the default state and the code is the content.
 
 ### 3.5 Push suggestion card
 
-| Token | Hex |
-|---|---|
-| `push_card_bg()` | `#032f62` |
-| `push_card_border()` | `#1f6feb` |
-| `push_card_text()` | `#8db1d8` |
+| Token | Dark | Light |
+|---|---|---|
+| `push_card_bg()` | `#17232e` | `#e8edfa` |
+| `push_card_border()` | = `accent()` | = `accent()` |
+| `push_card_text()` | `#9fc4e4` | `#3a4b8f` |
 
 One component, three tokens. Do not reuse them elsewhere; if a second
 highlighted card appears, generalize these into `info_*` first.
@@ -401,8 +425,11 @@ exists at all.
    not implement. Dropdowns and menus are hand-rolled — see
    `src/ui/primitives`-era code and the kit overlay helpers.
 4. **`Badge` is an absolute overlay,** not an inline counter. Use `kit::pill`.
-5. **Theme must be forced dark:** `Theme::change(ThemeMode::Dark, None, cx)` in
-   `main.rs` before the window opens, or components follow system appearance.
+5. **gpui-component's theme must be driven explicitly.** Left alone it follows
+   the system appearance, which will disagree with our resolved preference the
+   moment a user picks Light on a dark Mac. `Theme::change(..)` is called from
+   `main.rs` at startup and from `set_appearance` at runtime, both pointed at
+   the same `theme::resolve` answer (§13).
 
 What we *do* use from gpui-component: `TabBar`/`Tab`, `Divider::vertical()`,
 `Icon`/`IconName`, `h_flex`/`v_flex`, `ResizablePanelGroup`/`resizable_panel`,
@@ -462,16 +489,40 @@ times and it is not a candidate any more.**
 
 ---
 
-## 13. Light mode (not shipped)
+## 13. Appearance (implemented)
 
-Light is a **token swap**, exactly like the dark/light split in the sibling
-desktop app: `theme.rs` tokens are already functions, so a resolved-appearance
-flag plus a second palette arm is the whole change. This is why §3 forbids raw
-hex in components — every `rgb(0x…)` outside `theme.rs` is a light-mode bug
-waiting to happen.
+Light is a **token swap**, exactly as this section always demanded — and it is
+now built. `theme.rs` holds a preference (`System` / `Light` / `Dark`, in
+`AppSettings.appearance`) and a resolved `DARK` flag; every color token is a
+`fn` that reads that flag through `pick(dark, light)`. No component was forked.
 
-Do not add light values speculatively. Do keep the token discipline that makes
-adding them cheap.
+`main.rs` resolves the preference against `cx.window_appearance()` before the
+first frame, and points gpui-component's own `Theme` at the same answer so its
+stock widgets don't stay on the old palette. `GitSparkApp::set_appearance`
+does the same at runtime and persists.
+
+**The default is `Dark`, not `System`,** deliberately: the app shipped
+dark-only, so following the OS would silently flip every existing user on a
+light Mac. System is one click away in Settings ▸ Appearance.
+
+### What the light arm actually cost
+
+The plumbing was trivial. The audit was not — and that is the part worth
+budgeting for if you add a third arm:
+
+1. **Every hardcoded color blocks the swap.** Any `rgb(0x…)` outside
+   `theme.rs` is a light-mode bug, which is why §3 forbids it.
+2. **The accent cannot be reused.** `#74ade8` is ~1.9:1 on white. Light
+   darkens to `#4257c9`.
+3. **Text on the accent flips.** `commit_button_text()` is near-black in dark
+   and white in light. A constant white is wrong.
+4. **Depth inverts.** The buffer is the darkest surface in dark and the
+   brightest in light (§2).
+5. **Diff tints are not the same number** in both arms — 13% dark, 10% light.
+6. **Shadows lose their black.** Pure black on a light ground reads as dirt;
+   it should take the ink hue at lower opacity.
+7. **Syntax must be re-picked, not lightened.** One Light chosen for white,
+   not One Dark brightened — the pastels vanish otherwise.
 
 ---
 

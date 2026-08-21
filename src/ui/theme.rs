@@ -1,8 +1,10 @@
-//! GitHub Desktop Dark design tokens (see `design.md`).
+//! Zed One Dark (deepened) / One Light design tokens (see `design.md`).
 //!
 //! This is the single place raw colors live. Every token is a `fn`, never a
-//! `const`, so a light theme stays a token swap and never a component fork
-//! (design.md §13). A `rgb(0x…)` literal outside this file is a bug.
+//! `const`, so the appearance switch is a token swap and never a component
+//! fork (design.md §13). A `rgb(0x…)` literal outside this file is a bug —
+//! it will not follow the light arm, and that is exactly how a light mode
+//! ends up half-applied.
 //!
 //! Layout tokens come in three groups — [`SPACE_1`]..[`SPACE_8`] for spacing,
 //! the `CORNER_RADIUS*` family for radii, and the frame dimensions further
@@ -10,7 +12,7 @@
 //! zoom factor applies.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
 
 use gpui::{FontFeatures, Hsla, Pixels, Styled, px};
 
@@ -37,125 +39,256 @@ pub fn z(val: f32) -> Pixels {
 }
 
 // ---------------------------------------------------------------------------
-// Colors — GitHub Dark theme
+// Appearance — the resolved light/dark flag every color token reads
+//
+// design.md §13: light is a token swap, never a component fork. That is only
+// true if tokens are functions, so they can re-resolve when this flag flips.
+// A `rgb(0x…)` literal outside this file breaks it.
 // ---------------------------------------------------------------------------
 
-// Core backgrounds — Primer dark primitives (neutral scale)
+/// The user's appearance preference. `System` follows the OS.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Appearance {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl Appearance {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Appearance::System => "system",
+            Appearance::Light => "light",
+            Appearance::Dark => "dark",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "light" => Appearance::Light,
+            "dark" => Appearance::Dark,
+            _ => Appearance::System,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn label(self) -> &'static str {
+        match self {
+            Appearance::System => "System",
+            Appearance::Light => "Light",
+            Appearance::Dark => "Dark",
+        }
+    }
+}
+
+// 0 = system, 1 = light, 2 = dark.
+static PREF: AtomicU8 = AtomicU8::new(0);
+/// The RESOLVED appearance every token below reads. Defaults to dark so the
+/// first frame — drawn before any window exists to ask — is not a white flash.
+static DARK: AtomicBool = AtomicBool::new(true);
+
+pub fn appearance() -> Appearance {
+    match PREF.load(Ordering::Relaxed) {
+        1 => Appearance::Light,
+        2 => Appearance::Dark,
+        _ => Appearance::System,
+    }
+}
+
+pub fn is_dark() -> bool {
+    DARK.load(Ordering::Relaxed)
+}
+
+/// Record the preference without resolving it. Call [`resolve`] afterwards.
+pub fn set_appearance(pref: Appearance) {
+    PREF.store(
+        match pref {
+            Appearance::System => 0,
+            Appearance::Light => 1,
+            Appearance::Dark => 2,
+        },
+        Ordering::Relaxed,
+    );
+}
+
+/// Resolve the preference against the OS appearance and return the result.
+///
+/// `system_is_dark` comes from the window (or the app, before a window
+/// exists); an explicit preference ignores it entirely.
+pub fn resolve(system_is_dark: bool) -> bool {
+    let dark = match appearance() {
+        Appearance::System => system_is_dark,
+        Appearance::Light => false,
+        Appearance::Dark => true,
+    };
+    DARK.store(dark, Ordering::Relaxed);
+    dark
+}
+
+/// Pick between the dark and light value of a token.
+///
+/// Every color below goes through this, which is what makes the appearance
+/// switch a swap rather than a fork.
+#[inline]
+fn pick(dark: u32, light: u32) -> Hsla {
+    gpui::rgb(if is_dark() { dark } else { light }).into()
+}
+
+// ---------------------------------------------------------------------------
+// Colors — Zed One Dark (deepened) / Zed One Light
+//
+// Surfaces are a darkened derivation: stock One Dark bottoms out at #282c33,
+// a fairly light "dark", so the ramp here sits about two stops below it. The
+// HUES — created / modified / deleted / player and the syntax set — are Zed's
+// literal values in both arms.
+//
+// Note the inversion in `bg` vs `panel_bg`: in dark the diff surface is the
+// DARKEST thing on screen and the chrome sits above it; in light it is the
+// BRIGHTEST. Depth means "furthest from the chrome", not "darker than it".
+// ---------------------------------------------------------------------------
+
+// Core surfaces
 pub fn bg() -> Hsla {
-    gpui::rgb(0x0d1117).into() // neutral-1
+    pick(0x0e1013, 0xffffff) // buffer: the diff, the reading surface
 }
 
 pub fn panel_bg() -> Hsla {
-    gpui::rgb(0x151b23).into() // neutral-2
+    pick(0x15171b, 0xf2f2f3) // chrome: sidebar, dialogs, status bar
 }
 
 pub fn surface_bg() -> Hsla {
-    gpui::rgb(0x212830).into() // neutral-3
+    pick(0x1a1d22, 0xeaeaeb) // raised control: inputs, buttons, hunk headers
 }
 
 pub fn surface_bg_alt() -> Hsla {
-    gpui::rgb(0x2a313c).into() // neutral-5
+    pick(0x262a31, 0xdfdfe0) // raised border / pressed
 }
 
 pub fn surface_bg_muted() -> Hsla {
-    gpui::rgb(0x010409).into() // black
+    pick(0x0a0c0f, 0xf7f7f8) // recessed
 }
 
 // Borders
 pub fn border() -> Hsla {
-    gpui::rgb(0x3d444d).into() // neutral-7
+    pick(0x2a2f37, 0xc9c9ca)
 }
 
-// Text — Primer dark
+// Text
 pub fn text_main() -> Hsla {
-    gpui::rgb(0xd1d7e0).into() // neutral-11
+    pick(0xd3d7de, 0x383a41)
 }
 
 pub fn text_muted() -> Hsla {
-    gpui::rgb(0x9198a1).into() // neutral-9
+    pick(0x868d99, 0x6b6d76)
 }
 
-// Accent
+// Accent — Zed's player[0]. The light value is NOT the dark one: #74ade8
+// measures about 1.9:1 on white, so light darkens to a One Light blue.
 pub fn accent() -> Hsla {
-    gpui::rgb(0x1f6feb).into()
+    pick(0x74ade8, 0x4257c9)
 }
 
 #[allow(dead_code)]
 pub fn accent_muted() -> Hsla {
-    gpui::rgb(0x0969da).into()
+    pick(0x5b93cc, 0x35489f)
 }
 
 pub fn checkbox_selected_bg() -> Hsla {
-    gpui::rgb(0x58a6ff).into()
+    accent()
 }
 
+/// The check glyph, knocked out of the accent fill. Resolving to [`bg`] is
+/// correct in both arms: near-black on light blue, white on deep blue.
 pub fn checkbox_selected_fg() -> Hsla {
     bg()
 }
 
 pub fn text_selection_bg() -> Hsla {
-    gpui::rgb(0x264f78).into()
+    pick(0x2f4c6b, 0xd8deef)
 }
 
-// Semantic
+// Status — Zed's created / modified / deleted, re-picked for white in light.
 pub fn success() -> Hsla {
-    gpui::rgb(0x3fb950).into()
+    pick(0xa1c181, 0x3f8a3a)
 }
 
 pub fn warning() -> Hsla {
-    gpui::rgb(0xd29922).into()
+    pick(0xdec184, 0xb07a08)
 }
 
 pub fn warning_bg() -> Hsla {
-    gpui::rgb(0x2d2307).into()
+    pick(0x2a2415, 0xfbf3df)
 }
 
 pub fn danger() -> Hsla {
-    gpui::rgb(0xf85149).into()
+    pick(0xd07277, 0xc0392e)
 }
 
 pub fn danger_hover() -> Hsla {
-    gpui::rgb(0xff6961).into()
+    pick(0xdc8a8e, 0xa82f26)
 }
 
 // ---------------------------------------------------------------------------
 // Diff-specific colors
+//
+// Row tints are the hue at ~13% over the buffer in dark, ~10% in light, then
+// flattened to an opaque value. A 10% green over #282c33 and over #0e1013 are
+// not the same signal — the deeper ground eats it, hence 13.
 // ---------------------------------------------------------------------------
 
 pub fn diff_add_bg() -> Hsla {
-    gpui::rgb(0x0d3a1a).into()
+    pick(0x212721, 0xecf3eb)
 }
 
 pub fn diff_add_gutter_bg() -> Hsla {
-    gpui::rgb(0x072d14).into()
+    pick(0x1b2419, 0xe3efe1)
 }
 
 pub fn diff_add_fg() -> Hsla {
-    gpui::rgb(0xc9d1d9).into() // --diff-add-text-color: var(--diff-text-color)
+    text_main() // the background carries the signal, not the text
 }
 
 pub fn diff_del_bg() -> Hsla {
-    gpui::rgb(0x3d1f1a).into()
+    pick(0x271d20, 0xf9ebea)
 }
 
 pub fn diff_del_gutter_bg() -> Hsla {
-    gpui::rgb(0x2a120f).into()
+    pick(0x2e1e20, 0xf5dfdd)
 }
 
 pub fn diff_del_fg() -> Hsla {
-    gpui::rgb(0xffd7d5).into() // --diff-delete-text-color: $red-100 (soft pink)
+    text_main()
 }
 
 pub fn diff_hunk_bg() -> Hsla {
-    gpui::rgb(0x010409).into()
+    surface_bg()
 }
 
 pub fn diff_gutter_bg() -> Hsla {
-    gpui::rgb(0x0a0e14).into()
+    pick(0x121519, 0xfafafb)
 }
 
+/// Intra-line highlight for the changed characters inside a modified line.
+///
+/// A step stronger than the row tint, so the word-level diff reads through it.
+pub fn diff_add_highlight_bg() -> Hsla {
+    pick(0x2f5c3c, 0xc7e6c9)
+}
+
+pub fn diff_del_highlight_bg() -> Hsla {
+    pick(0x6a3236, 0xf6c9c5)
+}
+
+/// Line-selection fill for partial commits.
+///
+/// Deliberately quiet. This fills the WHOLE gutter on every selected line,
+/// and every line starts selected, so a saturated value turns the gutter into
+/// the loudest thing in the diff — which is backwards, since selection is the
+/// default state and the code is the content. One step above the gutter with
+/// a blue cast is enough to read as "included".
 pub fn diff_selected_bg() -> Hsla {
-    gpui::rgb(0x0969da).into()
+    pick(0x1c2a39, 0xdbe4f4)
 }
 
 // ---------------------------------------------------------------------------
@@ -163,27 +296,29 @@ pub fn diff_selected_bg() -> Hsla {
 // ---------------------------------------------------------------------------
 
 pub fn hover_bg() -> Hsla {
-    gpui::rgb(0x151b23).into() // neutral-2
+    pick(0x22262d, 0xe6e6e8) // element.hover
 }
 
 pub fn list_hover_bg() -> Hsla {
-    gpui::rgb(0x1c2128).into() // slightly lighter than hover_bg for list rows
+    pick(0x262a31, 0xe0e0e3) // rows sit on panel_bg, so one step further
 }
 
 pub fn commit_button_bg() -> Hsla {
-    gpui::rgb(0x0969da).into() // GitHub $blue
+    accent()
 }
 
 pub fn commit_button_hover_bg() -> Hsla {
-    gpui::rgb(0x0b7bef).into() // lighten($blue, 5%)
+    pick(0x8cbcec, 0x3a4eb8)
 }
 
+/// Text on the accent fill. Theme-dependent: the dark arm's accent is light
+/// enough to need near-black text, the light arm's needs white.
 pub fn commit_button_text() -> Hsla {
-    gpui::rgb(0xffffff).into() // pure white
+    pick(0x0e1013, 0xffffff)
 }
 
 pub fn line_num_color() -> Hsla {
-    gpui::rgb(0x656c76).into() // neutral-8 — --diff-line-number-color
+    pick(0x59606b, 0x9a9ca3)
 }
 
 // ---------------------------------------------------------------------------
@@ -191,39 +326,33 @@ pub fn line_num_color() -> Hsla {
 // ---------------------------------------------------------------------------
 
 pub fn toolbar_bg() -> Hsla {
-    gpui::rgb(0x0a0e14).into() // darken($gray-900, 3%)
+    panel_bg()
 }
 
 pub fn toolbar_button_border() -> Hsla {
-    gpui::rgb(0x141414).into() // --box-border-color in dark
+    pick(0x1e2128, 0xdfdfe0) // border.variant
 }
 
 pub fn toolbar_hover_bg() -> Hsla {
-    gpui::rgb(0x262c36).into() // neutral-4 — --toolbar-button-hover-background-color
+    hover_bg()
 }
 
 pub fn toolbar_badge_bg() -> Hsla {
-    gpui::rgb(0x3d444d).into() // neutral-7
+    pick(0x2b3039, 0xdfdfe0)
 }
 
-// Push suggestion card (blue highlight)
+// Push suggestion card
 pub fn push_card_bg() -> Hsla {
-    gpui::rgb(0x032f62).into() // deep navy
+    pick(0x17232e, 0xe8edfa)
 }
 
 pub fn push_card_border() -> Hsla {
-    gpui::rgb(0x1f6feb).into() // accent blue border
+    accent()
 }
 
 pub fn push_card_text() -> Hsla {
-    gpui::rgb(0x8db1d8).into() // muted blue-white
+    pick(0x9fc4e4, 0x3a4b8f)
 }
-
-#[allow(dead_code)]
-pub fn text_field_focus_shadow() -> Hsla {
-    with_alpha(accent(), 0.25) // --text-field-focus-shadow-color
-}
-
 // ---------------------------------------------------------------------------
 // Color utilities
 // ---------------------------------------------------------------------------
