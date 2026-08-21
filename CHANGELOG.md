@@ -1,5 +1,89 @@
 # Changelog
 
+## [0.5.0] - 2026-08-21
+
+169 commits since 0.4.0. Grouped by theme rather than listed individually.
+
+### Performance
+
+The app used to run git commands on the UI thread during render, and rebuild
+every diff row on every frame. Both are fixed, and both were measured rather
+than guessed at.
+
+- **Diff views are virtualized.** Building a row element for every line cost
+  14-21ms per frame on a 4000-line diff -- the entire 60fps budget, on every
+  frame of every scroll. Now 0.08-0.19ms. `uniform_list` did not apply because
+  hunk headers and wrapped lines are taller than diff rows, so both the unified
+  and split views use GPUI's variable-height `list`.
+- **No git on the render path.** A traced 20-second session ran 206 git
+  invocations, 162 of them on the UI thread, blocking for 1.75 seconds. One
+  triple repeated ~47 times because `repo_has_github_remote()` shelled out to
+  re-derive a value the snapshot already carried, and render called it once per
+  visible row that binds a context menu. Now zero main-thread git calls during
+  interaction.
+- **Reads are backed by [gitoxide](https://github.com/GitoxideLabs/gitoxide).**
+  Repo discovery, remote lookup, branches and history run in-process; every
+  shell-out costs ~10ms in process spawn alone. Writes stay on the git binary,
+  where matching its exact behaviour around hooks, config precedence and
+  credential helpers is worth more than milliseconds. `GITSPARK_TRACE_GIT=1`
+  logs every invocation with its duration and thread.
+- **Build profiles** -- thin LTO and strip on release, line-tables-only debug
+  info on dev and test, no debug info for dependencies.
+
+### Features
+
+- **Worktrees** -- a Current Worktree section in the toolbar with a filterable
+  picker, plus add and prune. Selecting a worktree opens that directory, which
+  is what a worktree is. Branches checked out in another worktree are greyed and
+  tagged with the worktree holding them, because git refuses those checkouts.
+- **Light and dark themes** -- Zed One Dark, deepened, with a One Light arm.
+  Settings > Appearance switches live between System, Light and Dark. Defaults
+  to Dark, so existing installs are unchanged.
+- **Diff line selection** -- select individual lines to commit or discard, in
+  both unified and split views.
+- **Split diff mode**, whitespace-change toggle, binary diff fallback, image
+  diff preview, and a submodule diff panel.
+- **Compare branch view** with ahead/behind, plus compare-on-GitHub.
+- **Conflict-aware operations** -- merge and rebase surface conflicted files
+  with continue, skip and abort, and open-in-editor per file.
+- **Repository create and clone flows**, remote settings, and ignored-files
+  settings.
+- **Tag creation and deletion**, and branch rename.
+
+### Design system
+
+- **`design.md`** documents the visual language: tokens, component specs,
+  elevation, the type ramp, layout rules and build profiles.
+- **`src/ui/kit/`** holds the components the app kept hand-rolling -- buttons,
+  the modal dialog shell, surfaces, tags, pills, empty states, and the
+  filterable picker shared by the repository, worktree, branch and AI-model
+  selectors.
+- Every colour now resolves through `theme.rs`, which is what makes the light
+  arm a token swap rather than a fork.
+
+### Bug fixes
+
+112 fixes, mostly native menu behaviour, settings scoping between global and
+per-repository, stash previews and confirmations, and input validation for
+branch and tag names. The ones worth calling out:
+
+- **Selected rows drew text with a literal white** in fourteen places. The dark
+  accent is a light blue, so white on it was barely legible; in light mode the
+  literal ignored the palette entirely.
+- **Typing an accented character or emoji into a filter could panic.** Both
+  hand-rolled filter fields sliced at a byte offset that clamped to the string
+  length but was not guaranteed to be a character boundary.
+- **Diff line selection** shaded the whole gutter in a saturated blue on every
+  selected line -- and every line starts selected -- making the gutter the
+  loudest thing in the diff.
+
+### Removed
+
+- `src/ui/components/` and `src/ui/primitives/` -- 21 tracked files, declared in
+  no module, referenced by nothing, and still written against egui. They
+  predated the GPUI rewrite and were a trap for anyone looking for the component
+  layer.
+
 ## [0.4.0] - 2026-04-11
 
 ### Features
