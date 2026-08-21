@@ -2801,6 +2801,17 @@ impl GitSparkApp {
         self.persist_settings();
     }
 
+    /// Hand the current settings to the background writer.
+    ///
+    /// Used by the render path only. Explicit user actions keep calling
+    /// [`Self::persist_settings`], which is synchronous so a failure can be
+    /// reported rather than silently swallowed.
+    pub(crate) fn queue_window_size_write(&self) {
+        if let Some(tx) = self.window_size_tx.as_ref() {
+            let _ = tx.send(self.settings.clone());
+        }
+    }
+
     pub fn persist_settings(&mut self) {
         if let Err(err) = save_settings(&self.settings) {
             self.messages.error_message = format!("Failed to save settings: {err}");

@@ -25,7 +25,10 @@ impl Render for GitSparkApp {
                 self.settings.window_size.height = new_h;
                 self.settings.window_size.has_position = true;
                 self.settings.window_size.display_id = window.display(cx).map(|d| d.id().into());
-                self.persist_settings();
+                // Off-thread and debounced. This runs on essentially every
+                // frame of a resize or drag; a blocking write here churned the
+                // disk and stalled the UI for the whole gesture.
+                self.queue_window_size_write();
             }
         }
 

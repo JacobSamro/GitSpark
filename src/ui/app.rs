@@ -264,12 +264,57 @@ pub struct GitSparkApp {
     rem_size: f32,
     render_count: u32,
     was_window_active: bool,
+    /// Sends window bounds to a debounced background writer.
+    ///
+    /// Bounds change on essentially every frame of a resize or drag, and the
+    /// old code called `persist_settings()` inline from `render()` — a
+    /// `create_dir_all`, a TOML serialize and a blocking `fs::write` on the UI
+    /// thread, per frame. The write now happens off-thread and only once the
+    /// user stops moving the window.
+    window_size_tx: Option<mpsc::Sender<AppSettings>>,
     pending_summary_focus: bool,
     _automation: Option<automation::AutomationHandle>,
 }
 
+/// Debounce before writing window bounds to disk.
+///
+/// Long enough to coalesce a whole drag into one write, short enough that
+/// quitting right after a resize still saves it.
+const WINDOW_SIZE_WRITE_DEBOUNCE: Duration = Duration::from_millis(400);
+
+/// Spawn the thread that owns settings writes triggered by window movement.
+///
+/// Coalescing matters more than latency here: a drag produces a message per
+/// frame, and only the last one is worth writing. The thread keeps the most
+/// recent value and writes once the stream goes quiet.
+fn spawn_settings_writer() -> mpsc::Sender<AppSettings> {
+    let (tx, rx) = mpsc::channel::<AppSettings>();
+    thread::spawn(move || {
+        while let Ok(mut latest) = rx.recv() {
+            // Drain whatever else arrived while we were waiting, then wait for
+            // a quiet gap before committing to disk.
+            loop {
+                match rx.recv_timeout(WINDOW_SIZE_WRITE_DEBOUNCE) {
+                    Ok(newer) => latest = newer,
+                    Err(mpsc::RecvTimeoutError::Timeout) => break,
+                    // Sender dropped: write what we have and stop.
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        let _ = save_settings(&latest);
+                        return;
+                    }
+                }
+            }
+            // A failure here is not worth interrupting the user for — the
+            // window simply opens at its previous size next launch.
+            let _ = save_settings(&latest);
+        }
+    });
+    tx
+}
+
 impl GitSparkApp {
     pub fn new(settings: AppSettings, cx: &mut Context<Self>) -> Self {
+        let window_size_tx = Some(spawn_settings_writer());
         let (tx, event_rx) = mpsc::channel();
         let event_pending = Arc::new(AtomicBool::new(false));
         let event_tx = NotifySender {
@@ -337,6 +382,7 @@ impl GitSparkApp {
             rem_size: DEFAULT_REM_SIZE,
             render_count: 0,
             was_window_active: false,
+            window_size_tx,
             pending_summary_focus: false,
             _automation: automation,
         };

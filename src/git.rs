@@ -15,6 +15,13 @@ use crate::models::{
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const GITSPARK_STASH_MESSAGE_PREFIX: &str = "GitSpark stash for ";
+/// How much of an untracked file to render as a synthetic diff.
+///
+/// The old limit was 400 lines, chosen when the diff view built an element per
+/// line on every frame. That cost is gone — the view is virtualized — so this
+/// is now only a guard against pathological generated files, and can be
+/// generous enough that real source files are never cut.
+const UNTRACKED_DIFF_MAX_LINES: usize = 5_000;
 
 #[derive(Default)]
 pub struct GitClient;
@@ -2290,10 +2297,20 @@ impl GitClient {
         }
 
         let contents = String::from_utf8(bytes).context("failed to decode file contents")?;
-        let line_count = contents.lines().count().max(1);
-        let body = contents
+
+        // The hunk header must describe the body we actually emit. It used to
+        // report the file's FULL line count while the body was truncated,
+        // which produces a malformed patch — and the app's own parser reads
+        // `new_count` from that header to decide how far the file extends, so
+        // an inflated count also made it offer expand controls for lines that
+        // were never in the diff.
+        let emitted: Vec<&str> = contents
             .lines()
-            .take(400)
+            .take(UNTRACKED_DIFF_MAX_LINES)
+            .collect();
+        let line_count = emitted.len().max(1);
+        let body = emitted
+            .iter()
             .map(|line| format!("+{line}"))
             .collect::<Vec<_>>()
             .join("\n");
@@ -2941,6 +2958,7 @@ mod tests {
         GITSPARK_STASH_MESSAGE_PREFIX, GitClient, encode_github_path, fill_missing_author_identity,
         inferred_clone_directory_name, normalize_github_remote_url, parse_author_ident,
         parse_ref_tags, parse_worktree_list, safe_repository_directory_name,
+        UNTRACKED_DIFF_MAX_LINES,
     };
 
     #[test]
@@ -4029,6 +4047,77 @@ mod tests {
 
         fs::remove_dir_all(&repo).ok();
         fs::remove_dir_all(&extra).ok();
+    }
+
+
+    // ----------------------------------------------------------------------
+    // Untracked-file synthetic diffs
+    // ----------------------------------------------------------------------
+
+    /// Read the `+count` out of `@@ -0,0 +1,<count> @@`.
+    fn hunk_new_count(diff: &str) -> usize {
+        let header = diff
+            .lines()
+            .find(|line| line.starts_with("@@ "))
+            .expect("diff has a hunk header");
+        header
+            .split("+1,")
+            .nth(1)
+            .and_then(|rest| rest.split(' ').next())
+            .and_then(|n| n.parse().ok())
+            .expect("hunk header carries a new-line count")
+    }
+
+    fn added_line_count(diff: &str) -> usize {
+        // `+++ b/<path>` is the file header, not an added line.
+        diff.lines()
+            .filter(|line| line.starts_with('+') && !line.starts_with("+++"))
+            .count()
+    }
+
+    #[test]
+    fn untracked_diff_header_matches_body_for_a_small_file() {
+        let repo = temp_repo("untracked-small");
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        fs::write(repo.join("new.txt"), "a\nb\nc\n").unwrap();
+
+        let client = GitClient::new();
+        let entry = client.get_file_diff(&repo, "new.txt").unwrap();
+
+        assert_eq!(hunk_new_count(&entry.diff), 3);
+        assert_eq!(added_line_count(&entry.diff), 3);
+        fs::remove_dir_all(&repo).ok();
+    }
+
+    #[test]
+    fn untracked_diff_header_matches_body_when_truncated() {
+        let repo = temp_repo("untracked-truncated");
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+
+        // Comfortably past the cap, so truncation definitely happens.
+        let big: String = (0..UNTRACKED_DIFF_MAX_LINES + 500)
+            .map(|i| format!("line {i}\n"))
+            .collect();
+        fs::write(repo.join("big.txt"), big).unwrap();
+
+        let client = GitClient::new();
+        let entry = client.get_file_diff(&repo, "big.txt").unwrap();
+
+        let header = hunk_new_count(&entry.diff);
+        let body = added_line_count(&entry.diff);
+        assert_eq!(
+            header, body,
+            "hunk header claims {header} lines but the body has {body} — the patch is malformed"
+        );
+        assert_eq!(
+            body, UNTRACKED_DIFF_MAX_LINES,
+            "body should stop at the cap"
+        );
+        fs::remove_dir_all(&repo).ok();
     }
 
 }
