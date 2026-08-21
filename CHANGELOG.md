@@ -2,6 +2,86 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-21
+
+Several repositories open at once, and a diff that finally looks like one.
+
+### Features
+
+- **Repository tabs.** One tab per open repository, in the window's title-bar
+  row beside the traffic lights, with a changed-file badge and a `+` that opens
+  the repository list. `⌘T` opens the list, `⌘W` closes the active tab, and
+  `⌃Tab` / `⌃⇧Tab` or `⌘⇧]` / `⌘⇧[` cycle. **Not** `⌘1`–`⌘9` — those already
+  switch Changes and History, a far more frequent move.
+
+  Tabs and the active one persist, so a relaunch reopens them. Only the active
+  repository keeps a filesystem watcher; a background tab reloads when switched
+  to, rather than costing a watcher and a status refresh while nobody is
+  looking at it. A half-typed commit message belongs to its tab and survives
+  switching away and back.
+
+  The toolbar's "Current Repository" section is gone — the strip replaced it,
+  and keeping both would give one piece of state two controls that can
+  disagree. The worktree section took the vacated slot, since it sits directly
+  above the sidebar and the sidebar lists that worktree's changes.
+
+- **Drag a folder onto the window to open it.** Whatever is dropped resolves to
+  its work-tree root first, so a file or a nested directory opens the repository
+  containing it. Each one opens as a tab and lands in the recents list. Anything
+  outside a repository is reported rather than silently ignored.
+
+- **Syntax highlighting in the diff.** `syntect` had been a dependency with no
+  uses in the codebase; it is now wired, mapping syntect *scopes* onto the
+  design's six hues rather than using a syntect theme, so highlighting survives
+  a theme switch. Memoised per line, because diff parsing runs on the render
+  path. The syntax set comes from `two-face` rather than syntect's own, which
+  ships 75 languages and carries neither Swift nor TypeScript.
+
+### Fixed
+
+- **The diff was not monospaced.** `font_family("monospace")` never resolved on
+  macOS — GPUI looks up one family name verbatim, so the CSS generic matched
+  nothing and every diff, SHA and path rendered in the proportional system
+  font. That is why columns never lined up. The split view had the same bug in
+  a louder form, passing an entire CSS fallback list as a single family name.
+
+- **The diff palette now comes from GitHub Desktop**, read from its source
+  rather than approximated. Three values were the *opposite* of what we had:
+  the gutter is darker than the row, deleted text is tinted, and selection is a
+  real blue filling the line-number cells. Deriving the diff from the Zed hues
+  had kept producing something visibly duller — Zed's created/deleted are muted
+  olive and brick where GitHub's are saturated true green and red.
+
+- **Clicking a diff line no longer toggles it.** The whole row was a toggle, so
+  selecting a token to copy silently changed what was staged. Only the gutter
+  acts now, and hovering it says so.
+
+- **A tab switch could delete a tab.** Repository loads run on a worker thread
+  and were adopted without checking which repository they answered, so
+  switching faster than a load completed pointed the active tab at the wrong
+  repository — where it looked like a duplicate and was removed.
+
+- The history row follows GitHub Desktop's commit list exactly: 50px rows,
+  their padding and separator, a semibold summary over an author line, and
+  their badge pills.
+- The UI scales a step larger. GPUI draws with grayscale antialiasing where
+  Chromium leaves macOS subpixel AA on, so the same font at the same size came
+  out thinner and read smaller.
+- The diff options control is a real gear rather than an 11px `⚙` glyph.
+- Traffic lights sat above centre; their offset and the title-bar height now
+  derive from one constant.
+- **The macOS bundle had no icon**, so the Dock and Finder drew the generic
+  blank document. It now carries a real `.icns` built from the source art at
+  every size from 16 to 512 with @2x twins, referenced by `CFBundleIconFile`.
+
+### Build
+
+- **CI and releases cache their dependencies.** Every release rebuilt GPUI's
+  entire dependency graph from scratch on three platforms, which was most of an
+  18-minute run. `sccache` now caches compiled crates across runs, alongside the
+  cargo registry and target directory, keyed on `Cargo.lock` so a dependency
+  change misses and nothing else does.
+
 ## [0.6.1] - 2026-08-21
 
 Security patches, and the fix that makes v0.6.0's updater actually work.

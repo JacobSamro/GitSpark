@@ -50,6 +50,12 @@ jobs:
     name: Build ${{ matrix.label }}
     needs: prepare
     runs-on: ${{ matrix.os }}
+    env:
+      # sccache caches compiled crates ACROSS releases; the cargo caches above
+      # only avoid re-downloading and re-linking. Incremental is off because it
+      # is useless for a clean release build and only bloats the cache.
+      RUSTC_WRAPPER: sccache
+      CARGO_INCREMENTAL: 0
     permissions:
       contents: read
     strategy:
@@ -100,9 +106,42 @@ jobs:
         with:
           targets: ${{ runner.os == 'macOS' && 'x86_64-apple-darwin,aarch64-apple-darwin' || matrix.target }}
 
+      # A release built every dependency from scratch on all three platforms,
+      # which is most of an 18-minute run. GPUI's graph is very large and
+      # almost never changes between releases, so it is exactly what a cache
+      # is for.
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          # Keyed on the lockfile: a dependency change should miss, anything
+          # else should hit. The restore-key means even a miss starts from the
+          # previous release's registry rather than an empty one.
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.target }}-target-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-target-
+
       - name: Build release binary
         if: runner.os != 'macOS'
         run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Show sccache stats
+        if: always()
+        shell: bash
+        run: sccache --show-stats || true
 
       - name: Build universal macOS binary
         if: runner.os == 'macOS'
@@ -158,6 +197,25 @@ jobs:
           cp "target/${TARGET}/release/${BIN_NAME}" "${macos_dir}/${BIN_NAME}"
           chmod +x "${macos_dir}/${BIN_NAME}"
 
+          # The bundle had no icon at all, so macOS drew the generic blank
+          # document in the Dock and the Finder. Build a real .icns from the
+          # source art: an iconset is a directory of fixed sizes, and iconutil
+          # turns it into the single file the bundle references.
+          if [[ -f assets/gitspark.png ]]; then
+            iconset="$(mktemp -d)/${APP_DISPLAY_NAME}.iconset"
+            mkdir -p "$iconset"
+            for size in 16 32 128 256 512; do
+              sips -z $size $size assets/gitspark.png \
+                --out "$iconset/icon_${size}x${size}.png" >/dev/null
+              # Every size needs its @2x twin or the Dock picks a blurry one.
+              sips -z $((size * 2)) $((size * 2)) assets/gitspark.png \
+                --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+            done
+            iconutil -c icns "$iconset" -o "${resources_dir}/${APP_DISPLAY_NAME}.icns"
+          else
+            echo "::warning::assets/gitspark.png missing; bundling without an icon"
+          fi
+
           cat > "${contents_dir}/Info.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -169,6 +227,8 @@ jobs:
             <string>${APP_DISPLAY_NAME}</string>
             <key>CFBundleExecutable</key>
             <string>${BIN_NAME}</string>
+            <key>CFBundleIconFile</key>
+            <string>${APP_DISPLAY_NAME}</string>
             <key>CFBundleIdentifier</key>
             <string>${MACOS_BUNDLE_ID}</string>
             <key>CFBundleInfoDictionaryVersion</key>
@@ -289,6 +349,16 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: sign-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            sign-cargo-
 
       - name: Build manifest signing tool
         working-directory: repo

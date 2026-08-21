@@ -307,6 +307,56 @@ impl GitSparkApp {
     }
 
     // -----------------------------------------------------------------
+    // Drag and drop
+    // -----------------------------------------------------------------
+
+    /// Open repositories dropped onto the window.
+    ///
+    /// Each dropped path is resolved to its work-tree root first, so dropping
+    /// a file, or any directory inside a checkout, opens the repository that
+    /// contains it rather than failing. Resolution is in-process through gix —
+    /// a drop of several paths should not spawn a git process per path just to
+    /// find out which are repositories.
+    ///
+    /// Anything that is not inside a repository is reported rather than
+    /// silently ignored: a drop that appears to do nothing is worse than one
+    /// that says why.
+    pub(crate) fn open_dropped_paths(&mut self, paths: &[PathBuf], cx: &mut Context<Self>) {
+        let mut rejected: Vec<String> = Vec::new();
+        let mut opened = 0usize;
+
+        for path in paths {
+            // A dropped file stands for the directory holding it.
+            let start = if path.is_dir() {
+                path.clone()
+            } else {
+                match path.parent() {
+                    Some(parent) => parent.to_path_buf(),
+                    None => continue,
+                }
+            };
+
+            match crate::gitoxide::repo_root(&start) {
+                Some(root) => {
+                    self.open_repo_in_tab(root, cx);
+                    opened += 1;
+                }
+                None => rejected.push(repo_tabs::directory_name(path)),
+            }
+        }
+
+        if !rejected.is_empty() {
+            let names = rejected.join(", ");
+            self.messages.error_message = if opened == 0 {
+                format!("Not a git repository: {names}")
+            } else {
+                format!("Skipped, not a git repository: {names}")
+            };
+            cx.notify();
+        }
+    }
+
+    // -----------------------------------------------------------------
     // Persistence
     // -----------------------------------------------------------------
 

@@ -206,8 +206,22 @@ impl Render for GitSparkApp {
         };
 
         let mut root = v_flex()
+            .id("app-root")
             .size_full()
             .relative()
+            // Drop a folder anywhere on the window to open it as a tab. The
+            // handler resolves whatever is dropped to its work-tree root, so a
+            // file or a nested directory opens the repository containing it.
+            .on_drop(cx.listener(|app, paths: &ExternalPaths, _win, cx| {
+                app.open_dropped_paths(paths.paths(), cx);
+            }))
+            .drag_over::<ExternalPaths>(|style, _, _, _| {
+                // The whole window is the target, so the cue is an inset ring
+                // rather than a fill, which would wash out the diff underneath.
+                style
+                    .border_2()
+                    .border_color(theme::accent())
+            })
             .bg(theme::bg())
             .font_family(".SystemUIFont")
             .text_size(theme::z(theme::FONT_SIZE))
