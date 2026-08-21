@@ -722,7 +722,7 @@ impl GitSparkApp {
         cx.notify();
     }
 
-    fn stop_repo_watch(&mut self) {
+    pub(crate) fn stop_repo_watch(&mut self) {
         self.repo_watch_generation.fetch_add(1, Ordering::SeqCst);
         self.watched_repo_path = None;
     }
@@ -2926,6 +2926,13 @@ impl GitSparkApp {
             if let Some(oid) = next_selected_commit {
                 self.load_commit_diff(oid);
             }
+        }
+
+        // Every snapshot lands here — first load, refresh, branch switch,
+        // post-commit — so this is the one place that can keep the tab strip
+        // honest about what each tab is actually looking at.
+        if let Some(path) = self.repo_path().map(PathBuf::from) {
+            self.adopt_path_into_active_tab(&path);
         }
     }
 

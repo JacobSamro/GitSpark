@@ -448,6 +448,45 @@ Two deliberate departures:
   and the blue is the state a user actually sees while working in the
   history, so that is the one modelled.
 
+### 8.4b Repository tab strip — `ui::repo_tab_bar`
+
+One tab per open repository, between the title bar and the toolbar.
+
+That placement is the design, not a convenience: worktree, branch and fetch
+state all belong to *one* repository, so the control that chooses the
+repository has to sit above the controls that read from it. Switching a tab
+visibly changes everything beneath it. It cannot go in the title bar either —
+the traffic lights own that band on macOS, and Windows gives it a different
+shape entirely.
+
+| Property | Value |
+|---|---|
+| Strip height | `TAB_BAR_HEIGHT` (36) |
+| Tab width | shrink-to-fit, capped at 210px, then the label truncates |
+| Active mark | 2px `accent()` rail on the top edge, `bg()` fill |
+| Inactive | `text_muted()`, `hover_bg()` on hover |
+| Badge | changed-file count, hidden at zero |
+| Close | revealed on hover; always shown on the active tab |
+| Overflow | the strip scrolls; it never wraps to a second row |
+
+**The toolbar's repository section is gone.** The strip replaced it — keeping
+both would give one piece of state two controls that can disagree. The
+worktree section took the vacated slot, because it sits directly above the
+sidebar and the sidebar lists that worktree's changes. The repository *list*
+did not disappear: it is what `+` opens, and picking from it opens a new tab.
+
+**State is parked, not duplicated.** See `ui::repo_tabs` — the app's own
+`repo` / `commit` / `selection` fields *are* the active tab, and an inactive
+tab parks a copy until it is activated. Only the active repository keeps a
+filesystem watcher; a background tab reloads when you switch to it. Two tabs
+may never point at one checkout, or each would hold its own commit draft for
+the same working tree.
+
+**Keys.** `⌘T` opens the list, `⌘W` closes the active tab, `⌃Tab` /
+`⌃⇧Tab` and `⌘⇧]` / `⌘⇧[` cycle. **Not** `⌘1`–`⌘9`: those already switch
+between Changes and History, which is a far more frequent move than switching
+repository.
+
 ### 8.5 Tag — `kit::tag`
 
 The A/M/D status square and the HEAD marker. 16px square, `CORNER_RADIUS_SM`,

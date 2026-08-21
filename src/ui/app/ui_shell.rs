@@ -155,10 +155,13 @@ impl Render for GitSparkApp {
         window.set_rem_size(px(self.rem_size));
 
         // macOS titlebar spacer (traffic lights sit here)
-        // Just enough for the traffic lights (they are 12px in a 28px band)
-        // plus the update indicator. It was 38, which left a dead strip above
-        // the toolbar on every window.
-        let titlebar_height = if cfg!(target_os = "macos") { 30.0 } else { 0.0 };
+        // Just enough for the traffic lights plus the update indicator. It was
+        // 38, which left a dead strip above the toolbar on every window.
+        let titlebar_height = if cfg!(target_os = "macos") {
+            theme::TITLEBAR_HEIGHT
+        } else {
+            0.0
+        };
 
         let titlebar_spacer = {
             // The update indicator lives at the top right of this strip, the
@@ -197,6 +200,12 @@ impl Render for GitSparkApp {
             .font_family(".SystemUIFont")
             .text_size(theme::z(theme::FONT_SIZE))
             .child(titlebar_spacer) // slightly lighter than bg for titlebar strip
+            // Between the title bar and the toolbar: the tabs choose the
+            // repository, and everything below reads from it.
+            .child(crate::ui::repo_tab_bar::render_if_needed(
+                self,
+                cx.entity().clone(),
+            ))
             .child(
                 div().w_full().flex_1().min_h_0().child(
                     h_resizable("main-panels")
@@ -1196,9 +1205,6 @@ impl GitSparkApp {
         use crate::ui::toolbar;
 
         let snapshot = self.repo.snapshot.as_ref();
-        let repo_name = snapshot
-            .map(|s| s.repo.name.as_str())
-            .unwrap_or("Choose repository");
         let branch_name = snapshot
             .map(|s| s.repo.current_branch.as_str())
             .unwrap_or("No branch");
@@ -1220,27 +1226,34 @@ impl GitSparkApp {
         let last_fetched = snapshot.and_then(|s| s.repo.last_fetched.as_deref());
         let network_enabled = snapshot.is_some();
 
-        // --- Left: repo section ---
-        // Icon: lock for repos with remote (private-like), folder for local-only
-        let repo_icon = if snapshot.and_then(|s| s.repo.remote_name.as_ref()).is_some() {
-            toolbar::ToolbarIcon::Svg("icons/lock.svg")
-        } else {
-            toolbar::ToolbarIcon::Name(IconName::FolderClosed)
-        };
+        // --- Left: worktree section ---
+        //
+        // "Current Repository" used to live here; the tab strip above is the
+        // repository control now, and keeping both would give one piece of
+        // state two controls that can disagree. The worktree takes the slot
+        // because it sits directly above the sidebar, and the sidebar lists
+        // that worktree's changes.
+        //
+        // The worktree name is the repo directory's own name, so the toolbar
+        // can label it without shelling out; the LIST is loaded lazily when
+        // the picker opens.
+        let worktree_name = snapshot
+            .map(|snapshot| snapshot.repo.name.clone())
+            .unwrap_or_else(|| "\u{2014}".to_string());
         let repo_section = toolbar::render_toolbar_section(
-            "section-repo",
-            repo_icon,
-            "Current Repository",
-            repo_name,
-            self.nav.show_repo_selector,
+            "section-worktree",
+            toolbar::ToolbarIcon::Name(IconName::FolderClosed),
+            "Current Worktree",
+            &worktree_name,
+            self.nav.show_worktree_selector,
             false,
-            false,
+            snapshot.is_none(),
         )
-        .on_click(cx.listener(|app, _evt, _win, cx| {
-            app.handle_toolbar_action(ToolbarAction::ToggleRepoSelector, cx);
-            if app.nav.show_repo_selector {
-                _win.focus(&app.repo_filter_focus);
+        .on_click(cx.listener(|app, _evt, window, cx| {
+            if app.repo.snapshot.is_none() {
+                return;
             }
+            app.toggle_worktree_selector(window, cx);
         }));
 
         let left = h_flex()
@@ -1257,30 +1270,6 @@ impl GitSparkApp {
             .child(repo_section);
 
         // --- Right: worktree + branch + network ---
-        // The worktree name is the repo directory's own name, so the toolbar
-        // can label it without shelling out; the LIST is loaded lazily when
-        // the picker opens.
-        let worktree_name = snapshot
-            .map(|snapshot| snapshot.repo.name.clone())
-            .unwrap_or_else(|| "\u{2014}".to_string());
-        let worktree_section = toolbar::render_toolbar_section(
-            "section-worktree",
-            toolbar::ToolbarIcon::Name(IconName::FolderClosed),
-            "Current Worktree",
-            &worktree_name,
-            self.nav.show_worktree_selector,
-            false,
-            snapshot.is_none(),
-        )
-        .flex_none()
-        .w(px(toolbar::WORKTREE_SECTION_WIDTH))
-        .on_click(cx.listener(|app, _evt, window, cx| {
-            if app.repo.snapshot.is_none() {
-                return;
-            }
-            app.toggle_worktree_selector(window, cx);
-        }));
-
         let branch_section = toolbar::render_toolbar_section(
             "section-branch",
             toolbar::ToolbarIcon::Svg("icons/git-branch.svg"),
@@ -1366,8 +1355,6 @@ impl GitSparkApp {
             .bg(theme::toolbar_bg())
             .border_b_1()
             .border_color(theme::toolbar_button_border())
-            .child(worktree_section)
-            .child(toolbar::vertical_divider())
             .child(branch_section)
             .child(toolbar::vertical_divider())
             .child(

@@ -397,6 +397,16 @@ pub struct AppSettings {
     /// the OS at startup by `ui::theme::resolve`.
     #[serde(default)]
     pub appearance: Option<String>,
+    /// Repositories open as tabs, in strip order.
+    ///
+    /// Distinct from `recent_repos`, which is a history of everything ever
+    /// opened; this is what was on screen when the app last closed, and the
+    /// point of tabs is not having to reopen it.
+    #[serde(default)]
+    pub open_repos: Vec<PathBuf>,
+    /// Which of `open_repos` was in front.
+    #[serde(default)]
+    pub active_repo: Option<usize>,
 }
 
 impl Default for AppSettings {
@@ -407,6 +417,8 @@ impl Default for AppSettings {
             window_size: WindowSize::default(),
             default_branch: None,
             appearance: None,
+            open_repos: Vec::new(),
+            active_repo: None,
         }
     }
 }

@@ -1,7 +1,10 @@
 use crate::models::RemoteModelOption;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum SidebarTab {
+    /// A repository opens on Changes: the reason to open one is usually to
+    /// see what is uncommitted.
+    #[default]
     Changes,
     History,
 }

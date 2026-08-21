@@ -53,6 +53,10 @@ actions!(
         MenuViewBranchOnGitHub,
         MenuDiscardAllChanges,
         MenuStashChanges,
+        MenuNewRepositoryTab,
+        MenuCloseRepositoryTab,
+        MenuNextRepositoryTab,
+        MenuPreviousRepositoryTab,
         MenuZoomIn,
         MenuZoomOut,
         MenuZoomReset,
@@ -81,7 +85,13 @@ fn platform_titlebar_options() -> TitlebarOptions {
         TitlebarOptions {
             title: Some("GitSpark".into()),
             appears_transparent: true,
-            traffic_light_position: Some(point(px(10.0), px(12.0))),
+            // Centred in the strip rather than a hand-tuned constant: the
+            // two used to be set independently, so shrinking the title bar
+            // left the lights sitting above centre.
+            traffic_light_position: Some(point(
+                px(10.0),
+                px((ui::theme::TITLEBAR_HEIGHT - ui::theme::TRAFFIC_LIGHT_DIAMETER) / 2.0),
+            )),
         }
     }
 
@@ -279,6 +289,36 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
     }
     {
         let view = view.clone();
+        cx.on_action(move |_: &MenuNewRepositoryTab, cx| {
+            let _ = view.update(cx, |app, cx| {
+                app.nav.show_repo_selector = true;
+                cx.notify();
+            });
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuCloseRepositoryTab, cx| {
+            let _ = view.update(cx, |app, cx| {
+                let active = app.active_tab;
+                app.close_tab(active, cx);
+            });
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuNextRepositoryTab, cx| {
+            let _ = view.update(cx, |app, cx| app.cycle_tab(1, cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuPreviousRepositoryTab, cx| {
+            let _ = view.update(cx, |app, cx| app.cycle_tab(-1, cx));
+        });
+    }
+    {
+        let view = view.clone();
         cx.on_action(move |_: &MenuZoomIn, cx| {
             let _ = view.update(cx, |app, cx| app.menu_zoom_in(cx));
         });
@@ -297,7 +337,7 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         KeyBinding::new("cmd-,", MenuShowSettings, None),
         KeyBinding::new("cmd-1", MenuShowChanges, None),
         KeyBinding::new("cmd-2", MenuShowHistory, None),
-        KeyBinding::new("cmd-t", MenuShowRepositoryList, None),
+        KeyBinding::new("cmd-t", MenuNewRepositoryTab, None),
         KeyBinding::new("cmd-b", MenuShowBranchesList, None),
         KeyBinding::new("cmd-g", MenuGoToSummary, None),
         KeyBinding::new("ctrl-h", MenuShowStashedChanges, None),
@@ -326,6 +366,13 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         KeyBinding::new("cmd-+", MenuZoomIn, None),
         KeyBinding::new("cmd--", MenuZoomOut, None),
         KeyBinding::new("cmd-0", MenuZoomReset, None),
+        KeyBinding::new("cmd-w", MenuCloseRepositoryTab, None),
+        // NOT cmd-1..9: those already move between Changes and History, and
+        // a sidebar tab is switched far more often than a repository.
+        KeyBinding::new("ctrl-tab", MenuNextRepositoryTab, None),
+        KeyBinding::new("cmd-shift-]", MenuNextRepositoryTab, None),
+        KeyBinding::new("ctrl-shift-tab", MenuPreviousRepositoryTab, None),
+        KeyBinding::new("cmd-shift-[", MenuPreviousRepositoryTab, None),
         KeyBinding::new("cmd-q", MenuQuit, None),
     ]);
 

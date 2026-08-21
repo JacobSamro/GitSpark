@@ -75,6 +75,16 @@ pub(crate) enum AutomationCommand {
     OpenRepo {
         path: PathBuf,
     },
+    /// Open a repository in a NEW tab, rather than replacing the active one.
+    OpenRepoTab {
+        path: PathBuf,
+    },
+    SelectRepoTab {
+        index: usize,
+    },
+    CloseRepoTab {
+        index: usize,
+    },
     RefreshRepo,
     SelectTab {
         tab: AutomationSidebarTab,
@@ -371,8 +381,18 @@ impl AutomationResponse {
 }
 
 #[derive(Serialize)]
+struct AutomationRepoTab {
+    label: String,
+    path: String,
+    changed_count: usize,
+}
+
+#[derive(Serialize)]
 struct AutomationSnapshot {
     repo: Option<AutomationRepoSnapshot>,
+    /// Open repository tabs, in strip order.
+    repo_tabs: Vec<AutomationRepoTab>,
+    active_repo_tab: usize,
     test_tree: AutomationNode,
     sidebar_tab: AutomationSidebarTab,
     selected_change: Option<String>,
@@ -698,6 +718,24 @@ impl GitSparkApp {
                 self.handle_sidebar_action(SidebarAction::OpenRepo(path), cx);
                 AutomationResponse::success(self.automation_snapshot())
             }
+            AutomationCommand::OpenRepoTab { path } => {
+                self.open_repo_in_tab(path, cx);
+                AutomationResponse::success(self.automation_snapshot())
+            }
+            AutomationCommand::SelectRepoTab { index } => {
+                if index >= self.tabs.len() {
+                    return AutomationResponse::failure(format!("no repository tab at {index}"));
+                }
+                self.activate_tab(index, cx);
+                AutomationResponse::success(self.automation_snapshot())
+            }
+            AutomationCommand::CloseRepoTab { index } => {
+                if index >= self.tabs.len() {
+                    return AutomationResponse::failure(format!("no repository tab at {index}"));
+                }
+                self.close_tab(index, cx);
+                AutomationResponse::success(self.automation_snapshot())
+            }
             AutomationCommand::RefreshRepo => {
                 self.refresh_repo(cx);
                 AutomationResponse::success(self.automation_snapshot())
@@ -938,6 +976,16 @@ impl GitSparkApp {
                         .collect(),
                     tags: snapshot.tags.clone(),
                 }),
+            repo_tabs: self
+                .tabs
+                .iter()
+                .map(|tab| AutomationRepoTab {
+                    label: tab.label.clone(),
+                    path: tab.path.to_string_lossy().into_owned(),
+                    changed_count: tab.changed_count,
+                })
+                .collect(),
+            active_repo_tab: self.active_tab,
             test_tree: self.automation_test_tree(),
             sidebar_tab: self.nav.sidebar_tab.into(),
             selected_change: self.selection.selected_change.clone(),

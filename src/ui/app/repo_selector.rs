@@ -231,7 +231,11 @@ pub(super) fn render_repo_selector_panel(
                                 .on_click(move |_evt, _win, cx| {
                                     let p = path_clone.clone();
                                     vh.update(cx, |app, cx| {
-                                        app.open_repo_with_notify(p, cx);
+                                        // A new tab, not a replacement: this
+                                        // list is reached from the tab strip's
+                                        // `+`, so picking from it means "also
+                                        // open this one".
+                                        app.open_repo_in_tab(p, cx);
                                     });
                                 })
                                 .into_any_element()

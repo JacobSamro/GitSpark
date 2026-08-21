@@ -571,6 +571,14 @@ pub const SPACE_8: f32 = 24.0;
 // Geometry tokens
 // ---------------------------------------------------------------------------
 
+/// macOS title-bar strip. The traffic lights are positioned against this in
+/// `main.rs`, so the two must move together — they were 38 and 12 before, and
+/// shrinking the strip alone left the lights sitting high.
+pub const TITLEBAR_HEIGHT: f32 = 30.0;
+
+/// Height of a macOS traffic-light button, used to centre them in the strip.
+pub const TRAFFIC_LIGHT_DIAMETER: f32 = 14.0;
+
 pub const TOOLBAR_HEIGHT: f32 = 50.0;
 #[allow(dead_code)]
 pub const TOOLBAR_INNER_HEIGHT: f32 = 50.0;

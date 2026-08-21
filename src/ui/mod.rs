@@ -28,6 +28,8 @@ pub mod status_bar;
 pub mod submodule_diff;
 pub mod text_field;
 pub mod theme;
+pub mod repo_tab_bar;
+pub mod repo_tabs;
 pub mod syntax;
 pub mod update_indicator;
 pub mod toolbar;

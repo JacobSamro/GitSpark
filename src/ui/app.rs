@@ -51,6 +51,7 @@ mod repo_selector;
 mod worktree_selector;
 mod tag_dialogs;
 mod ui_shell;
+mod tabs;
 mod updates;
 pub(crate) use helpers::diff_line_stats;
 
@@ -113,6 +114,9 @@ pub enum DiffExpandDirection {
 // Toolbar
 #[derive(Clone)]
 pub enum ToolbarAction {
+    /// The toolbar no longer offers this — the tab strip replaced it — but
+    /// automation still drives the repository picker through it.
+    #[allow(dead_code)]
     ToggleRepoSelector,
     #[allow(dead_code)]
     SwitchBranch(String),
@@ -223,6 +227,11 @@ pub struct GitSparkApp {
     pub nav: NavState,
     pub filters: FilterState,
     pub messages: MessageState,
+    /// Open repositories, one per tab. The ACTIVE tab's state is not in here
+    /// — it lives in `repo` / `commit` / `selection` above; see
+    /// `crate::ui::repo_tabs` for why.
+    pub tabs: Vec<crate::ui::repo_tabs::RepoTab>,
+    pub active_tab: usize,
     repo_watch_generation: Arc<AtomicU64>,
     watched_repo_path: Option<PathBuf>,
     pub(crate) event_tx: NotifySender,
@@ -350,6 +359,8 @@ impl GitSparkApp {
             network: NetworkState::default(),
             selection: SelectionState::default(),
             nav: NavState::default(),
+            tabs: Vec::new(),
+            active_tab: 0,
             filters: FilterState::default(),
             messages: MessageState::new("Open a repository to get started.", error_message),
             repo_watch_generation: Arc::new(AtomicU64::new(0)),
@@ -491,9 +502,7 @@ impl GitSparkApp {
         })
         .detach();
 
-        if let Some(last_repo) = settings.recent_repos.first() {
-            app.open_repo(last_repo.clone());
-        }
+        app.restore_open_tabs(&settings);
 
         app.schedule_first_update_check(cx);
 
