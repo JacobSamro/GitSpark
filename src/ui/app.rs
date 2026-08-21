@@ -194,7 +194,20 @@ impl NotifySender {
 
 actions!(gitspark, [ZoomIn, ZoomOut, ZoomReset]);
 
-const DEFAULT_REM_SIZE: f32 = 14.0;
+// The app's base scale. Every geometry token goes through `theme::z()`, which
+// multiplies by `rem_size / DEFAULT_REM_SIZE`, so this is the one knob that
+// scales type, padding and row heights together and keeps the design's
+// proportions exactly.
+//
+// 15, not 14. GPUI is a GPU renderer using grayscale antialiasing, while the
+// reference UI is Chromium, which leaves macOS subpixel antialiasing on and
+// so draws visibly thicker stems at the same nominal size. The obvious
+// compensation — a heavier body weight — does not work here: `FontWeight`
+// snaps to the faces a family actually ships, so 500 is a no-op on the system
+// UI font (it rounds back to Regular) and 600 jumps Menlo straight to Bold,
+// which turns every diff into bold code. Scaling is the lever that behaves
+// predictably and leaves the weight hierarchy intact.
+const DEFAULT_REM_SIZE: f32 = 15.0;
 const ZOOM_STEP: f32 = 1.0;
 const ZOOM_MIN: f32 = 10.0;
 const ZOOM_MAX: f32 = 24.0;
