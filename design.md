@@ -509,6 +509,24 @@ frame** — the entire 60fps budget, on every frame of every scroll. Virtualized
 the same diff flattens in **0.08–0.19ms**. Parsing the diff text was never the
 problem at 0.3ms; it was constructing elements nobody could see.
 
+**Never shell out to git from a render path.** Every `GitClient` call spawns a
+subprocess, which costs ~10ms on macOS regardless of how trivial the command
+is. That is fine on a worker thread and ruinous on the UI thread, where 10ms
+is most of a frame.
+
+This was measured, not assumed. `GITSPARK_TRACE_GIT=1` logs every invocation
+with its duration and thread; `MAIN` in that output means it blocked the UI.
+A 20-second session that switched tabs and clicked through history ran **206
+git invocations, 162 of them on MAIN, totalling 1.75 seconds of blocked UI**.
+One triple — `rev-parse --show-toplevel`, `@{upstream}`, `remote get-url` —
+repeated ~47 times because `repo_has_github_remote()` re-derived by shelling
+out, and render called it once per visible row that binds a context menu plus
+twice more for menu enablement. The value was already sitting in the snapshot.
+
+After: **64 invocations, 22 on MAIN, and zero on MAIN during interaction** —
+the remainder are one-time startup. Anything a view needs every frame belongs
+in `RepoSnapshot`, computed on the worker thread.
+
 **Long lists are `uniform_list`.** Any list that can exceed ~20 items —
 changes, history, files, branches — is virtualized. A `for` loop that pushes
 hundreds of children is a bug. `uniform_list` needs an exact row height, which

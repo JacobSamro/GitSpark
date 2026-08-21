@@ -1595,8 +1595,11 @@ impl GitClient {
             })
             .is_some();
         let last_fetched = self.read_last_fetched(repo_path);
+        // Listed here, on the worker thread, so the UI never blocks for it.
+        let worktrees = self.list_worktrees(repo_path).unwrap_or_default();
 
         Ok(RepoSnapshot {
+            worktrees,
             repo: RepoSummary {
                 path: repo_path.to_path_buf(),
                 name: repo_name,
@@ -2467,7 +2470,19 @@ struct StatusSnapshot {
     changes: Vec<ChangeEntry>,
 }
 
+/// Whether to log every git invocation. Read once — this is on the hot path.
+///
+/// `GITSPARK_TRACE_GIT=1` prints duration, thread, and args for every shell-out.
+/// `MAIN` in the output means it blocked the UI thread, which is the single
+/// most useful thing this can tell you: git subprocesses cost ~10ms each, so
+/// anything recurring on MAIN is a dropped frame.
+fn trace_git() -> bool {
+    static TRACE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *TRACE.get_or_init(|| std::env::var("GITSPARK_TRACE_GIT").is_ok())
+}
+
 fn run_git_command(repo_path: &Path, args: &[&str]) -> Result<Output> {
+    let started = trace_git().then(std::time::Instant::now);
     let mut command = Command::new("git");
     command.args(args).current_dir(repo_path);
 
@@ -2486,6 +2501,19 @@ fn run_git_command(repo_path: &Path, args: &[&str]) -> Result<Output> {
         )
     })?;
 
+    if let Some(started) = started {
+        let thread = std::thread::current();
+        eprintln!(
+            "[git] {:>7.1}ms {} {}",
+            started.elapsed().as_secs_f64() * 1000.0,
+            if thread.name() == Some("main") {
+                "MAIN"
+            } else {
+                "bg  "
+            },
+            args.join(" ")
+        );
+    }
     if output.status.success() {
         return Ok(output);
     }

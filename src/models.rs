@@ -162,6 +162,10 @@ pub struct CommitInfo {
 
 #[derive(Clone, Debug, Default)]
 pub struct RepoSnapshot {
+    /// Worktrees for this repository, listed on the worker thread with the
+    /// rest of the snapshot. Listing them on demand meant a blocking
+    /// `git worktree list` on the UI thread once per refresh.
+    pub worktrees: Vec<WorktreeInfo>,
     pub repo: RepoSummary,
     pub changes: Vec<ChangeEntry>,
     pub diffs: Vec<DiffEntry>,
