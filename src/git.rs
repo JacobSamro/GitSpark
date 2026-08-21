@@ -1,5 +1,6 @@
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{Duration, SystemTime};
@@ -2139,10 +2140,71 @@ impl GitClient {
     }
 
     fn build_diffs(&self, repo_path: &Path, changes: &[ChangeEntry]) -> Result<Vec<DiffEntry>> {
+        // One `git diff` for every path instead of two per path. A twenty-file
+        // change set used to spawn forty subprocesses at roughly 10ms each,
+        // just in process startup, before any diffing happened.
+        let paths: Vec<&str> = changes.iter().map(|change| change.path.as_str()).collect();
+        let staged = self.batch_diff(repo_path, &paths, true).unwrap_or_default();
+        let unstaged = self.batch_diff(repo_path, &paths, false).unwrap_or_default();
+
         changes
             .iter()
-            .map(|change| self.build_diff_entry(repo_path, change))
+            .map(|change| {
+                self.build_diff_entry_from(
+                    repo_path,
+                    change,
+                    staged.get(change.path.as_str()).cloned(),
+                    unstaged.get(change.path.as_str()).cloned(),
+                )
+            })
             .collect()
+    }
+
+    /// Run one `git diff` across `paths` and split the result per file.
+    ///
+    /// Returns `None` if the command failed, so the caller falls back to
+    /// per-file calls rather than silently reporting empty diffs.
+    fn batch_diff(
+        &self,
+        repo_path: &Path,
+        paths: &[&str],
+        cached: bool,
+    ) -> Option<HashMap<String, String>> {
+        if paths.is_empty() {
+            return Some(HashMap::new());
+        }
+
+        // `core.quotepath=off` keeps non-ASCII paths literal in the `diff --git`
+        // header, which is what the splitter matches against.
+        let mut args: Vec<&str> = vec![
+            "-c",
+            "core.quotepath=off",
+            "diff",
+            "--no-ext-diff",
+            "--no-color",
+        ];
+        if cached {
+            args.push("--cached");
+        }
+        args.push("--");
+        args.extend_from_slice(paths);
+
+        let output = self.run_git(repo_path, &args).ok()?;
+        let (mut sections, unattributed) = split_combined_diff(&output, paths);
+        if unattributed > 0 {
+            // A header we could not tie to a requested path means the output
+            // is not safely splittable — bail to per-file rather than risk
+            // showing one file's diff under another's name.
+            return None;
+        }
+        // Every requested path is now accounted for: a missing section means
+        // there genuinely is no diff of this kind for that file. Recording it
+        // as empty is what stops the caller re-running a per-file `git diff`
+        // for each of them, which was the whole point of batching.
+        for path in paths {
+            sections.entry((*path).to_string()).or_default();
+        }
+        Some(sections)
     }
 
     fn build_compare_diffs(
@@ -2188,21 +2250,43 @@ impl GitClient {
     }
 
     fn build_diff_entry(&self, repo_path: &Path, change: &ChangeEntry) -> Result<DiffEntry> {
-        let staged = self.run_git(
-            repo_path,
-            &[
-                "diff",
-                "--no-ext-diff",
-                "--no-color",
-                "--cached",
-                "--",
-                &change.path,
-            ],
-        )?;
-        let unstaged = self.run_git(
-            repo_path,
-            &["diff", "--no-ext-diff", "--no-color", "--", &change.path],
-        )?;
+        self.build_diff_entry_from(repo_path, change, None, None)
+    }
+
+    /// Build a diff entry, reusing already-fetched patch text when the caller
+    /// has it.
+    ///
+    /// `None` means "not fetched", not "empty" — the per-file `git diff` runs
+    /// in that case. That distinction is what lets the batched path fall back
+    /// safely when the splitter cannot attribute a section to a path.
+    fn build_diff_entry_from(
+        &self,
+        repo_path: &Path,
+        change: &ChangeEntry,
+        staged: Option<String>,
+        unstaged: Option<String>,
+    ) -> Result<DiffEntry> {
+        let staged = match staged {
+            Some(text) => text,
+            None => self.run_git(
+                repo_path,
+                &[
+                    "diff",
+                    "--no-ext-diff",
+                    "--no-color",
+                    "--cached",
+                    "--",
+                    &change.path,
+                ],
+            )?,
+        };
+        let unstaged = match unstaged {
+            Some(text) => text,
+            None => self.run_git(
+                repo_path,
+                &["diff", "--no-ext-diff", "--no-color", "--", &change.path],
+            )?,
+        };
 
         let mut sections = Vec::new();
         if !staged.trim().is_empty() {
@@ -2796,6 +2880,65 @@ fn parse_git_bool(value: &str) -> Result<bool> {
 /// The first record with a working directory is the primary worktree. A bare
 /// repository emits a record with none; those are skipped, because there is
 /// nothing there for the app to open.
+/// Split a multi-file `git diff` into one patch per path.
+///
+/// Sections start at `diff --git a/<old> b/<new>`. Rather than parse the path
+/// out of that header — which has to cope with spaces, `b/` appearing inside a
+/// filename, and renames where the two halves differ — this matches the header
+/// against the paths we ASKED for. Returns the sections plus a count of
+/// headers it could NOT attribute — the caller treats a non-zero count as
+/// "this output is not trustworthy" and falls back to per-file diffs, so an
+/// odd filename costs subprocesses rather than a missing diff.
+///
+/// A requested path with no section is NOT a failure: a file changed only in
+/// the working tree has no staged diff, which is the common case.
+fn split_combined_diff(output: &str, paths: &[&str]) -> (HashMap<String, String>, usize) {
+    let mut sections: HashMap<String, String> = HashMap::new();
+    let mut current: Option<(String, Vec<&str>)> = None;
+    let mut unattributed = 0usize;
+
+    // Longest first: with both `src/a.rs` and `a.rs` requested, a header
+    // ending in `b/src/a.rs` must not be attributed to `a.rs`.
+    let mut candidates: Vec<&&str> = paths.iter().collect();
+    candidates.sort_by_key(|path| std::cmp::Reverse(path.len()));
+
+    let flush = |sections: &mut HashMap<String, String>, current: Option<(String, Vec<&str>)>| {
+        if let Some((path, lines)) = current {
+            // Trailing newline included: git's own per-file output ends with
+            // one, and the batched result has to be byte-identical or the two
+            // paths produce subtly different diff text for the same file.
+            let mut text = lines.join("\n");
+            text.push('\n');
+            sections.insert(path, text);
+        }
+    };
+
+    for line in output.lines() {
+        if line.starts_with("diff --git ") {
+            flush(&mut sections, current.take());
+            // A rename writes a different b-path; matching on the suffix finds
+            // the destination, which is the path the change set names.
+            let matched = candidates
+                .iter()
+                .find(|path| line.ends_with(&format!(" b/{path}")))
+                .map(|path| (**path).to_string());
+            match matched {
+                Some(path) => current = Some((path, vec![line])),
+                None => {
+                    unattributed += 1;
+                    current = None;
+                }
+            }
+            continue;
+        }
+        if let Some((_, lines)) = current.as_mut() {
+            lines.push(line);
+        }
+    }
+    flush(&mut sections, current.take());
+    (sections, unattributed)
+}
+
 fn parse_worktree_list(output: &str, current: &Path) -> Vec<WorktreeInfo> {
     let mut worktrees: Vec<WorktreeInfo> = Vec::new();
     let mut entry: Option<WorktreeInfo> = None;
@@ -2958,6 +3101,7 @@ mod tests {
         GITSPARK_STASH_MESSAGE_PREFIX, GitClient, encode_github_path, fill_missing_author_identity,
         inferred_clone_directory_name, normalize_github_remote_url, parse_author_ident,
         parse_ref_tags, parse_worktree_list, safe_repository_directory_name,
+        split_combined_diff,
         UNTRACKED_DIFF_MAX_LINES,
     };
 
@@ -4117,6 +4261,132 @@ mod tests {
             body, UNTRACKED_DIFF_MAX_LINES,
             "body should stop at the cap"
         );
+        fs::remove_dir_all(&repo).ok();
+    }
+
+
+    // ----------------------------------------------------------------------
+    // Batched diff splitting
+    // ----------------------------------------------------------------------
+
+    #[test]
+    fn splits_a_multi_file_diff_by_path() {
+        let output = concat!(
+            "diff --git a/src/a.rs b/src/a.rs\n",
+            "index 111..222 100644\n",
+            "--- a/src/a.rs\n",
+            "+++ b/src/a.rs\n",
+            "@@ -1 +1 @@\n",
+            "-old a\n",
+            "+new a\n",
+            "diff --git a/src/b.rs b/src/b.rs\n",
+            "index 333..444 100644\n",
+            "--- a/src/b.rs\n",
+            "+++ b/src/b.rs\n",
+            "@@ -1 +1 @@\n",
+            "-old b\n",
+            "+new b\n",
+        );
+        let (sections, _) = split_combined_diff(output, &["src/a.rs", "src/b.rs"]);
+        assert_eq!(sections.len(), 2);
+        assert!(sections["src/a.rs"].contains("+new a"));
+        assert!(!sections["src/a.rs"].contains("new b"), "sections bled together");
+        assert!(sections["src/b.rs"].contains("+new b"));
+        assert!(sections["src/b.rs"].starts_with("diff --git a/src/b.rs"));
+    }
+
+    #[test]
+    fn handles_paths_containing_spaces() {
+        let output = concat!(
+            "diff --git a/my file.txt b/my file.txt\n",
+            "@@ -1 +1 @@\n",
+            "+hello\n",
+        );
+        let (sections, _) = split_combined_diff(output, &["my file.txt"]);
+        assert!(
+            sections.contains_key("my file.txt"),
+            "a path with a space was not attributed"
+        );
+    }
+
+    #[test]
+    fn prefers_the_longest_matching_path() {
+        // Both end in `a.rs`; the header must attribute to the full path, not
+        // the shorter one that also suffix-matches.
+        let output = concat!(
+            "diff --git a/src/a.rs b/src/a.rs\n",
+            "@@ -1 +1 @@\n",
+            "+nested\n",
+        );
+        let (sections, _) = split_combined_diff(output, &["a.rs", "src/a.rs"]);
+        assert!(sections.contains_key("src/a.rs"));
+        assert!(
+            !sections.contains_key("a.rs"),
+            "attributed a nested file to the shorter path"
+        );
+    }
+
+    #[test]
+    fn reports_sections_it_cannot_attribute() {
+        // An unmatched header must never be guessed at. Reporting it lets the
+        // caller fall back to per-file diffs instead of risking one file's
+        // patch appearing under another file's name.
+        let output = concat!(
+            "diff --git a/unexpected.txt b/unexpected.txt\n",
+            "@@ -1 +1 @@\n",
+            "+surprise\n",
+        );
+        let (sections, unattributed) = split_combined_diff(output, &["asked-for.txt"]);
+        assert!(sections.is_empty());
+        assert_eq!(unattributed, 1);
+    }
+
+    #[test]
+    fn a_path_with_no_section_is_not_a_failure() {
+        // Files changed only in the working tree have no staged diff. That is
+        // the common case, not an error, and must not trigger a fallback.
+        let output = concat!(
+            "diff --git a/a.rs b/a.rs\n",
+            "@@ -1 +1 @@\n",
+            "+only a changed\n",
+        );
+        let (sections, unattributed) = split_combined_diff(output, &["a.rs", "b.rs"]);
+        assert_eq!(unattributed, 0, "b.rs having no diff is not an attribution failure");
+        assert!(sections.contains_key("a.rs"));
+        assert!(!sections.contains_key("b.rs"));
+    }
+
+    #[test]
+    fn batched_and_per_file_diffs_agree_against_real_git() {
+        let repo = temp_repo("batch-diff");
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        for name in ["a.rs", "b.rs", "with space.txt"] {
+            fs::write(repo.join(name), "one\ntwo\n").unwrap();
+        }
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+
+        // A staged change, an unstaged change, and one of each on a third file.
+        fs::write(repo.join("a.rs"), "one\nCHANGED\n").unwrap();
+        run_git(&repo, &["add", "a.rs"]);
+        fs::write(repo.join("b.rs"), "one\nWORKING\n").unwrap();
+        fs::write(repo.join("with space.txt"), "one\nSPACED\n").unwrap();
+
+        let client = GitClient::new();
+        let snapshot = client.snapshot(&repo).unwrap();
+        assert!(!snapshot.changes.is_empty());
+
+        // The batched result must equal what a per-file call produces.
+        for entry in &snapshot.diffs {
+            let single = client.get_file_diff(&repo, &entry.path).unwrap();
+            assert_eq!(
+                entry.diff, single.diff,
+                "batched diff differs from per-file diff for {}",
+                entry.path
+            );
+        }
         fs::remove_dir_all(&repo).ok();
     }
 
