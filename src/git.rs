@@ -3709,6 +3709,160 @@ mod tests {
         let _ = fs::remove_dir_all(remote);
     }
 
+    /// A second working copy of `remote`, for tests that need "someone
+    /// else" to move the remote out from under the repo under test — a
+    /// plain filesystem path is a fully functional git remote, so this
+    /// needs no server, network, or mock of any kind.
+    fn clone_of(remote: &Path, name: &str) -> std::path::PathBuf {
+        let other = temp_repo(name);
+        run_git(&other, &["clone", remote.to_str().unwrap(), "."]);
+        run_git(&other, &["config", "user.name", "GitSpark Test"]);
+        run_git(&other, &["config", "user.email", "test@gitspark.local"]);
+        other
+    }
+
+    #[test]
+    fn pulls_a_fast_forward_from_origin() {
+        let remote = temp_repo("pull-ff-remote");
+        run_git(&remote, &["init", "--bare"]);
+
+        let repo = temp_repo("pull-ff-repo");
+        fs::write(repo.join("a.txt"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(
+            &repo,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+        run_git(&repo, &["push", "--set-upstream", "origin", "main"]);
+
+        // Someone else pushes a commit `repo` has never seen.
+        let other = clone_of(&remote, "pull-ff-other");
+        fs::write(other.join("b.txt"), "two\n").unwrap();
+        run_git(&other, &["add", "--all"]);
+        run_git(&other, &["commit", "-m", "someone else's commit"]);
+        run_git(&other, &["push", "origin", "main"]);
+
+        GitClient::new().pull_origin(&repo).unwrap();
+
+        assert!(
+            repo.join("b.txt").exists(),
+            "the fast-forward should have brought the new file down"
+        );
+
+        let _ = fs::remove_dir_all(repo);
+        let _ = fs::remove_dir_all(remote);
+        let _ = fs::remove_dir_all(other);
+    }
+
+    #[test]
+    fn pull_reports_the_real_git_reason_when_history_has_diverged() {
+        let remote = temp_repo("pull-diverged-remote");
+        run_git(&remote, &["init", "--bare"]);
+
+        let repo = temp_repo("pull-diverged-repo");
+        fs::write(repo.join("a.txt"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(
+            &repo,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+        run_git(&repo, &["push", "--set-upstream", "origin", "main"]);
+
+        // Someone else pushes to origin...
+        let other = clone_of(&remote, "pull-diverged-other");
+        fs::write(other.join("b.txt"), "two\n").unwrap();
+        run_git(&other, &["add", "--all"]);
+        run_git(&other, &["commit", "-m", "remote-side commit"]);
+        run_git(&other, &["push", "origin", "main"]);
+
+        // ...while `repo` also commits locally, without pulling first. Now
+        // neither side is an ancestor of the other — the exact shape of the
+        // "Pull origin failed: failed to pull from 'origin'" report, which
+        // carried no more information than that until `{err}` became
+        // `{err:#}` at the call site that turns this into a status message.
+        fs::write(repo.join("c.txt"), "three\n").unwrap();
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "local-only commit"]);
+
+        let err = GitClient::new()
+            .pull_origin(&repo)
+            .expect_err("diverged history cannot fast-forward");
+        let full_message = format!("{err:#}");
+
+        assert!(
+            full_message.contains("failed to pull from 'origin'"),
+            "lost the context: {full_message}"
+        );
+        assert!(
+            full_message.contains("Not possible to fast-forward"),
+            "lost git's own reason, which is the actual point: {full_message}"
+        );
+
+        let _ = fs::remove_dir_all(repo);
+        let _ = fs::remove_dir_all(remote);
+        let _ = fs::remove_dir_all(other);
+    }
+
+    #[test]
+    fn push_reports_the_real_git_reason_when_rejected() {
+        let remote = temp_repo("push-rejected-remote");
+        run_git(&remote, &["init", "--bare"]);
+
+        let repo = temp_repo("push-rejected-repo");
+        fs::write(repo.join("a.txt"), "one\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(
+            &repo,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+        run_git(&repo, &["push", "--set-upstream", "origin", "main"]);
+
+        // Someone else pushes to origin ahead of `repo`...
+        let other = clone_of(&remote, "push-rejected-other");
+        fs::write(other.join("b.txt"), "two\n").unwrap();
+        run_git(&other, &["add", "--all"]);
+        run_git(&other, &["commit", "-m", "remote-side commit"]);
+        run_git(&other, &["push", "origin", "main"]);
+
+        // ...and `repo` tries to push its own commit without ever fetching
+        // that. A real, everyday way to hit "Push origin failed" — someone
+        // else on the branch beat you to it.
+        fs::write(repo.join("c.txt"), "three\n").unwrap();
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "local-only commit"]);
+
+        let err = GitClient::new()
+            .push_origin(&repo)
+            .expect_err("a push behind the remote must be rejected, not silently force-pushed");
+        let full_message = format!("{err:#}");
+
+        assert!(
+            full_message.contains("failed to push to 'origin'"),
+            "lost the context: {full_message}"
+        );
+        assert!(
+            full_message.contains("[rejected]")
+                || full_message.contains("failed to push some refs"),
+            "lost git's own reason, which is the actual point: {full_message}"
+        );
+
+        let _ = fs::remove_dir_all(repo);
+        let _ = fs::remove_dir_all(remote);
+        let _ = fs::remove_dir_all(other);
+    }
+
     #[test]
     fn commits_only_selected_paths() {
         let repo = temp_repo("commit-selected-paths");
