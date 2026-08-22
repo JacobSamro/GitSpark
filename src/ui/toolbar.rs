@@ -18,19 +18,21 @@ const SECTION_GAP: f32 = 10.0;
 const CARET_ICON_SIZE: f32 = 10.0;
 const BADGE_PILL_RADIUS: f32 = 8.0;
 
-pub const WORKTREE_SECTION_WIDTH: f32 = 220.0;
 pub const BRANCH_SECTION_WIDTH: f32 = 300.0;
 pub const NETWORK_SECTION_WIDTH: f32 = 231.0;
 pub const SECTION_DIVIDER_WIDTH: f32 = 1.0;
 pub const NETWORK_DROPDOWN_WIDTH: f32 = 300.0;
 
+/// Left edge of the network section, for anchoring its dropdown.
+///
+/// The branch and network sections are the only two children of the RIGHT
+/// resizable panel — the worktree section lives in the left one, an entirely
+/// separate positioned ancestor, since the panels were split. This used to
+/// also add the worktree section's width, back when all three sections sat
+/// in one row and the offset was measured from the window's own left edge
+/// instead of the right panel's.
 pub fn network_dropdown_left_offset() -> f32 {
-    WORKTREE_SECTION_WIDTH + SECTION_DIVIDER_WIDTH + BRANCH_SECTION_WIDTH + SECTION_DIVIDER_WIDTH
-}
-
-/// Left edge of the branch section, for anchoring its dropdown.
-pub fn branch_dropdown_left_offset() -> f32 {
-    WORKTREE_SECTION_WIDTH + SECTION_DIVIDER_WIDTH
+    BRANCH_SECTION_WIDTH + SECTION_DIVIDER_WIDTH
 }
 
 // ---------------------------------------------------------------------------

@@ -101,10 +101,28 @@ impl Render for GitSparkApp {
         //
         // The repository list no longer lives here — it is a drop-down under
         // the tab strip's `+`, rendered over the whole window further down.
-        let left_column = v_flex().size_full().min_h_0().child(toolbar_left).child(
-            self.render_sidebar(summary_focused, description_focused, cx)
-                .into_any_element(),
-        );
+        //
+        // The worktree overlay is its own positioned ancestor for the same
+        // reason the right column is: it opens under the worktree section,
+        // which lives here, not in the right column. It used to be mounted
+        // over there, which anchored it to the wrong panel's left edge —
+        // wherever the resizable divider between the two currently sits,
+        // not the worktree section it was supposed to hang from.
+        let left_column = div()
+            .size_full()
+            .min_h_0()
+            .relative()
+            .child(
+                v_flex().size_full().min_h_0().child(toolbar_left).child(
+                    self.render_sidebar(summary_focused, description_focused, cx)
+                        .into_any_element(),
+                ),
+            )
+            .children(if self.nav.show_worktree_selector {
+                Some(render_worktree_overlay(self, worktree_filter_focused, cx))
+            } else {
+                None
+            });
 
         // Right column: branch + network toolbar sections + workspace
         // Branch selector overlay lives inside the right column so it aligns naturally
@@ -127,11 +145,6 @@ impl Render for GitSparkApp {
                     .child(toolbar_right)
                     .child(self.render_workspace(cx.entity().clone(), cx)),
             )
-            .children(if self.nav.show_worktree_selector {
-                Some(render_worktree_overlay(self, worktree_filter_focused, cx))
-            } else {
-                None
-            })
             .children(if self.nav.show_branch_selector {
                 Some(branch_selector::render_branch_selector_overlay(
                     self,

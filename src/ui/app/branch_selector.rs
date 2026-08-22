@@ -41,9 +41,9 @@ pub(super) fn render_branch_selector_overlay(
         .on_click(|_evt, _win, cx| cx.stop_propagation())
         .absolute()
         .top(theme::z(theme::TOOLBAR_HEIGHT))
-        // Anchored under the branch section, which the worktree section now
-        // pushes to the right.
-        .left(px(crate::ui::toolbar::branch_dropdown_left_offset()))
+        // The branch section is the right panel's first child, so its own
+        // left edge already lines up with the panel's — no offset needed.
+        .left_0()
         .w(px(360.0))
         .h(px(486.0))
         .shadow_lg();
