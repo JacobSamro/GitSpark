@@ -1,24 +1,24 @@
 {
   "channel": "release",
-  "version": "0.7.0",
-  "pub_date": "2026-08-21T16:25:57Z",
+  "version": "0.8.0",
+  "pub_date": "2026-08-22T12:03:53Z",
   "notes": "",
-  "notes_url": "https://github.com/JacobSamro/GitSpark/releases/tag/v0.7.0",
+  "notes_url": "https://github.com/JacobSamro/GitSpark/releases/tag/v0.8.0",
   "assets": {
     "macos-universal": {
-      "url": "https://github.com/JacobSamro/GitSpark/releases/download/v0.7.0/gitspark-v0.7.0-universal2-apple-darwin.dmg",
-      "sha256": "597d21adbdbc0fe353588bca7fcdbe44e2c835be601ee4aef6f201e34fa91d34",
-      "size": 21298368
+      "url": "https://github.com/JacobSamro/GitSpark/releases/download/v0.8.0/gitspark-v0.8.0-universal2-apple-darwin.dmg",
+      "sha256": "f55e96f56f4db0c2781e29956fec90cbea9f6b5ee0c07fe601c0492d06bd4c1e",
+      "size": 19590736
     },
     "windows-x64": {
-      "url": "https://github.com/JacobSamro/GitSpark/releases/download/v0.7.0/gitspark-v0.7.0-x86_64-pc-windows-msvc.zip",
-      "sha256": "4db66186283402d77289282a228724c2356cc9063e8e994818fcac1a3c0435c5",
-      "size": 11539904
+      "url": "https://github.com/JacobSamro/GitSpark/releases/download/v0.8.0/gitspark-v0.8.0-x86_64-pc-windows-msvc.zip",
+      "sha256": "f7f7a8a930684fa37bb9345db4c5f6fcdbbb592c87a46fbd7746680366c2254f",
+      "size": 11546132
     },
     "linux-x64": {
-      "url": "https://github.com/JacobSamro/GitSpark/releases/download/v0.7.0/gitspark-v0.7.0-x86_64-unknown-linux-gnu.tar.gz",
-      "sha256": "ad8f2ac2bae39b576e09e1461692801aa179c45eb2617d127a0335e51fcdf9c7",
-      "size": 14569358
+      "url": "https://github.com/JacobSamro/GitSpark/releases/download/v0.8.0/gitspark-v0.8.0-x86_64-unknown-linux-gnu.tar.gz",
+      "sha256": "adb0a48b856840f1c97ea2e07cbd3004b0d0b6158624a9385773767d40276c4d",
+      "size": 14580649
     }
   }
 }
