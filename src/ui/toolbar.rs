@@ -137,12 +137,16 @@ pub fn render_network_parts(
     };
 
     // Icon: always rotate-cw for fetch, ArrowUp for push, ArrowDown for pull.
-    // When in-flight, the icon spins via CSS animation.
+    let is_fetch = {
+        let lower = action_label.to_ascii_lowercase();
+        !lower.starts_with("push") && !lower.starts_with("pull")
+    };
+    let is_push = action_label.to_ascii_lowercase().starts_with("push");
+
+    // Icon: rotate-cw spins for fetch; push/pull nudge toward the direction
+    // commits are actually travelling and get a progress rail underneath —
+    // the arrow swap on its own gave no sense that anything was happening.
     let icon_element = {
-        let is_fetch = {
-            let lower = action_label.to_ascii_lowercase();
-            !lower.starts_with("push") && !lower.starts_with("pull")
-        };
         if is_fetch {
             // Custom rotate-cw SVG, with spin animation when fetching
             let svg_el = gpui::svg()
@@ -164,19 +168,41 @@ pub fn render_network_parts(
                 div().flex_shrink_0().child(svg_el).into_any_element()
             }
         } else {
-            let icon_name = if action_label.to_ascii_lowercase().starts_with("push") {
-                IconName::ArrowUp
+            let svg_path = if is_push {
+                "icons/arrow-up.svg"
             } else {
-                IconName::ArrowDown
+                "icons/arrow-down.svg"
             };
-            div()
-                .flex_shrink_0()
-                .child(
-                    Icon::new(icon_name)
-                        .size(z(SECTION_ICON_SIZE))
-                        .text_color(theme::text_main()),
-                )
-                .into_any_element()
+            let svg_el = gpui::svg()
+                .path(svg_path)
+                .size(z(SECTION_ICON_SIZE))
+                .text_color(theme::text_main());
+            if is_in_flight {
+                // Positive nudges the arrow down (pull, toward the repo);
+                // negative nudges it up (push, out of the repo). `bounce`
+                // already shapes delta into a 0 -> 1 -> 0 sweep, so this is
+                // one smooth there-and-back per cycle, not a sawtooth.
+                let nudge: f32 = if is_push { -3.0 } else { 3.0 };
+                div()
+                    .flex_shrink_0()
+                    .child(
+                        svg_el.with_animation(
+                            "network-nudge",
+                            Animation::new(Duration::from_millis(700))
+                                .repeat()
+                                .with_easing(bounce(ease_in_out)),
+                            move |svg, delta| {
+                                svg.with_transformation(Transformation::translate(point(
+                                    px(0.0),
+                                    px(nudge * delta),
+                                )))
+                            },
+                        ),
+                    )
+                    .into_any_element()
+            } else {
+                div().flex_shrink_0().child(svg_el).into_any_element()
+            }
         }
     };
 
@@ -211,6 +237,35 @@ pub fn render_network_parts(
     // Badges at the top level of main_area for vertical centering
     if let Some(b) = badges {
         main_area = main_area.child(b).pr(z(SECTION_INNER_PADDING));
+    }
+
+    // Progress rail: an indeterminate sweep along the bottom edge while a
+    // push or pull is running. Git gives no byte-level progress to report,
+    // so this reads as "something is moving", not "X% done".
+    if is_in_flight && !is_fetch {
+        main_area = main_area.relative().child(
+            div()
+                .absolute()
+                .bottom_0()
+                .left_0()
+                .right_0()
+                .h(px(2.0))
+                .overflow_hidden()
+                .child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .bottom_0()
+                        .w(relative(0.4))
+                        .rounded(px(1.0))
+                        .bg(theme::accent())
+                        .with_animation(
+                            "network-rail-sweep",
+                            Animation::new(Duration::from_millis(1000)).repeat(),
+                            |bar, delta| bar.left(relative(-0.4 + delta * 1.4)),
+                        ),
+                ),
+        );
     }
 
     let caret_bg = if show_dropdown {
