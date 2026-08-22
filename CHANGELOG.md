@@ -2,6 +2,68 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-22
+
+Push and pull now show you something is happening, history tells you what
+hasn't shipped yet, and a background refresh can no longer knock you out of
+what you were doing.
+
+### Features
+
+- **Push and pull animate now.** The arrow used to swap to a static icon and
+  sit there until the operation finished — no feedback for the whole
+  duration. It now nudges toward the direction commits are actually
+  travelling, and a thin accent rail sweeps along the bottom of the button
+  while the operation is in flight. Indeterminate, since git gives no
+  byte-level progress to report.
+
+- **Unpushed commits show an up arrow in history.** Muted grey on an
+  unselected row, white on a selected one, so it doesn't compete with tags or
+  HEAD — those are real labels; this is a state that clears itself the
+  moment the commit is pushed. History is newest-first, the same order
+  `ahead` counts from, so the first *N* rows are exactly the commits git
+  hasn't pushed yet; no new field needed on top of what the snapshot already
+  carries.
+
+- **`⌘R` / `Ctrl+R` reloads the repository.** A local-only re-read of the
+  working tree and history — the same thing the watcher already does on a
+  change it notices itself, just on demand for whatever it hasn't noticed
+  yet. No network call, so it works with no remote configured. Also in the
+  Repository menu as **Reload**.
+
+- **New app icon.** The old one was a busy, AI-generated rocket with a
+  rainbow trail and a gradient hull that never read at Dock or menu-bar
+  size. Replaced with a single flat rocket silhouette on the app's own
+  background colour, angled bottom-left to top-right, with its fins drawn as
+  small mirrored bolts — a nod back to the name.
+
+### Fixed
+
+- **A background refresh could reset what you were looking at.** Any
+  filesystem change near the repository — including a commit you made
+  yourself in a terminal — triggered a refresh that always jumped the
+  Changes tab to the first file and reloaded the selected commit's diff,
+  which blanked the diff pane and snapped the file selection back to the top
+  even when nothing you cared about had changed. Both now only reset when
+  the previous selection has actually disappeared from the new snapshot.
+
+- **Occasional `Unable to create '.git/index.lock'` errors while GitSpark was
+  running.** Every git call GitSpark makes — status, log, diff, the
+  watcher's own polling — opportunistically rewrote the on-disk index to
+  cache refreshed file-stat info, which briefly takes the index lock to do
+  it. If your own `git add`/`commit`/`checkout` landed inside that window,
+  your command lost the race. GitSpark's own reads now pass
+  `--no-optional-locks` and never take the lock at all; writes you make in
+  the app still take the locks they actually need.
+
+- **The worktree, branch, and network dropdowns could open in the wrong
+  place.** All three positioned themselves as if worktree, branch, and
+  network were still one row in one container, measuring left offsets from
+  the window's own edge — true before the toolbar split into two
+  independently resizable panels, wrong since. Each now opens directly
+  under the section that owns it, regardless of where the sidebar divider
+  currently sits.
+
 ## [0.7.0] - 2026-08-21
 
 Several repositories open at once, and a diff that finally looks like one.
