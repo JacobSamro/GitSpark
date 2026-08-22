@@ -22,7 +22,7 @@ impl GitSparkApp {
                     self.messages.error_message.clear();
                 }
                 AppEvent::RepoLoaded(Err(err)) => {
-                    self.messages.error_message = format!("Failed to open repository: {err}");
+                    self.messages.error_message = format!("Failed to open repository: {err:#}");
                 }
                 AppEvent::RepoRefreshed(path, Ok(snapshot), reason) => {
                     let should_apply = self
@@ -49,7 +49,7 @@ impl GitSparkApp {
                         continue;
                     }
                     if reason == RepoRefreshReason::Manual {
-                        self.messages.error_message = format!("Refresh failed: {err}");
+                        self.messages.error_message = format!("Refresh failed: {err:#}");
                     } else {
                         self.messages.error_message = err;
                     }
@@ -68,7 +68,7 @@ impl GitSparkApp {
                         self.messages.error_message =
                             "Branch switch needs a clean working tree.".to_string();
                     } else {
-                        self.messages.error_message = format!("Branch switch failed: {err}");
+                        self.messages.error_message = format!("Branch switch failed: {err:#}");
                     }
                 }
                 AppEvent::BranchMerged(Ok(snapshot), branch) => {
@@ -82,7 +82,7 @@ impl GitSparkApp {
                         self.messages.status_message =
                             "Merge stopped because conflicts need attention.".to_string();
                     }
-                    self.messages.error_message = format!("Merge failed: {err}");
+                    self.messages.error_message = format!("Merge failed: {err:#}");
                 }
                 AppEvent::CommitCreated(Ok(snapshot), summary) => {
                     self.adopt_snapshot(snapshot);
@@ -98,7 +98,7 @@ impl GitSparkApp {
                     self.nav.undo_commit = Some((summary, std::time::Instant::now()));
                 }
                 AppEvent::CommitCreated(Err(err), _) => {
-                    self.messages.error_message = format!("Commit failed: {err}");
+                    self.messages.error_message = format!("Commit failed: {err:#}");
                 }
                 AppEvent::CommitUndone(Ok(snapshot)) => {
                     self.adopt_snapshot(snapshot);
@@ -107,7 +107,7 @@ impl GitSparkApp {
                     self.messages.error_message.clear();
                 }
                 AppEvent::CommitUndone(Err(err)) => {
-                    self.messages.error_message = format!("Undo commit failed: {err}");
+                    self.messages.error_message = format!("Undo commit failed: {err:#}");
                 }
                 AppEvent::NetworkActionCompleted(Ok(snapshot), action_label) => {
                     self.network.active_action = None;
@@ -117,7 +117,7 @@ impl GitSparkApp {
                 }
                 AppEvent::NetworkActionCompleted(Err(err), action_label) => {
                     self.network.active_action = None;
-                    self.messages.error_message = format!("{action_label} failed: {err}");
+                    self.messages.error_message = format!("{action_label} failed: {err:#}");
                 }
                 AppEvent::AiCommitGenerated(Ok(suggestion)) => {
                     self.commit.ai_in_flight = false;
@@ -131,7 +131,7 @@ impl GitSparkApp {
                 }
                 AppEvent::AiCommitGenerated(Err(err)) => {
                     self.commit.ai_in_flight = false;
-                    self.messages.error_message = format!("AI generation failed: {err}");
+                    self.messages.error_message = format!("AI generation failed: {err:#}");
                 }
                 AppEvent::OpenRouterModelsLoaded(Ok(models)) => {
                     if self.settings.ai.provider == AiProvider::OpenRouter
@@ -155,7 +155,7 @@ impl GitSparkApp {
                     }
                 }
                 AppEvent::CommitDiffLoaded(_, Err(err)) => {
-                    self.messages.error_message = format!("Failed to load commit details: {err}");
+                    self.messages.error_message = format!("Failed to load commit details: {err:#}");
                 }
                 AppEvent::FileDiffRefreshed(path, Ok(entry)) => {
                     // Update the diff for this file in the current snapshot
@@ -181,7 +181,7 @@ impl GitSparkApp {
                         self.messages.status_message =
                             format!("{action_label} stopped because conflicts need attention.");
                     }
-                    self.messages.error_message = format!("{action_label} failed: {err}");
+                    self.messages.error_message = format!("{action_label} failed: {err:#}");
                 }
                 AppEvent::GitOperationControlCompleted(Ok(snapshot), action_label) => {
                     self.add_recent_repo(snapshot.repo.path.clone());
@@ -196,7 +196,7 @@ impl GitSparkApp {
                         .as_ref()
                         .and_then(|operation| operation.target_branch.clone());
                     self.refresh_git_operation_state(target_hint);
-                    self.messages.error_message = format!("{action_label} failed: {err}");
+                    self.messages.error_message = format!("{action_label} failed: {err:#}");
                 }
                 AppEvent::CommitDiffCopied(oid, Ok(diff_text)) => {
                     cx.write_to_clipboard(ClipboardItem::new_string(diff_text));
@@ -206,7 +206,7 @@ impl GitSparkApp {
                 }
                 AppEvent::CommitDiffCopied(oid, Err(err)) => {
                     self.messages.error_message = format!(
-                        "Failed to copy diff for {}: {err}",
+                        "Failed to copy diff for {}: {err:#}",
                         short_commit_label(&oid)
                     );
                 }
@@ -1096,7 +1096,8 @@ impl GitSparkApp {
                     }
                     Err(err) => {
                         self.repo.stash_files.clear();
-                        self.messages.error_message = format!("Could not read stash files: {err}");
+                        self.messages.error_message =
+                            format!("Could not read stash files: {err:#}");
                     }
                 }
             }
@@ -1142,7 +1143,7 @@ impl GitSparkApp {
                 }
                 Err(err) => {
                     self.repo.stash_files.clear();
-                    self.messages.error_message = format!("Could not read stash files: {err}");
+                    self.messages.error_message = format!("Could not read stash files: {err:#}");
                 }
             }
         } else {
@@ -1550,7 +1551,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.messages.error_message =
-                    format!("Could not mark '{}' resolved: {err}", relative_path);
+                    format!("Could not mark '{}' resolved: {err:#}", relative_path);
                 cx.notify();
             }
         }
@@ -1782,7 +1783,7 @@ impl GitSparkApp {
                         .write_pull_rebase(&path, self.repo.identity.pull_rebase)
                     {
                         self.messages.error_message = format!(
-                            "Saved repository Git identity, but failed to save repository pull behavior: {err}"
+                            "Saved repository Git identity, but failed to save repository pull behavior: {err:#}"
                         );
                         return;
                     }
@@ -1796,7 +1797,7 @@ impl GitSparkApp {
                 }
                 Err(err) => {
                     self.messages.error_message =
-                        format!("Failed to save repository Git config: {err}");
+                        format!("Failed to save repository Git config: {err:#}");
                 }
             }
         } else {
@@ -1819,7 +1820,7 @@ impl GitSparkApp {
                 }
                 Err(err) => {
                     self.messages.error_message =
-                        format!("Failed to save global Git config: {err}");
+                        format!("Failed to save global Git config: {err:#}");
                 }
             }
         }
@@ -1851,7 +1852,7 @@ impl GitSparkApp {
                 self.messages.error_message.clear();
             }
             Err(err) => {
-                self.messages.error_message = format!("Failed to save remote settings: {err}");
+                self.messages.error_message = format!("Failed to save remote settings: {err:#}");
                 self.messages.status_message.clear();
             }
         }
@@ -1876,7 +1877,7 @@ impl GitSparkApp {
                 self.messages.error_message.clear();
             }
             Err(err) => {
-                self.messages.error_message = format!("Failed to save ignored files: {err}");
+                self.messages.error_message = format!("Failed to save ignored files: {err:#}");
                 self.messages.status_message.clear();
             }
         }
@@ -1895,7 +1896,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.repo.identity = GitIdentity::default();
-                self.messages.error_message = format!("Could not load git config: {err}");
+                self.messages.error_message = format!("Could not load git config: {err:#}");
             }
         }
 
@@ -1911,7 +1912,7 @@ impl GitSparkApp {
             Err(err) => {
                 self.repo.use_local_identity = false;
                 self.repo.local_identity = GitIdentity::default();
-                self.messages.error_message = format!("Could not load local Git config: {err}");
+                self.messages.error_message = format!("Could not load local Git config: {err:#}");
             }
         }
     }
@@ -1926,7 +1927,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.repo.global_identity = GitIdentity::default();
-                self.messages.error_message = format!("Could not load global Git config: {err}");
+                self.messages.error_message = format!("Could not load global Git config: {err:#}");
             }
         }
     }
@@ -1950,7 +1951,7 @@ impl GitSparkApp {
                 self.repo.remote_url.clear();
                 self.settings_modal.remote_url_cursor = 0;
                 self.settings_modal.remote_url_selection = None;
-                self.messages.error_message = format!("Could not load remote settings: {err}");
+                self.messages.error_message = format!("Could not load remote settings: {err:#}");
             }
         }
     }
@@ -1966,7 +1967,7 @@ impl GitSparkApp {
                 self.repo.ignored_files_text.clear();
                 self.settings_modal.ignored_files_cursor = 0;
                 self.settings_modal.ignored_files_selection = None;
-                self.messages.error_message = format!("Could not load ignored files: {err}");
+                self.messages.error_message = format!("Could not load ignored files: {err:#}");
             }
         }
     }
@@ -2070,7 +2071,7 @@ impl GitSparkApp {
         let file_text = match std::fs::read_to_string(&file_path) {
             Ok(text) => text,
             Err(err) => {
-                self.messages.error_message = format!("Failed to read '{}': {err}", diff.path);
+                self.messages.error_message = format!("Failed to read '{}': {err:#}", diff.path);
                 cx.notify();
                 return;
             }
@@ -2084,7 +2085,8 @@ impl GitSparkApp {
         ) {
             Ok(next_text) => {
                 if let Err(err) = std::fs::write(&file_path, next_text) {
-                    self.messages.error_message = format!("Failed to write '{}': {err}", diff.path);
+                    self.messages.error_message =
+                        format!("Failed to write '{}': {err:#}", diff.path);
                     cx.notify();
                     return;
                 }
@@ -2099,7 +2101,7 @@ impl GitSparkApp {
                 self.refresh_file_diff(diff.path);
             }
             Err(err) => {
-                self.messages.error_message = format!("Failed to discard selected lines: {err}");
+                self.messages.error_message = format!("Failed to discard selected lines: {err:#}");
             }
         }
         cx.notify();
@@ -2367,7 +2369,7 @@ impl GitSparkApp {
                         }
                         Err(err) => {
                             self.messages.error_message =
-                                format!("Failed to open branch '{branch_name}' on GitHub: {err}");
+                                format!("Failed to open branch '{branch_name}' on GitHub: {err:#}");
                         }
                     },
                     Ok(None) => {
@@ -2376,7 +2378,7 @@ impl GitSparkApp {
                     }
                     Err(err) => {
                         self.messages.error_message = format!(
-                            "Failed to resolve GitHub URL for branch '{branch_name}': {err}"
+                            "Failed to resolve GitHub URL for branch '{branch_name}': {err:#}"
                         );
                     }
                 }
@@ -2569,7 +2571,7 @@ impl GitSparkApp {
                 }
                 Err(err) => {
                     self.messages.error_message = format!(
-                        "Failed to open commit {} on GitHub: {err}",
+                        "Failed to open commit {} on GitHub: {err:#}",
                         short_commit_label(oid)
                     );
                 }
@@ -2580,7 +2582,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.messages.error_message = format!(
-                    "Failed to resolve GitHub URL for {}: {err}",
+                    "Failed to resolve GitHub URL for {}: {err:#}",
                     short_commit_label(oid)
                 );
             }
@@ -2601,7 +2603,7 @@ impl GitSparkApp {
                 }
                 Err(err) => {
                     self.messages.error_message =
-                        format!("Failed to open '{}' on GitHub: {err}", relative_path);
+                        format!("Failed to open '{}' on GitHub: {err:#}", relative_path);
                 }
             },
             Ok(None) => {
@@ -2610,7 +2612,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.messages.error_message = format!(
-                    "Failed to resolve GitHub URL for '{}': {err}",
+                    "Failed to resolve GitHub URL for '{}': {err:#}",
                     relative_path
                 );
             }
@@ -2636,7 +2638,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.messages.error_message =
-                    format!("Failed to discard changes for '{}': {err}", relative_path);
+                    format!("Failed to discard changes for '{}': {err:#}", relative_path);
             }
         }
     }
@@ -2664,7 +2666,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.messages.error_message =
-                    format!("Failed to ignore '{}': {err}", relative_path);
+                    format!("Failed to ignore '{}': {err:#}", relative_path);
             }
         }
     }
@@ -2683,7 +2685,7 @@ impl GitSparkApp {
                 self.messages.error_message.clear();
             }
             Err(err) => {
-                self.messages.error_message = format!("Failed to ignore '{}': {err}", pattern);
+                self.messages.error_message = format!("Failed to ignore '{}': {err:#}", pattern);
             }
         }
     }
@@ -2704,7 +2706,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.messages.error_message =
-                    format!("Failed to reveal '{}': {err}", relative_path);
+                    format!("Failed to reveal '{}': {err:#}", relative_path);
             }
         }
     }
@@ -2741,7 +2743,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.messages.error_message = format!(
-                    "Failed to open '{}' in external editor: {err}",
+                    "Failed to open '{}' in external editor: {err:#}",
                     relative_path
                 );
             }
@@ -2763,7 +2765,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.messages.error_message =
-                    format!("Failed to open '{relative_path}' with default program: {err}");
+                    format!("Failed to open '{relative_path}' with default program: {err:#}");
             }
         }
     }
@@ -2810,7 +2812,7 @@ impl GitSparkApp {
 
     pub fn persist_settings(&mut self) {
         if let Err(err) = save_settings(&self.settings) {
-            self.messages.error_message = format!("Failed to save settings: {err}");
+            self.messages.error_message = format!("Failed to save settings: {err:#}");
         }
     }
 
