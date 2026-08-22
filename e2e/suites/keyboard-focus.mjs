@@ -44,7 +44,11 @@ export async function testKeyboardFocusPaths(app, fixture) {
   snapshot = await app.snapshot();
   assert(snapshot.sidebar_tab === "changes", "arrow keys do not switch tabs while summary is focused");
 
-  await app.getByTestId("input-commit-summary").press("cmd-enter");
+  // "secondary" resolves to cmd on macOS and ctrl on Linux/Windows, matching
+  // what the app actually checks (Modifiers::secondary()) — the native E2E
+  // job runs on Linux, where a literal "cmd-enter" only sets the platform
+  // (Super) modifier and never fires the commit shortcut.
+  await app.getByTestId("input-commit-summary").press("secondary-enter");
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.status_message === "Commit created." &&

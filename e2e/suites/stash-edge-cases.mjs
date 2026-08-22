@@ -21,6 +21,10 @@ export async function testStashEdgeCases(app) {
   await app.command({ command: "refresh_repo" });
   await waitForChanges(app, ["main-only.txt"]);
   await app.command({ command: "stash_all" });
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.active_dialog === "stash_changes",
+    { timeoutMs: 10_000 },
+  );
   await app.getByTestId("stash-changes-confirm").click();
   await app.waitForSnapshot(
     (snapshot) => snapshot.repo?.stash_count === 1 && snapshot.repo.changes.length === 0,
@@ -67,6 +71,10 @@ export async function testStashEdgeCases(app) {
   await app.command({ command: "refresh_repo" });
   await waitForChanges(app, ["feature-only.txt"]);
   await app.command({ command: "stash_all" });
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.active_dialog === "stash_changes",
+    { timeoutMs: 10_000 },
+  );
   await app.getByTestId("stash-changes-confirm").click();
   await app.waitForSnapshot(
     (snapshot) => snapshot.repo?.stash_count === 1 && snapshot.repo.changes.length === 0,
@@ -120,6 +128,10 @@ export async function testStashEdgeCases(app) {
   await app.command({ command: "refresh_repo" });
   await waitForChanges(app, ["multi-a.txt", "multi-b.txt"]);
   await app.command({ command: "stash_all" });
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.active_dialog === "stash_changes",
+    { timeoutMs: 10_000 },
+  );
   await app.getByTestId("stash-changes-confirm").click();
   await app.waitForSnapshot(
     (snapshot) => snapshot.repo?.stash_count === 1,
@@ -164,6 +176,10 @@ export async function testStashEdgeCases(app) {
     { timeoutMs: 10_000 },
   );
   await app.command({ command: "stash_all" });
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.active_dialog === "stash_changes",
+    { timeoutMs: 10_000 },
+  );
   await app.getByTestId("stash-changes-confirm").click();
   await app.waitForSnapshot(
     (snapshot) => snapshot.repo?.stash_count === 1,
@@ -216,7 +232,12 @@ async function testStashPopConflict(app) {
 
   await fs.writeFile(path.join(repo, "conflict.txt"), "stashed\n");
   await app.command({ command: "refresh_repo" });
+  await waitForChanges(app, ["conflict.txt"]);
   await app.command({ command: "stash_all" });
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.active_dialog === "stash_changes",
+    { timeoutMs: 10_000 },
+  );
   await app.getByTestId("stash-changes-confirm").click();
   await app.waitForSnapshot(
     (snapshot) => snapshot.repo?.stash_count === 1 && snapshot.repo.changes.length === 0,
