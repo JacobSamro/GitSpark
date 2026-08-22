@@ -10,6 +10,9 @@ mod storage;
 mod ui;
 mod update;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use gpui::*;
 
 use crate::storage::load_settings;
@@ -577,6 +580,48 @@ fn main() {
     ));
 
     let app = Application::new().with_assets(assets::CombinedAssets);
+
+    // macOS only calls this when the Dock icon is clicked (or the app is
+    // relaunched) while it has no windows — closing the last window leaves
+    // the app running, same as every other Mac app. GPUI installs the
+    // delegate method regardless, which replaces AppKit's own default
+    // reopen handling; without a handler of our own, the click did nothing
+    // at all and the only way back in was Force Quit.
+    //
+    // `on_reopen` lives on `Application`, registered before `run`, but the
+    // view and window size it needs to reopen with only exist once `run`'s
+    // closure has executed — so they're stashed here the moment they're
+    // created, and reused rather than building a fresh view, so a
+    // half-typed commit or an open dialog survives the round trip.
+    let reopen_state: Rc<RefCell<Option<(Entity<GitSparkApp>, f32, f32)>>> =
+        Rc::new(RefCell::new(None));
+    {
+        let reopen_state = reopen_state.clone();
+        app.on_reopen(move |cx| {
+            if !cx.windows().is_empty() {
+                return;
+            }
+            let Some((app_view, initial_width, initial_height)) = reopen_state.borrow().clone()
+            else {
+                return;
+            };
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                        None,
+                        size(px(initial_width), px(initial_height)),
+                        cx,
+                    ))),
+                    titlebar: Some(platform_titlebar_options()),
+                    window_min_size: Some(size(px(WINDOW_MIN_WIDTH), px(WINDOW_MIN_HEIGHT))),
+                    ..Default::default()
+                },
+                move |_window, _cx| app_view.clone(),
+            )
+            .ok();
+        });
+    }
+
     app.run(move |cx| {
         gpui_component::init(cx);
 
@@ -656,6 +701,8 @@ fn main() {
                 None,
             )
         };
+
+        *reopen_state.borrow_mut() = Some((app_view.clone(), initial_width, initial_height));
 
         cx.open_window(
             WindowOptions {
