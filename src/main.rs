@@ -589,29 +589,58 @@ fn main() {
     // at all and the only way back in was Force Quit.
     //
     // `on_reopen` lives on `Application`, registered before `run`, but the
-    // view and window size it needs to reopen with only exist once `run`'s
-    // closure has executed — so they're stashed here the moment they're
-    // created, and reused rather than building a fresh view, so a
-    // half-typed commit or an open dialog survives the round trip.
-    let reopen_state: Rc<RefCell<Option<(Entity<GitSparkApp>, f32, f32)>>> =
-        Rc::new(RefCell::new(None));
+    // view it needs to reopen with only exists once `run`'s closure has
+    // executed — so it's stashed here the moment it's created, and reused
+    // rather than building a fresh one, so a half-typed commit or an open
+    // dialog survives the round trip.
+    let reopen_state: Rc<RefCell<Option<Entity<GitSparkApp>>>> = Rc::new(RefCell::new(None));
     {
         let reopen_state = reopen_state.clone();
         app.on_reopen(move |cx| {
             if !cx.windows().is_empty() {
                 return;
             }
-            let Some((app_view, initial_width, initial_height)) = reopen_state.borrow().clone()
-            else {
+            let Some(app_view) = reopen_state.borrow().clone() else {
                 return;
             };
+
+            // Centering on the primary display put the window on the wrong
+            // screen for anyone running two or more — read back wherever the
+            // window last actually was instead, the same saved position and
+            // display a full relaunch already restores correctly.
+            let ws = app_view.read(cx).settings.window_size.clone();
+            let window_bounds = if ws.has_position {
+                let display_id = ws.display_id.and_then(|saved_id| {
+                    cx.displays().into_iter().find_map(|d| {
+                        let id: u32 = d.id().into();
+                        (id == saved_id).then_some(d.id())
+                    })
+                });
+                (
+                    WindowBounds::Windowed(Bounds::new(
+                        point(px(ws.x), px(ws.y)),
+                        size(
+                            px(ws.width.max(WINDOW_MIN_WIDTH)),
+                            px(ws.height.max(WINDOW_MIN_HEIGHT)),
+                        ),
+                    )),
+                    display_id,
+                )
+            } else {
+                (
+                    WindowBounds::Windowed(Bounds::centered(
+                        None,
+                        size(px(DEFAULT_WINDOW_WIDTH), px(DEFAULT_WINDOW_HEIGHT)),
+                        cx,
+                    )),
+                    None,
+                )
+            };
+
             cx.open_window(
                 WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                        None,
-                        size(px(initial_width), px(initial_height)),
-                        cx,
-                    ))),
+                    window_bounds: Some(window_bounds.0),
+                    display_id: window_bounds.1,
                     titlebar: Some(platform_titlebar_options()),
                     window_min_size: Some(size(px(WINDOW_MIN_WIDTH), px(WINDOW_MIN_HEIGHT))),
                     ..Default::default()
@@ -702,7 +731,7 @@ fn main() {
             )
         };
 
-        *reopen_state.borrow_mut() = Some((app_view.clone(), initial_width, initial_height));
+        *reopen_state.borrow_mut() = Some(app_view.clone());
 
         cx.open_window(
             WindowOptions {
