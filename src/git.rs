@@ -2617,6 +2617,15 @@ fn trace_git() -> bool {
 fn run_git_command(repo_path: &Path, args: &[&str]) -> Result<Output> {
     let started = trace_git().then(std::time::Instant::now);
     let mut command = Command::new("git");
+    // Every read (status, log, diff, branch listing...) otherwise opportunistically
+    // refreshes and rewrites the on-disk index, which briefly takes index.lock. The
+    // watcher runs one of these within ~400ms of almost any change in the repo,
+    // including a commit the user just ran themselves in a terminal — the two would
+    // race for the lock, and whichever lost failed with "Unable to create
+    // '.git/index.lock': File exists". This flag skips that optional refresh; the
+    // writes GitSpark itself performs (commit, add, checkout...) still take the
+    // locks they actually need, unaffected.
+    command.arg("--no-optional-locks");
     command.args(args).current_dir(repo_path);
 
     #[cfg(windows)]
