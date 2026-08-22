@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-23
+
+### Fixed
+
+- **Multi-monitor window restore was broken.** Closing the app on a secondary
+  display and clicking the Dock icon reopened the window back on the primary
+  display instead. Window state (size, position, display) is now properly
+  restored through the same channel the initial launch uses.
+
+- **Commit by Cmd+Enter (Ctrl+Enter) failed on Linux CI and would fail on
+  real Linux and Windows users.** The test sent a literal `"cmd-enter"`
+  keystroke, which GPUI resolved to the Cmd/Super modifier specifically, not
+  the cross-platform "secondary" modifier the app checks. Added the correct
+  keystroke string for the fix; also found and repaired two real race
+  conditions in the stash E2E tests (clicking dialogs before waiting for
+  them to open).
+
+- **Config reads crashed on Windows.** Checking whether a git config key was
+  set (like `pull.rebase`, or a user identity field) threw a spurious hard
+  error on Windows instead of treating the missing key as absent. The code
+  pattern that detects a missing key matches `std::process::ExitStatus`'s
+  string representation, which reads `"exit status: 1"` on Unix but `"exit
+  code: 1"` on Windows; only the Unix wording was matched. Real Windows users
+  would have hit this anywhere the app checks an unset config key.
+
+- **File content assertions failed on Windows.** Four tests write a file with
+  an explicit newline, clone or check it out, and compare the bytes back —
+  Git for Windows defaults `core.autocrlf` to true (pinned false on
+  Linux/macOS builds), silently converting `\n` to `\r\n` on checkout. The
+  bytes would never match on Windows. Git for Windows now has autocrlf
+  disabled in CI to match the behavior everywhere else.
+
 ## [0.8.1] - 2026-08-22
 
 ### Fixed
