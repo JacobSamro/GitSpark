@@ -2902,9 +2902,27 @@ impl GitSparkApp {
                 }
                 operation
             });
-        let next_selected_change = snapshot.changes.first().map(|change| change.path.clone());
+        // Keep the file the user is looking at selected across a refresh
+        // that leaves it in the list — jumping to the first change on every
+        // watcher tick snapped the diff view back to the top of an unrelated
+        // background change.
+        let next_selected_change = self
+            .selection
+            .selected_change
+            .clone()
+            .filter(|path| snapshot.changes.iter().any(|change| &change.path == path))
+            .or_else(|| snapshot.changes.first().map(|change| change.path.clone()));
         if self.selection.selected_change.as_ref() != next_selected_change.as_ref() {
+            eprintln!(
+                "[refresh] changes selection reset: {:?} -> {:?}",
+                self.selection.selected_change, next_selected_change
+            );
             self.selection.selected_diff_lines.clear();
+        } else {
+            eprintln!(
+                "[refresh] changes selection preserved: {:?}",
+                next_selected_change
+            );
         }
         self.selection.selected_change = next_selected_change;
         self.repo.branch_target = current_branch;
@@ -2931,8 +2949,6 @@ impl GitSparkApp {
         self.repo.worktrees = worktrees;
         self.reconcile_commit_inclusions(&changed_paths);
 
-        self.selection.commit_diffs = None;
-
         if let Some(comparison) = self.repo.comparison.as_ref() {
             self.selection.selected_commit =
                 comparison.commits.first().map(|commit| commit.oid.clone());
@@ -2942,15 +2958,34 @@ impl GitSparkApp {
         } else {
             let next_selected_commit = self.repo.snapshot.as_ref().and_then(|repo| {
                 previous_commit
+                    .clone()
                     .filter(|oid| repo.history.iter().any(|commit| commit.oid == *oid))
                     .or_else(|| repo.history.first().map(|commit| commit.oid.clone()))
             });
 
             self.selection.selected_commit = next_selected_commit.clone();
-            self.selection.selected_commit_file = None;
 
-            if let Some(oid) = next_selected_commit {
-                self.load_commit_diff(oid);
+            // A commit's oid is immutable, so if the same one is still
+            // selected after this refresh its diff cannot have changed.
+            // Reloading it anyway reset the selected file back to the first
+            // one in the commit on every watcher tick, and blanked the diff
+            // pane while the reload was in flight — a flicker with no real
+            // change behind it.
+            if next_selected_commit != previous_commit {
+                eprintln!(
+                    "[refresh] commit selection reset: {:?} -> {:?} (reloading diff)",
+                    previous_commit, next_selected_commit
+                );
+                self.selection.selected_commit_file = None;
+                self.selection.commit_diffs = None;
+                if let Some(oid) = next_selected_commit {
+                    self.load_commit_diff(oid);
+                }
+            } else {
+                eprintln!(
+                    "[refresh] commit selection preserved, diff not reloaded: {:?}",
+                    next_selected_commit
+                );
             }
         }
 
@@ -3356,8 +3391,10 @@ fn watch_repository(path: PathBuf, token: u64, generation: Arc<AtomicU64>, tx: N
             continue;
         };
         if last_fingerprint.as_ref() == Some(&current_fingerprint) {
+            eprintln!("[watch] fs event fired but fingerprint unchanged; skipping refresh");
             continue;
         }
+        eprintln!("[watch] fingerprint changed; refreshing {}", path.display());
         last_fingerprint = Some(current_fingerprint);
 
         let res = git.refresh_repo(&path).map_err(|e| e.to_string());
@@ -3408,8 +3445,10 @@ fn poll_repository(
             continue;
         };
         if last_fingerprint.as_ref() == Some(&current_fingerprint) {
+            eprintln!("[poll] fingerprint unchanged; skipping refresh");
             continue;
         }
+        eprintln!("[poll] fingerprint changed; refreshing {}", path.display());
         last_fingerprint = Some(current_fingerprint);
 
         let res = git.refresh_repo(&path).map_err(|e| e.to_string());
