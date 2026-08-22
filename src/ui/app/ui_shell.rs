@@ -572,7 +572,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.messages.error_message =
-                    format!("Failed to open repository in external editor: {err}");
+                    format!("Failed to open repository in external editor: {err:#}");
             }
         }
         cx.notify();
@@ -603,7 +603,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.messages.error_message =
-                    format!("Failed to open repository in Terminal: {err}");
+                    format!("Failed to open repository in Terminal: {err:#}");
             }
         }
         cx.notify();
@@ -623,7 +623,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.messages.error_message =
-                    format!("Failed to reveal repository in Finder: {err}");
+                    format!("Failed to reveal repository in Finder: {err:#}");
             }
         }
         cx.notify();
@@ -644,7 +644,7 @@ impl GitSparkApp {
                 }
                 Err(err) => {
                     self.messages.error_message =
-                        format!("Failed to open repository on GitHub: {err}");
+                        format!("Failed to open repository on GitHub: {err:#}");
                 }
             },
             Ok(None) => {
@@ -653,7 +653,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.messages.error_message =
-                    format!("Failed to resolve repository GitHub URL: {err}");
+                    format!("Failed to resolve repository GitHub URL: {err:#}");
             }
         }
         cx.notify();
@@ -813,7 +813,7 @@ impl GitSparkApp {
             }
             Err(err) => {
                 self.messages.error_message =
-                    format!("Could not compare with '{target_branch}': {err}");
+                    format!("Could not compare with '{target_branch}': {err:#}");
             }
         }
         cx.notify();
@@ -866,7 +866,7 @@ impl GitSparkApp {
                 }
                 Err(err) => {
                     self.messages.error_message = format!(
-                        "Failed to open compare for branch '{branch_name}' on GitHub: {err}"
+                        "Failed to open compare for branch '{branch_name}' on GitHub: {err:#}"
                     );
                 }
             },
@@ -875,7 +875,8 @@ impl GitSparkApp {
                     "This repository does not have a GitHub remote URL.".to_string();
             }
             Err(err) => {
-                self.messages.error_message = format!("Could not build GitHub compare URL: {err}");
+                self.messages.error_message =
+                    format!("Could not build GitHub compare URL: {err:#}");
             }
         }
         cx.notify();
