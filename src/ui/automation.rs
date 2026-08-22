@@ -555,6 +555,8 @@ struct AutomationNode {
     visible: bool,
     enabled: bool,
     selected: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    unpushed: bool,
     #[serde(skip_serializing)]
     action: Option<AutomationNodeAction>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -2320,14 +2322,20 @@ impl GitSparkApp {
                     Some("History"),
                     None,
                 )
-                .children(
+                .children({
+                    let ahead_count = if self.repo.comparison.is_none() {
+                        snapshot.repo.ahead
+                    } else {
+                        0
+                    };
                     self.repo
                         .comparison
                         .as_ref()
                         .map(|comparison| comparison.commits.as_slice())
                         .unwrap_or(snapshot.history.as_slice())
                         .iter()
-                        .map(|commit| {
+                        .enumerate()
+                        .map(|(ix, commit)| {
                             automation_node(
                                 format!("commit-{}", stable_test_slug(&commit.short_oid)),
                                 AutomationRole::ListItem,
@@ -2339,9 +2347,10 @@ impl GitSparkApp {
                                 self.selection.selected_commit.as_deref()
                                     == Some(commit.oid.as_str()),
                             )
+                            .unpushed(ix < ahead_count)
                         })
-                        .collect(),
-                ),
+                        .collect()
+                }),
             );
 
             let history_actions = self
@@ -3514,6 +3523,11 @@ impl AutomationNode {
         self
     }
 
+    fn unpushed(mut self, unpushed: bool) -> Self {
+        self.unpushed = unpushed;
+        self
+    }
+
     fn visible(mut self, visible: bool) -> Self {
         self.visible = visible;
         self
@@ -3535,6 +3549,7 @@ fn automation_node(
         visible: true,
         enabled: true,
         selected: false,
+        unpushed: false,
         action,
         children: Vec::new(),
     }

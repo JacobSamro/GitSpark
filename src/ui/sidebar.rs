@@ -339,6 +339,16 @@ pub fn render_sidebar_interactive(
             } else {
                 let history_snapshot: Vec<CommitInfo> = history.to_vec();
                 let sel = selected_commit.clone();
+                // History during a branch comparison shows the OTHER branch's
+                // commits, not this one's — "ahead of origin" doesn't apply to
+                // them, so the arrow is real-history only. The list is newest
+                // first, same order `ahead` counts from, so the first N rows
+                // are exactly the commits git hasn't pushed yet.
+                let ahead_count = if app.repo.comparison.is_none() {
+                    snapshot.map(|s| s.repo.ahead).unwrap_or(0)
+                } else {
+                    0
+                };
                 div()
                     .id("history-scroll")
                     .flex_1()
@@ -353,10 +363,11 @@ pub fn render_sidebar_interactive(
                                         let commit = &history_snapshot[ix];
                                         let is_selected =
                                             sel.as_deref() == Some(commit.oid.as_str());
+                                        let is_unpushed = ix < ahead_count;
                                         let oid = commit.oid.clone();
                                         let click_view = view.clone();
                                         history_context_menu::bind_history_context_click(
-                                            render_history_row(commit, is_selected)
+                                            render_history_row(commit, is_selected, is_unpushed)
                                                 .id(SharedString::from(format!(
                                                     "commit-{}",
                                                     commit.oid
@@ -1110,7 +1121,7 @@ fn kbd_badge(key: &str) -> Div {
 /// semibold summary, and a description line 3px below it. The `.info` block
 /// carries a -4px top margin, which is what optically centres two lines of
 /// different weights inside a 50px row.
-pub fn render_history_row(commit: &CommitInfo, selected: bool) -> Div {
+pub fn render_history_row(commit: &CommitInfo, selected: bool, is_unpushed: bool) -> Div {
     // GitHub Desktop shows the blue only while the list has focus and a
     // neutral grey otherwise. This app does not track list focus, and the
     // blue is the state a user actually sees while working in the history,
@@ -1178,6 +1189,22 @@ pub fn render_history_row(commit: &CommitInfo, selected: bool) -> Div {
         .items_center()
         .justify_end()
         .gap(z(5.0));
+
+    // Not yet on the remote. No badge shape — just the arrow, muted so it
+    // doesn't compete with tags or HEAD, which are actual labels rather than
+    // a transient state that clears itself the moment the commit is pushed.
+    if is_unpushed {
+        let arrow_color = if selected {
+            theme::list_selected_active_fg()
+        } else {
+            theme::text_muted()
+        };
+        indicators = indicators.child(
+            Icon::new(IconName::ArrowUp)
+                .size(z(12.0))
+                .text_color(arrow_color),
+        );
+    }
 
     for tag in &commit.tags {
         indicators = indicators.child(render_commit_badge(
