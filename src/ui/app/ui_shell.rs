@@ -473,6 +473,16 @@ impl GitSparkApp {
         self.show_restore_stash_dialog(cx);
     }
 
+    /// Cmd+R / Ctrl+R. Re-reads the working tree and history from disk —
+    /// the same thing the background watcher does on a change it notices
+    /// itself, just on demand for whatever it hasn't noticed yet (a change
+    /// on a network mount, a `git` command run from somewhere without a
+    /// filesystem watcher, or plain impatience). Local only: no network
+    /// call, so it works with no remote configured.
+    pub fn menu_reload(&mut self, cx: &mut Context<Self>) {
+        self.refresh_repo(cx);
+    }
+
     pub fn menu_fetch(&mut self, cx: &mut Context<Self>) {
         if !self.menu_can_fetch() {
             self.messages.error_message =

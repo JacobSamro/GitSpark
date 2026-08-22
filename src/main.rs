@@ -33,6 +33,7 @@ actions!(
         MenuShowBranchesList,
         MenuGoToSummary,
         MenuShowStashedChanges,
+        MenuReload,
         MenuFetch,
         MenuPull,
         MenuPush,
@@ -165,6 +166,12 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         let view = view.clone();
         cx.on_action(move |_: &MenuShowStashedChanges, cx| {
             let _ = view.update(cx, |app, cx| app.menu_show_stashed_changes(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuReload, cx| {
+            let _ = view.update(cx, |app, cx| app.menu_reload(cx));
         });
     }
     {
@@ -341,6 +348,11 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         KeyBinding::new("cmd-b", MenuShowBranchesList, None),
         KeyBinding::new("cmd-g", MenuGoToSummary, None),
         KeyBinding::new("ctrl-h", MenuShowStashedChanges, None),
+        // "cmd-" resolves to the platform key (Cmd on macOS, Super/Win
+        // elsewhere) not Ctrl, so both are bound explicitly rather than
+        // assuming one covers the other.
+        KeyBinding::new("cmd-r", MenuReload, None),
+        KeyBinding::new("ctrl-r", MenuReload, None),
         KeyBinding::new("cmd-p", MenuPush, None),
         KeyBinding::new("cmd-n", MenuNewRepository, None),
         KeyBinding::new("cmd-o", MenuOpenRepository, None),
@@ -447,6 +459,8 @@ pub(crate) fn install_native_menus(cx: &mut App, availability: MenuAvailability)
         Menu {
             name: "Repository".into(),
             items: vec![
+                menu_action("Reload", availability.has_repository, MenuReload),
+                MenuItem::separator(),
                 menu_action("Push", availability.push, MenuPush),
                 menu_action("Pull", availability.pull, MenuPull),
                 menu_action("Fetch", availability.fetch, MenuFetch),
