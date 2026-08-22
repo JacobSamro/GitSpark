@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-22
+
+### Fixed
+
+- **Closing the window and clicking the Dock icon did nothing.** Closing the
+  last window correctly left the app running, same as any other Mac app, but
+  clicking the Dock icon to bring it back did nothing — the only way in was
+  Force Quit and relaunch. GPUI installs the reopen delegate method
+  regardless of whether the app hooks it, which replaces macOS's own default
+  handling; with no handler registered, the click had nothing to do. A
+  window now reopens, reusing the existing view, so a half-typed commit or
+  an open tab survives the round trip.
+
+- **Every failure toast hid the actual git error.** `Pull origin failed:
+  failed to pull from 'origin'` — and 48 messages just like it — showed only
+  a context wrapper repeating itself, never git's own reason. The real
+  cause was already attached the whole time through `anyhow`'s context
+  chain; the code printing it was just dropping everything but the
+  outermost message. Every failure toast in the app now shows the full
+  chain, so a rejected push or a failed pull says why.
+
 ## [0.8.0] - 2026-08-22
 
 Push and pull now show you something is happening, history tells you what
