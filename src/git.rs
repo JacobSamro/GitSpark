@@ -3724,7 +3724,13 @@ mod tests {
     #[test]
     fn pulls_a_fast_forward_from_origin() {
         let remote = temp_repo("pull-ff-remote");
-        run_git(&remote, &["init", "--bare"]);
+        // Pin the bare remote's default branch explicitly: `clone_of` below
+        // checks out whatever HEAD points to, and that symref falls back to
+        // the host's `init.defaultBranch` (still "master" on a factory-default
+        // git) whenever it isn't set here — confirmed as the reason this test
+        // passed on macOS (global `init.defaultBranch = main`) but failed on a
+        // clean Linux CI runner.
+        run_git(&remote, &["init", "--bare", "-b", "main"]);
 
         let repo = temp_repo("pull-ff-repo");
         fs::write(repo.join("a.txt"), "one\n").unwrap();
@@ -3761,7 +3767,8 @@ mod tests {
     #[test]
     fn pull_reports_the_real_git_reason_when_history_has_diverged() {
         let remote = temp_repo("pull-diverged-remote");
-        run_git(&remote, &["init", "--bare"]);
+        // See the identical comment in `pulls_a_fast_forward_from_origin`.
+        run_git(&remote, &["init", "--bare", "-b", "main"]);
 
         let repo = temp_repo("pull-diverged-repo");
         fs::write(repo.join("a.txt"), "one\n").unwrap();
@@ -3814,7 +3821,8 @@ mod tests {
     #[test]
     fn push_reports_the_real_git_reason_when_rejected() {
         let remote = temp_repo("push-rejected-remote");
-        run_git(&remote, &["init", "--bare"]);
+        // See the identical comment in `pulls_a_fast_forward_from_origin`.
+        run_git(&remote, &["init", "--bare", "-b", "main"]);
 
         let repo = temp_repo("push-rejected-repo");
         fs::write(repo.join("a.txt"), "one\n").unwrap();

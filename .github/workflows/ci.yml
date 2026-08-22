@@ -101,6 +101,17 @@ jobs:
       - name: Check all targets
         run: cargo check --all-targets --locked
 
+      # A fresh CI runner has no git identity at all, unlike every real
+      # dev machine (git refuses to let you commit without one, so anyone
+      # who has ever committed already has this set). Without it,
+      # `create_repository_with_options`'s initial commit — which has no
+      # opportunity to set a local identity first, since it creates the
+      # repo itself — fails with "Author identity unknown".
+      - name: Configure a git identity for the test suite
+        run: |
+          git config --global user.name "GitSpark CI"
+          git config --global user.email "ci@gitspark.local"
+
       - name: Test all targets
         run: cargo test --all-targets --locked
 
@@ -296,6 +307,14 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24
+
+      # See the identical step in the `rust` job: repository-create-clone.mjs
+      # exercises the "create repository with initial commit" path, which
+      # needs a git identity that a fresh runner doesn't have.
+      - name: Configure a git identity for the E2E suite
+        run: |
+          git config --global user.name "GitSpark CI"
+          git config --global user.email "ci@gitspark.local"
 
       - name: Build native app for E2E
         run: cargo build --locked
