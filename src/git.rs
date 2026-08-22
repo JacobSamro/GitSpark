@@ -4724,6 +4724,18 @@ fn format_relative_time(timestamp: SystemTime) -> String {
     }
 }
 
+fn is_ambiguous_config_or_ref_exit_1(message: &str) -> bool {
+    // `std::process::ExitStatus`'s `Display` impl words this differently per
+    // platform: "exit status: 1" on Unix, "exit code: 1" on Windows. Matching
+    // only the Unix wording meant every "key not found"/"ref not found" this
+    // falls back to (git prints nothing to stdout or stderr for either) was
+    // never recognized on Windows — read_local_identity's `pull.rebase` read
+    // panicked in CI there instead of treating the missing key as absent.
+    message.contains("exit status: 1")
+        || message.contains("returned non-zero exit status: 1")
+        || message.contains("exit code: 1")
+}
+
 fn is_config_missing(error: &anyhow::Error) -> bool {
     let message = error
         .chain()
@@ -4731,8 +4743,7 @@ fn is_config_missing(error: &anyhow::Error) -> bool {
         .collect::<Vec<_>>()
         .join("\n")
         .to_ascii_lowercase();
-    message.contains("exit status: 1")
-        || message.contains("returned non-zero exit status: 1")
+    is_ambiguous_config_or_ref_exit_1(&message)
         || message.contains("unable to read config")
         || message.contains("no such section")
         || message.contains("no such key")
@@ -4741,8 +4752,8 @@ fn is_config_missing(error: &anyhow::Error) -> bool {
 }
 
 fn is_ref_missing(error: &anyhow::Error) -> bool {
-    let message = error.to_string();
-    message.contains("exit status: 1") || message.contains("returned non-zero exit status: 1")
+    let message = error.to_string().to_ascii_lowercase();
+    is_ambiguous_config_or_ref_exit_1(&message)
 }
 
 fn is_path_not_tracked(error: &anyhow::Error) -> bool {

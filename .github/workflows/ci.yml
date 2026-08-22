@@ -107,10 +107,17 @@ jobs:
       # `create_repository_with_options`'s initial commit — which has no
       # opportunity to set a local identity first, since it creates the
       # repo itself — fails with "Author identity unknown".
+      #
+      # Git for Windows also ships with core.autocrlf=true by default, unlike
+      # Linux/macOS — several tests write a file with an explicit "\n", clone
+      # or check it out, and compare the checked-out bytes back against what
+      # they wrote; autocrlf silently turned that into "\r\n" on Windows only.
+      # Pinning it off keeps working-tree bytes identical across platforms.
       - name: Configure a git identity for the test suite
         run: |
           git config --global user.name "GitSpark CI"
           git config --global user.email "ci@gitspark.local"
+          git config --global core.autocrlf false
 
       - name: Test all targets
         run: cargo test --all-targets --locked
