@@ -24,6 +24,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       RUSTC_WRAPPER: sccache
+      # Without this, sccache has no persistent backend at all — it falls
+      # back to the runner's local disk, which is thrown away with the VM at
+      # the end of the job. This is what actually makes it survive between
+      # runs: verified against a real run afterward, not assumed from the
+      # docs — `sccache --show-stats` reported a local-disk cache location
+      # and a near-zero hit rate the whole time this was missing.
+      SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: 0
     strategy:
       fail-fast: false
@@ -97,6 +104,110 @@ jobs:
       - name: Test all targets
         run: cargo test --all-targets --locked
 
+  # release.yml only ever triggers on a tag push, and GitHub Actions only
+  # shares a cache with the same branch or the repository's default branch —
+  # a tag is neither, so one release's cache was invisible to the next one,
+  # forever. Every release rebuilt GPUI's entire dependency graph from
+  # nothing: confirmed against a real run, not assumed — v0.7.0's cache save
+  # reported success and v0.8.0's restore still logged "Cache not found" for
+  # both the exact key and the restore-key prefix.
+  #
+  # This job populates that same cache — same key format, same targets — but
+  # on master, the one ref a tag push can actually inherit from. It has to be
+  # a real `cargo build --release`, not the cheaper `cargo check`: tried
+  # that first, and confirmed by hand that it doesn't work — `cargo check`
+  # only emits metadata for dependencies, not the compiled rlibs a later
+  # `cargo build` can actually link against, so a build straight after a
+  # from-scratch check still recompiled everything. A build straight after a
+  # matching build, by contrast, finished in about a second.
+  warm-release-cache:
+    name: Warm release cache ${{ matrix.label }}
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    runs-on: ${{ matrix.os }}
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: 0
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - label: macos-universal
+            os: macos-15
+            target: universal2-apple-darwin
+          - label: windows-x64
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libclang-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libwayland-dev \
+            libasound2-dev \
+            libgtk-3-dev \
+            libssl-dev \
+            pkg-config
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'x86_64-apple-darwin,aarch64-apple-darwin' || matrix.target }}
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      # Same key format as release.yml's build job, deliberately — this is
+      # what lets that job's restore-keys fall back to what gets saved here.
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.target }}-target-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-target-
+
+      - name: Warm the release build
+        if: runner.os != 'macOS'
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Warm the release build (both macOS arches)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cargo build --release --locked --target x86_64-apple-darwin
+          cargo build --release --locked --target aarch64-apple-darwin
+
+      - name: Show sccache stats
+        if: always()
+        shell: bash
+        run: sccache --show-stats || true
+
   e2e-syntax:
     name: E2E syntax
     runs-on: ubuntu-24.04
@@ -123,6 +234,12 @@ jobs:
     name: Native E2E linux-x64
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      # sccache was installed here already but never wired up — nothing set
+      # it as the compiler wrapper, so it sat idle the whole time.
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: 0
 
     steps:
       - name: Check out source

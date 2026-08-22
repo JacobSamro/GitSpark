@@ -54,7 +54,18 @@ jobs:
       # sccache caches compiled crates ACROSS releases; the cargo caches above
       # only avoid re-downloading and re-linking. Incremental is off because it
       # is useless for a clean release build and only bloats the cache.
+      #
+      # SCCACHE_GHA_ENABLED was missing for every release through v0.8.0: with
+      # no backend configured, sccache fell back to the runner's local disk,
+      # which dies with the VM — the comment above described the intent, not
+      # what was actually happening. A tag's own cache scope is still
+      # invisible to every other tag regardless (GitHub Actions only shares a
+      # cache with the same branch or the default branch, and a tag is
+      # neither), which is what the ci.yml warm-release-cache job exists to
+      # work around — it populates this exact cache under this exact key on
+      # master, the one ref a tag push can actually inherit from.
       RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
       CARGO_INCREMENTAL: 0
     permissions:
       contents: read
