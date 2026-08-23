@@ -540,7 +540,7 @@ impl GitSparkApp {
         let tx = self.event_tx.clone();
         let git = GitClient::new();
         thread::spawn(move || {
-            let res = git.open_repo(path).map_err(|e| e.to_string());
+            let res = git.open_repo(path).map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::RepoLoaded(res));
         });
     }
@@ -684,7 +684,7 @@ impl GitSparkApp {
         thread::spawn(move || {
             let res = git
                 .create_repository_with_options(&parent_path, options)
-                .map_err(|e| e.to_string());
+                .map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::RepoOperationCompleted(
                 res,
                 "Create repository".to_string(),
@@ -713,7 +713,7 @@ impl GitSparkApp {
         thread::spawn(move || {
             let res = git
                 .clone_repository_into(&url, &parent_path, &local_name)
-                .map_err(|e| e.to_string());
+                .map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::RepoOperationCompleted(
                 res,
                 "Clone repository".to_string(),
@@ -754,7 +754,7 @@ impl GitSparkApp {
         let git = GitClient::new();
         let event_path = path.clone();
         thread::spawn(move || {
-            let res = git.refresh_repo(&path).map_err(|e| e.to_string());
+            let res = git.refresh_repo(&path).map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::RepoRefreshed(event_path, res, reason));
         });
         cx.notify();
@@ -849,7 +849,7 @@ impl GitSparkApp {
                 NetworkAction::Push | NetworkAction::PublishBranch => git.push_origin(&path),
                 NetworkAction::PublishRepository => unreachable!("handled before background run"),
             }
-            .map_err(|e| e.to_string());
+            .map_err(|e| format!("{e:#}"));
 
             let _ = tx.send(AppEvent::NetworkActionCompleted(
                 res,
@@ -913,7 +913,7 @@ impl GitSparkApp {
         thread::spawn(move || {
             let res = git
                 .publish_repository(&path, &name, &description, private)
-                .map_err(|e| e.to_string());
+                .map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::NetworkActionCompleted(
                 res,
                 "Publish repository".to_string(),
@@ -955,7 +955,9 @@ impl GitSparkApp {
         let tx = self.event_tx.clone();
         let git = GitClient::new();
         thread::spawn(move || {
-            let res = git.switch_branch(&path, &target).map_err(|e| e.to_string());
+            let res = git
+                .switch_branch(&path, &target)
+                .map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::BranchSwitched(res, target));
         });
         cx.notify();
@@ -986,7 +988,7 @@ impl GitSparkApp {
             let res = git
                 .stash_all(&path)
                 .and_then(|_| git.switch_branch(&path, &target))
-                .map_err(|e| e.to_string());
+                .map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::BranchSwitched(res, target));
         });
         cx.notify();
@@ -1014,7 +1016,9 @@ impl GitSparkApp {
         let tx = self.event_tx.clone();
         let git = GitClient::new();
         thread::spawn(move || {
-            let res = git.switch_branch(&path, &target).map_err(|e| e.to_string());
+            let res = git
+                .switch_branch(&path, &target)
+                .map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::BranchSwitched(res, target));
         });
         cx.notify();
@@ -1062,7 +1066,7 @@ impl GitSparkApp {
         let tx = self.event_tx.clone();
         let git = GitClient::new();
         thread::spawn(move || {
-            let res = git.stash_all(&path).map_err(|e| e.to_string());
+            let res = git.stash_all(&path).map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::NetworkActionCompleted(
                 res,
                 "Stashed changes".to_string(),
@@ -1089,7 +1093,7 @@ impl GitSparkApp {
         let tx = self.event_tx.clone();
         let git = GitClient::new();
         thread::spawn(move || {
-            let res = git.stash_pop(&path).map_err(|e| e.to_string());
+            let res = git.stash_pop(&path).map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::NetworkActionCompleted(
                 res,
                 "Restored stash".to_string(),
@@ -1137,7 +1141,7 @@ impl GitSparkApp {
         let tx = self.event_tx.clone();
         let git = GitClient::new();
         thread::spawn(move || {
-            let res = git.stash_drop(&path).map_err(|e| e.to_string());
+            let res = git.stash_drop(&path).map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::NetworkActionCompleted(
                 res,
                 "Discarded stash".to_string(),
@@ -1220,7 +1224,7 @@ impl GitSparkApp {
                 Some(oid) => git.create_branch_from_commit(&path, &name, &oid),
                 None => git.create_branch(&path, &name),
             }
-            .map_err(|e| e.to_string());
+            .map_err(|e| format!("{e:#}"));
             tx.send(AppEvent::BranchSwitched(res, name));
         });
         self.repo.new_branch_name.clear();
@@ -1272,7 +1276,7 @@ impl GitSparkApp {
         thread::spawn(move || {
             let res = git
                 .rename_branch(&path, &old, &new_name)
-                .map_err(|e| e.to_string());
+                .map_err(|e| format!("{e:#}"));
             tx.send(AppEvent::NetworkActionCompleted(
                 res,
                 format!("Renamed branch to '{new_name_for_event}'"),
@@ -1309,7 +1313,7 @@ impl GitSparkApp {
         thread::spawn(move || {
             let res = git
                 .create_tag(&path, &target_oid, &tag_name)
-                .map_err(|e| e.to_string());
+                .map_err(|e| format!("{e:#}"));
             tx.send(AppEvent::NetworkActionCompleted(
                 res,
                 format!("Created tag '{tag_name_for_event}'"),
@@ -1341,7 +1345,9 @@ impl GitSparkApp {
         let tag_name_for_event = tag_name.clone();
         thread::spawn(move || {
             let git = GitClient::new();
-            let res = git.delete_tag(&path, &tag_name).map_err(|e| e.to_string());
+            let res = git
+                .delete_tag(&path, &tag_name)
+                .map_err(|e| format!("{e:#}"));
             tx.send(AppEvent::NetworkActionCompleted(
                 res,
                 format!("Deleted tag '{tag_name_for_event}'"),
@@ -1368,7 +1374,9 @@ impl GitSparkApp {
         let tx = self.event_tx.clone();
         let git = GitClient::new();
         thread::spawn(move || {
-            let res = git.merge_branch(&path, &target).map_err(|e| e.to_string());
+            let res = git
+                .merge_branch(&path, &target)
+                .map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::BranchMerged(res, target));
         });
         cx.notify();
@@ -1402,7 +1410,7 @@ impl GitSparkApp {
         thread::spawn(move || {
             let res = git
                 .update_current_branch_from(&path, &default_branch)
-                .map_err(|e| e.to_string());
+                .map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::RepoOperationCompleted(
                 res,
                 "Update from default branch".to_string(),
@@ -1445,7 +1453,7 @@ impl GitSparkApp {
         thread::spawn(move || {
             let res = git
                 .rebase_current_branch_onto(&path, &target)
-                .map_err(|e| e.to_string());
+                .map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::RepoOperationCompleted(
                 res,
                 "Rebase branch".to_string(),
@@ -1481,7 +1489,7 @@ impl GitSparkApp {
                 GitOperationKind::Merge => git.continue_merge(&path),
                 GitOperationKind::Rebase => git.continue_rebase(&path),
             }
-            .map_err(|err| err.to_string());
+            .map_err(|err| format!("{err:#}"));
             let _ = tx.send(AppEvent::GitOperationControlCompleted(res, action_label));
         });
         cx.notify();
@@ -1509,7 +1517,7 @@ impl GitSparkApp {
         let tx = self.event_tx.clone();
         thread::spawn(move || {
             let git = GitClient::new();
-            let res = git.skip_rebase(&path).map_err(|err| err.to_string());
+            let res = git.skip_rebase(&path).map_err(|err| format!("{err:#}"));
             let _ = tx.send(AppEvent::GitOperationControlCompleted(
                 res,
                 "Skip rebase".to_string(),
@@ -1544,7 +1552,7 @@ impl GitSparkApp {
                 GitOperationKind::Merge => git.abort_merge(&path),
                 GitOperationKind::Rebase => git.abort_rebase(&path),
             }
-            .map_err(|err| err.to_string());
+            .map_err(|err| format!("{err:#}"));
             let _ = tx.send(AppEvent::GitOperationControlCompleted(res, action_label));
         });
         cx.notify();
@@ -1647,7 +1655,7 @@ impl GitSparkApp {
         thread::spawn(move || {
             let res = if let Some(diff) = partial_line_diff {
                 git.head_file_text(&path, &diff.path)
-                    .map_err(|e| e.to_string())
+                    .map_err(|e| format!("{e:#}"))
                     .and_then(|base_text| {
                         crate::ui::diff_line_discard::apply_selected_lines_to_base_text(
                             &diff.path,
@@ -1664,13 +1672,14 @@ impl GitSparkApp {
                             &selected_content,
                             &message,
                         )
-                        .map_err(|e| e.to_string())
+                        .map_err(|e| format!("{e:#}"))
                     })
             } else if let Some(paths) = included_paths {
                 git.commit_paths(&path, &paths, &message)
-                    .map_err(|e| e.to_string())
+                    .map_err(|e| format!("{e:#}"))
             } else {
-                git.commit_all(&path, &message).map_err(|e| e.to_string())
+                git.commit_all(&path, &message)
+                    .map_err(|e| format!("{e:#}"))
             };
             let _ = tx.send(AppEvent::CommitCreated(res, summary_for_event));
         });
@@ -1692,7 +1701,7 @@ impl GitSparkApp {
         let tx = self.event_tx.clone();
         let git = GitClient::new();
         thread::spawn(move || {
-            let res = git.undo_last_commit(&path).map_err(|e| e.to_string());
+            let res = git.undo_last_commit(&path).map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::CommitUndone(res));
         });
         cx.notify();
@@ -1756,7 +1765,7 @@ impl GitSparkApp {
         thread::spawn(move || {
             let res = ai
                 .generate_commit_message(&settings, &diff)
-                .map_err(|e| e.to_string());
+                .map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::AiCommitGenerated(res));
         });
         cx.notify();
@@ -1776,7 +1785,7 @@ impl GitSparkApp {
         let tx = self.event_tx.clone();
         let ai = AiClient::new();
         thread::spawn(move || {
-            let res = ai.fetch_openrouter_models().map_err(|e| e.to_string());
+            let res = ai.fetch_openrouter_models().map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::OpenRouterModelsLoaded(res));
         });
         cx.notify();
@@ -2014,7 +2023,9 @@ impl GitSparkApp {
         let git = GitClient::new();
 
         thread::spawn(move || {
-            let res = git.get_commit_diff(&path, &oid).map_err(|e| e.to_string());
+            let res = git
+                .get_commit_diff(&path, &oid)
+                .map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::CommitDiffLoaded(oid, res));
         });
     }
@@ -2145,7 +2156,7 @@ impl GitSparkApp {
         let git = GitClient::new();
         let fp = file_path.clone();
         thread::spawn(move || {
-            let res = git.get_file_diff(&path, &fp).map_err(|e| e.to_string());
+            let res = git.get_file_diff(&path, &fp).map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::FileDiffRefreshed(fp, res));
         });
     }
@@ -2441,7 +2452,7 @@ impl GitSparkApp {
         thread::spawn(move || {
             let res = git
                 .delete_branch_from_current_worktree(&path, &name)
-                .map_err(|e| e.to_string());
+                .map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::NetworkActionCompleted(
                 res,
                 format!("Deleted branch '{name}'"),
@@ -2471,7 +2482,7 @@ impl GitSparkApp {
 
         thread::spawn(move || {
             let git = GitClient::new();
-            let res = operation(&git, &path, &oid).map_err(|e| e.to_string());
+            let res = operation(&git, &path, &oid).map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::RepoOperationCompleted(
                 res,
                 action_label_for_event,
@@ -2513,7 +2524,7 @@ impl GitSparkApp {
             let git = GitClient::new();
             let res = git
                 .cherry_pick_commit_onto_branch(&path, &oid, &target_branch)
-                .map_err(|e| e.to_string());
+                .map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::RepoOperationCompleted(
                 res,
                 action_label,
@@ -2548,7 +2559,7 @@ impl GitSparkApp {
             let res = git
                 .get_commit_diff(&path, &oid)
                 .map(|diffs| commit_diff_clipboard_text(&diffs))
-                .map_err(|e| e.to_string());
+                .map_err(|e| format!("{e:#}"));
             let _ = tx.send(AppEvent::CommitDiffCopied(oid, res));
         });
 
@@ -3492,7 +3503,7 @@ fn watch_repository(path: PathBuf, token: u64, generation: Arc<AtomicU64>, tx: N
         eprintln!("[watch] fingerprint changed; refreshing {}", path.display());
         last_fingerprint = Some(current_fingerprint);
 
-        let res = git.refresh_repo(&path).map_err(|e| e.to_string());
+        let res = git.refresh_repo(&path).map_err(|e| format!("{e:#}"));
         let _ = tx.send(AppEvent::RepoRefreshed(
             path.clone(),
             res,
@@ -3546,7 +3557,7 @@ fn poll_repository(
         eprintln!("[poll] fingerprint changed; refreshing {}", path.display());
         last_fingerprint = Some(current_fingerprint);
 
-        let res = git.refresh_repo(&path).map_err(|e| e.to_string());
+        let res = git.refresh_repo(&path).map_err(|e| format!("{e:#}"));
         let _ = tx.send(AppEvent::RepoRefreshed(
             path.clone(),
             res,
