@@ -36,18 +36,14 @@ Open repos through a file dialog or pick from your recent list. Settings for Git
 | | |
 |---|---|
 | macOS (Intel + Apple Silicon) | `.dmg` |
-| Windows x64 | `.zip` |
+| Windows x64 | `Setup.exe` |
 | Linux x64 | `.tar.gz` |
 
 All on the [Releases](https://github.com/JacobSamro/GitSpark/releases/latest) page.
 
 ## You need
 
-Git installed and on your PATH.
-
-## E2E automation
-
-GitSpark has an opt-in native automation channel for end-to-end tests. Launch with `GITSPARK_AUTOMATION=1 cargo run`, then drive the app with JSON-lines commands or selector-driven tests such as `await app.getByTestId("change-src-main-rs").click()`. See [docs/e2e-automation.md](docs/e2e-automation.md).
+Git installed and on your PATH. [GitHub CLI](https://cli.github.com/) (`gh`), also on your PATH and authenticated, if you want to use "Publish repository" to create a new GitHub repo from GitSpark.
 
 ## License
 
