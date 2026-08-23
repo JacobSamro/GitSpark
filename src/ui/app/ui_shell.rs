@@ -3687,64 +3687,71 @@ impl GitSparkApp {
                         let path = entry.path.clone();
                         let id_path = stable_id_slug(&entry.path);
                         let vh = view.clone();
+                        let context_view = view.clone();
+                        let context_path = path.clone();
 
-                        h_flex()
-                            .id(SharedString::from(format!("commit-file-{id_path}")))
-                            .w_full()
-                            .h(theme::z(28.0))
-                            .px(theme::z(10.0))
-                            .items_center()
-                            .bg(if is_selected {
-                                theme::selected_bg()
-                            } else {
-                                gpui::transparent_black()
-                            })
-                            // The border stays in the tree at both states so
-                            // selecting a row cannot shift its text sideways;
-                            // when selected it matches the fill rather than
-                            // drawing an edge the artifact does not have.
-                            .border_l_2()
-                            .border_color(if is_selected {
-                                theme::selected_bg()
-                            } else {
-                                gpui::transparent_black()
-                            })
-                            .cursor_pointer()
-                            .hover(move |s| {
-                                s.bg(if is_selected {
+                        crate::ui::commit_file_context_menu::bind_commit_file_context_click(
+                            h_flex()
+                                .id(SharedString::from(format!("commit-file-{id_path}")))
+                                .w_full()
+                                .h(theme::z(28.0))
+                                .px(theme::z(10.0))
+                                .items_center()
+                                .bg(if is_selected {
                                     theme::selected_bg()
                                 } else {
-                                    theme::list_hover_bg()
+                                    gpui::transparent_black()
                                 })
-                            })
-                            .on_click(move |_evt, _win, cx| {
-                                let path = path.clone();
-                                vh.update(cx, |app, cx| {
-                                    match tab {
-                                        SidebarTab::Changes => {
-                                            if app.selection.selected_change.as_deref()
-                                                != Some(path.as_str())
-                                            {
-                                                app.selection.selected_diff_lines.clear();
+                                // The border stays in the tree at both states so
+                                // selecting a row cannot shift its text sideways;
+                                // when selected it matches the fill rather than
+                                // drawing an edge the artifact does not have.
+                                .border_l_2()
+                                .border_color(if is_selected {
+                                    theme::selected_bg()
+                                } else {
+                                    gpui::transparent_black()
+                                })
+                                .cursor_pointer()
+                                .hover(move |s| {
+                                    s.bg(if is_selected {
+                                        theme::selected_bg()
+                                    } else {
+                                        theme::list_hover_bg()
+                                    })
+                                })
+                                .on_click(move |_evt, _win, cx| {
+                                    let path = path.clone();
+                                    vh.update(cx, |app, cx| {
+                                        match tab {
+                                            SidebarTab::Changes => {
+                                                if app.selection.selected_change.as_deref()
+                                                    != Some(path.as_str())
+                                                {
+                                                    app.selection.selected_diff_lines.clear();
+                                                }
+                                                app.selection.selected_change = Some(path);
                                             }
-                                            app.selection.selected_change = Some(path);
+                                            SidebarTab::History => {
+                                                app.selection.selected_commit_file = Some(path);
+                                            }
                                         }
-                                        SidebarTab::History => {
-                                            app.selection.selected_commit_file = Some(path);
-                                        }
-                                    }
-                                    cx.notify();
-                                });
-                            })
-                            .child(
-                                div().flex_1().overflow_x_hidden().child(
-                                    div()
-                                        .text_size(theme::z(12.0))
-                                        .text_color(text_color)
-                                        .whitespace_nowrap()
-                                        .child(entry.path.clone()),
+                                        cx.notify();
+                                    });
+                                })
+                                .child(
+                                    div().flex_1().overflow_x_hidden().child(
+                                        div()
+                                            .text_size(theme::z(12.0))
+                                            .text_color(text_color)
+                                            .whitespace_nowrap()
+                                            .child(entry.path.clone()),
+                                    ),
                                 ),
-                            )
+                            context_view,
+                            context_path,
+                        )
+                        .into_any_element()
                     })
                     .collect()
             },

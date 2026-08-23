@@ -3,6 +3,7 @@ pub mod automation;
 pub mod binary_diff;
 pub mod branch_context_menu;
 pub mod changes_context_menu;
+pub mod commit_file_context_menu;
 pub mod compare_view;
 pub mod conflict_banner;
 pub mod delete_branch_dialog;
