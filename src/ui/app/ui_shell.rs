@@ -537,33 +537,12 @@ impl GitSparkApp {
             return;
         };
 
-        let configured_editor = self
-            .git
-            .read_config_value(&repo_path, "core.editor")
-            .ok()
-            .flatten()
-            .filter(|value| !value.trim().is_empty())
-            .or_else(|| {
-                env::var("VISUAL")
-                    .ok()
-                    .filter(|value| !value.trim().is_empty())
-            })
-            .or_else(|| {
-                env::var("EDITOR")
-                    .ok()
-                    .filter(|value| !value.trim().is_empty())
-            });
+        let configured_editor = self.resolve_editor_command(&repo_path);
+        let shell = self.settings.shell_override.clone();
+        let shell = shell.as_deref().unwrap_or("sh");
 
         let result = if let Some(editor_cmd) = configured_editor {
-            Command::new("sh")
-                .arg("-lc")
-                .arg(format!(
-                    "{} {}",
-                    editor_cmd,
-                    shell_escape(&repo_path.to_string_lossy())
-                ))
-                .spawn()
-                .map(|_| ())
+            spawn_shell_path_command_with_shell(shell, &editor_cmd, &repo_path)
         } else {
             open::that_detached(&repo_path)
         };
@@ -588,16 +567,24 @@ impl GitSparkApp {
             return;
         };
 
-        #[cfg(target_os = "macos")]
-        let result = Command::new("open")
-            .arg("-a")
-            .arg("Terminal")
-            .arg(&repo_path)
-            .spawn()
-            .map(|_| ());
+        let result = if let Some(command) = external_command_from_env("GITSPARK_TERMINAL_COMMAND") {
+            spawn_shell_path_command(&command, &repo_path)
+        } else {
+            #[cfg(target_os = "macos")]
+            {
+                Command::new("open")
+                    .arg("-a")
+                    .arg("Terminal")
+                    .arg(&repo_path)
+                    .spawn()
+                    .map(|_| ())
+            }
 
-        #[cfg(not(target_os = "macos"))]
-        let result = open::that_detached(&repo_path);
+            #[cfg(not(target_os = "macos"))]
+            {
+                open::that_detached(&repo_path)
+            }
+        };
 
         match result {
             Ok(_) => {

@@ -2786,6 +2786,31 @@ impl GitSparkApp {
         }
     }
 
+    /// Resolves the editor command to launch, in priority order: an
+    /// explicit Settings override beats every environment/git-config
+    /// fallback, since it's a deliberate choice rather than an ambient
+    /// default. Shared by both the per-file editor launch below and
+    /// `menu_open_external_editor` (ui_shell.rs) — they used to each keep
+    /// their own copy of this chain, and the menu-bar one had drifted to
+    /// skip `settings.editor_override`/`GITSPARK_EDITOR_COMMAND` entirely,
+    /// silently ignoring the user's own configured editor.
+    pub(crate) fn resolve_editor_command(&self, repo_path: &Path) -> Option<String> {
+        self.settings
+            .editor_override
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| external_command_from_env("GITSPARK_EDITOR_COMMAND"))
+            .or_else(|| {
+                self.git
+                    .read_config_value(repo_path, "core.editor")
+                    .ok()
+                    .flatten()
+                    .filter(|value| !value.trim().is_empty())
+            })
+            .or_else(|| external_command_from_env("VISUAL"))
+            .or_else(|| external_command_from_env("EDITOR"))
+    }
+
     fn open_in_external_editor(&mut self, relative_path: &str) {
         let Some(repo_path) = self.repo_path().map(PathBuf::from) else {
             self.messages.error_message = "No repository selected.".to_string();
@@ -2793,23 +2818,7 @@ impl GitSparkApp {
         };
 
         let full_path = repo_path.join(relative_path);
-        // A user-set override in Settings beats every environment/git-config
-        // fallback — it's an explicit choice, not an ambient default.
-        let configured_editor = self
-            .settings
-            .editor_override
-            .clone()
-            .filter(|value| !value.trim().is_empty())
-            .or_else(|| external_command_from_env("GITSPARK_EDITOR_COMMAND"))
-            .or_else(|| {
-                self.git
-                    .read_config_value(&repo_path, "core.editor")
-                    .ok()
-                    .flatten()
-                    .filter(|value| !value.trim().is_empty())
-            })
-            .or_else(|| external_command_from_env("VISUAL"))
-            .or_else(|| external_command_from_env("EDITOR"));
+        let configured_editor = self.resolve_editor_command(&repo_path);
 
         let shell = self.settings.shell_override.as_deref().unwrap_or("sh");
         let result = if let Some(editor_cmd) = configured_editor {

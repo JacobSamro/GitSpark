@@ -36,6 +36,12 @@ export async function testMenuStateWithoutRepository(app) {
     (snapshot) => snapshot.error_message === "No repository selected.",
     { timeoutMs: 10_000 },
   );
+
+  await app.command({ command: "open_in_terminal" });
+  await app.waitForSnapshot(
+    (snapshot) => snapshot.error_message === "No repository selected.",
+    { timeoutMs: 10_000 },
+  );
 }
 
 export async function testMenuStateWithRepository(app) {
@@ -72,6 +78,16 @@ export async function testMenuStateWithRepository(app) {
   );
   assert(snapshot.menu_availability.fetch === false, "active conflict disables Fetch");
   assert(snapshot.menu_availability.modify_current_branch === false, "active conflict disables branch actions");
+
+  await exec("git", ["merge", "--abort"], { cwd: repo }).catch(() => {});
+  await app.command({ command: "refresh_repo" });
+  await app.command({ command: "open_in_terminal" });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Opened repository in Terminal." &&
+      snapshot.error_message === "",
+    { timeoutMs: 10_000 },
+  );
 }
 
 async function makeMenuRepo() {

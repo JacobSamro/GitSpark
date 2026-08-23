@@ -56,6 +56,7 @@ const app = await GitSparkAutomation.launch({
     GITSPARK_OPEN_COMMAND: "/usr/bin/true",
     GITSPARK_OPEN_URL_COMMAND: fixture.openUrlCommand,
     GITSPARK_REVEAL_COMMAND: "/usr/bin/true",
+    GITSPARK_TERMINAL_COMMAND: "/usr/bin/true",
   },
 });
 

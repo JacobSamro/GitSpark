@@ -86,6 +86,7 @@ pub(crate) enum AutomationCommand {
         index: usize,
     },
     RefreshRepo,
+    OpenInTerminal,
     SelectTab {
         tab: AutomationSidebarTab,
     },
@@ -745,6 +746,10 @@ impl GitSparkApp {
             }
             AutomationCommand::RefreshRepo => {
                 self.refresh_repo(cx);
+                AutomationResponse::success(self.automation_snapshot())
+            }
+            AutomationCommand::OpenInTerminal => {
+                self.menu_open_in_terminal(cx);
                 AutomationResponse::success(self.automation_snapshot())
             }
             AutomationCommand::SelectTab { tab } => {
