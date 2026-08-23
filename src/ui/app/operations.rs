@@ -2915,16 +2915,7 @@ impl GitSparkApp {
             .filter(|path| snapshot.changes.iter().any(|change| &change.path == path))
             .or_else(|| snapshot.changes.first().map(|change| change.path.clone()));
         if self.selection.selected_change.as_ref() != next_selected_change.as_ref() {
-            eprintln!(
-                "[refresh] changes selection reset: {:?} -> {:?}",
-                self.selection.selected_change, next_selected_change
-            );
             self.selection.selected_diff_lines.clear();
-        } else {
-            eprintln!(
-                "[refresh] changes selection preserved: {:?}",
-                next_selected_change
-            );
         }
         self.selection.selected_change = next_selected_change;
         self.repo.branch_target = current_branch;
@@ -2952,18 +2943,20 @@ impl GitSparkApp {
         self.reconcile_commit_inclusions(&changed_paths);
 
         if let Some(comparison) = self.repo.comparison.as_ref() {
+            // Same reasoning as the non-comparison branch below: keep the
+            // currently-selected commit if it is still part of the
+            // comparison, rather than unconditionally snapping back to the
+            // first one on every watcher-triggered refresh.
             self.selection.selected_commit =
-                comparison.commits.first().map(|commit| commit.oid.clone());
+                preserve_selected_commit(previous_commit.clone(), &comparison.commits);
             self.selection.selected_commit_file = previous_commit_file
                 .filter(|path| comparison.diffs.iter().any(|diff| diff.path == *path))
                 .or_else(|| comparison.diffs.first().map(|diff| diff.path.clone()));
         } else {
-            let next_selected_commit = self.repo.snapshot.as_ref().and_then(|repo| {
-                previous_commit
-                    .clone()
-                    .filter(|oid| repo.history.iter().any(|commit| commit.oid == *oid))
-                    .or_else(|| repo.history.first().map(|commit| commit.oid.clone()))
-            });
+            let next_selected_commit =
+                self.repo.snapshot.as_ref().and_then(|repo| {
+                    preserve_selected_commit(previous_commit.clone(), &repo.history)
+                });
 
             self.selection.selected_commit = next_selected_commit.clone();
 
@@ -2974,20 +2967,11 @@ impl GitSparkApp {
             // pane while the reload was in flight — a flicker with no real
             // change behind it.
             if next_selected_commit != previous_commit {
-                eprintln!(
-                    "[refresh] commit selection reset: {:?} -> {:?} (reloading diff)",
-                    previous_commit, next_selected_commit
-                );
                 self.selection.selected_commit_file = None;
                 self.selection.commit_diffs = None;
                 if let Some(oid) = next_selected_commit {
                     self.load_commit_diff(oid);
                 }
-            } else {
-                eprintln!(
-                    "[refresh] commit selection preserved, diff not reloaded: {:?}",
-                    next_selected_commit
-                );
             }
         }
 
@@ -3331,6 +3315,19 @@ impl GitSparkApp {
     }
 }
 
+/// Keep `previous` selected if its oid is still present in `commits`,
+/// otherwise fall back to the first commit.
+///
+/// Shared by both the branch-comparison and plain-History paths in
+/// `adopt_snapshot`, so a watcher-triggered refresh doesn't snap the
+/// selection back to the top of the list just because something unrelated
+/// changed elsewhere in the repository.
+fn preserve_selected_commit(previous: Option<String>, commits: &[CommitInfo]) -> Option<String> {
+    previous
+        .filter(|oid| commits.iter().any(|commit| &commit.oid == oid))
+        .or_else(|| commits.first().map(|commit| commit.oid.clone()))
+}
+
 // ----------------------------------------------------------------------
 // Repository watching
 // ----------------------------------------------------------------------
@@ -3459,5 +3456,55 @@ fn poll_repository(
             res,
             RepoRefreshReason::Watch,
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::preserve_selected_commit;
+    use crate::models::CommitInfo;
+
+    fn commit(oid: &str) -> CommitInfo {
+        CommitInfo {
+            oid: oid.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn keeps_the_previously_selected_commit_if_it_is_still_present() {
+        // The exact bug this guards against: a watcher-triggered refresh
+        // (e.g. a comparison's underlying branches moving, or an unrelated
+        // working-tree change) must not snap the selection back to the top
+        // commit while the previously-selected one is still there.
+        let commits = vec![commit("aaa"), commit("bbb"), commit("ccc")];
+        assert_eq!(
+            preserve_selected_commit(Some("bbb".to_string()), &commits),
+            Some("bbb".to_string())
+        );
+    }
+
+    #[test]
+    fn falls_back_to_the_first_commit_when_the_previous_one_is_gone() {
+        let commits = vec![commit("aaa"), commit("bbb")];
+        assert_eq!(
+            preserve_selected_commit(Some("zzz".to_string()), &commits),
+            Some("aaa".to_string())
+        );
+    }
+
+    #[test]
+    fn falls_back_to_the_first_commit_when_nothing_was_previously_selected() {
+        let commits = vec![commit("aaa"), commit("bbb")];
+        assert_eq!(
+            preserve_selected_commit(None, &commits),
+            Some("aaa".to_string())
+        );
+    }
+
+    #[test]
+    fn returns_none_for_an_empty_commit_list() {
+        assert_eq!(preserve_selected_commit(Some("aaa".to_string()), &[]), None);
+        assert_eq!(preserve_selected_commit(None, &[]), None);
     }
 }
