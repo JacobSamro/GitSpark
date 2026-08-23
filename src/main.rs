@@ -29,6 +29,7 @@ actions!(
         MenuOpenRepository,
         MenuNewRepository,
         MenuCloneRepository,
+        MenuCheckForUpdates,
         MenuShowSettings,
         MenuShowChanges,
         MenuShowHistory,
@@ -127,6 +128,12 @@ fn configure_native_menus(cx: &mut App, view: Entity<GitSparkApp>) {
         let view = view.clone();
         cx.on_action(move |_: &MenuCloneRepository, cx| {
             let _ = view.update(cx, |app, cx| app.menu_clone_repository(cx));
+        });
+    }
+    {
+        let view = view.clone();
+        cx.on_action(move |_: &MenuCheckForUpdates, cx| {
+            let _ = view.update(cx, |app, cx| app.start_update_check(cx));
         });
     }
     {
@@ -407,6 +414,8 @@ pub(crate) fn install_native_menus(cx: &mut App, availability: MenuAvailability)
         Menu {
             name: "GitSpark".into(),
             items: vec![
+                MenuItem::action("Check for Updates…", MenuCheckForUpdates),
+                MenuItem::separator(),
                 MenuItem::action("Settings…", MenuShowSettings),
                 MenuItem::separator(),
                 MenuItem::os_submenu("Services", SystemMenuType::Services),

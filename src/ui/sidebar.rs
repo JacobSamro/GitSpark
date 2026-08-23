@@ -822,7 +822,7 @@ pub fn render_no_changes_state(
                                 .rounded(z(theme::CORNER_RADIUS))
                                 .bg(theme::commit_button_bg())
                                 .text_size(z(13.0))
-                                .text_color(theme::on_accent())
+                                .text_color(theme::commit_button_text())
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .cursor_pointer()
                                 .hover(|s| s.bg(theme::commit_button_hover_bg()))
