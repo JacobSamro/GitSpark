@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=GitSpark Test Stub
+Exec=/usr/local/bin/gitspark-stub.sh %u
+MimeType=text/plain;x-scheme-handler/http;x-scheme-handler/https;inode/directory;
+NoDisplay=true
+Terminal=false

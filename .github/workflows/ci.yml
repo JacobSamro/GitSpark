@@ -245,6 +245,8 @@ jobs:
           node --check e2e/selector-smoke.mjs
           node --check e2e/full-suite.mjs
           node --check e2e/gitea-suite.mjs
+          node --check e2e/gui-handoff-linux-suite.mjs
+          node --check e2e/gui-handoff-windows-suite.mjs
           for file in e2e/suites/*.mjs e2e/support/*.mjs; do
             node --check "$file"
           done
@@ -420,3 +422,98 @@ jobs:
 
       - name: Run Gitea-backed native E2E
         run: xvfb-run -a node e2e/gitea-suite.mjs
+
+  e2e-gui-handoff-linux:
+    name: Native E2E (GUI handoff, Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Build the real-desktop test image
+        run: docker build -t gitspark-e2e-linux-desktop docker/e2e-linux-desktop
+
+      # The image builds and runs the app *inside* the container (it needs
+      # the container's own Xvfb/window-manager/MIME setup) — these two
+      # caches are bind-mounted over the image's own cargo/target
+      # directories at run time, the same registry/target split every other
+      # job here uses, just reaching into the container instead of the
+      # runner's native paths.
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: docker-cargo-registry
+          key: ${{ runner.os }}-gui-handoff-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-gui-handoff-cargo-
+
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: docker-target
+          key: ${{ runner.os }}-gui-handoff-target-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-gui-handoff-target-
+
+      - name: Run the GUI handoff suite in the real-desktop image
+        run: |
+          mkdir -p docker-cargo-registry docker-target
+          docker run --rm \
+            -v "$PWD":/workspace \
+            -v "$PWD/docker-cargo-registry":/usr/local/cargo/registry \
+            -v "$PWD/docker-target":/workspace/target \
+            gitspark-e2e-linux-desktop
+
+  e2e-gui-handoff-windows:
+    name: Native E2E (GUI handoff, Windows)
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-ci-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-ci-cargo-
+
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-ci-target-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-ci-target-
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Configure a git identity for the E2E suite
+        run: |
+          git config --global user.name "GitSpark CI"
+          git config --global user.email "ci@gitspark.local"
+          git config --global core.autocrlf false
+
+      - name: Build native app for E2E
+        run: cargo build --locked
+
+      - name: Run GUI handoff native E2E
+        run: node e2e/gui-handoff-windows-suite.mjs
