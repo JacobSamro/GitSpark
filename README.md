@@ -10,7 +10,9 @@ Runs on macOS, Windows, and Linux.
 </p>
 
 <p align="center">
-  <a href="https://github.com/JacobSamro/GitSpark/releases/latest">Download</a>
+  <a href="https://github.com/JacobSamro/GitSpark/releases/latest/download/gitspark-macos-universal.dmg">Download for macOS</a> ·
+  <a href="https://github.com/JacobSamro/GitSpark/releases/latest/download/gitspark-windows-x64-Setup.exe">Download for Windows</a> ·
+  <a href="https://github.com/JacobSamro/GitSpark/releases/latest/download/gitspark-linux-x64.tar.gz">Download for Linux</a>
 </p>
 
 ---
@@ -35,11 +37,11 @@ Open repos through a file dialog or pick from your recent list. Settings for Git
 
 | | |
 |---|---|
-| macOS (Intel + Apple Silicon) | `.dmg` |
-| Windows x64 | `Setup.exe` |
-| Linux x64 | `.tar.gz` |
+| macOS (Intel + Apple Silicon) | [`.dmg`](https://github.com/JacobSamro/GitSpark/releases/latest/download/gitspark-macos-universal.dmg) |
+| Windows x64 | [`Setup.exe`](https://github.com/JacobSamro/GitSpark/releases/latest/download/gitspark-windows-x64-Setup.exe) |
+| Linux x64 | [`.tar.gz`](https://github.com/JacobSamro/GitSpark/releases/latest/download/gitspark-linux-x64.tar.gz) |
 
-All on the [Releases](https://github.com/JacobSamro/GitSpark/releases/latest) page.
+All releases, including release notes and checksums, are on the [Releases](https://github.com/JacobSamro/GitSpark/releases/latest) page.
 
 ## You need
 

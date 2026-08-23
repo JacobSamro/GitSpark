@@ -361,6 +361,33 @@ jobs:
           cd dist
           sha256sum * > SHA256SUMS.txt
 
+      # README.md and the top-of-page download links point at these fixed
+      # names via GitHub's /releases/latest/download/<name> alias, which
+      # always resolves to whatever the newest non-prerelease release is.
+      # The real per-version filenames (used by SHA256SUMS.txt and the
+      # signed update manifest below) contain the tag, so a hardcoded link
+      # to them would 404 the moment the next version ships. Copies, not
+      # renames — the versioned originals still need to exist under their
+      # own names for both of those.
+      - name: Publish stable-named aliases for direct download links
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+        run: |
+          cd dist
+          alias_asset() {
+            local source="$1" alias="$2"
+            if [[ ! -f "$source" ]]; then
+              echo "  $alias: source '$source' missing, skipping"
+              return
+            fi
+            cp "$source" "$alias"
+            echo "  $alias -> $source"
+          }
+          alias_asset "gitspark-${RELEASE_TAG}-universal2-apple-darwin.dmg" "gitspark-macos-universal.dmg"
+          alias_asset "gitspark-${RELEASE_TAG}-x86_64-pc-windows-msvc-Setup.exe" "gitspark-windows-x64-Setup.exe"
+          alias_asset "gitspark-${RELEASE_TAG}-x86_64-unknown-linux-gnu.tar.gz" "gitspark-linux-x64.tar.gz"
+
       - name: Create or update GitHub release
         shell: bash
         env:
