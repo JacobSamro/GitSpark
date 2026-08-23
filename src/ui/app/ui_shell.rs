@@ -2543,6 +2543,10 @@ impl GitSparkApp {
             SettingsField::AiApiKey => self.settings.ai.api_key.as_str(),
             SettingsField::AiSystemPrompt => self.settings.ai.system_prompt.as_str(),
             SettingsField::OpenRouterModelFilter => self.filters.openrouter_model_filter.as_str(),
+            SettingsField::ExternalEditorOverride => {
+                self.settings.editor_override.as_deref().unwrap_or("")
+            }
+            SettingsField::ShellOverride => self.settings.shell_override.as_deref().unwrap_or(""),
         }
     }
 
@@ -2597,6 +2601,8 @@ impl GitSparkApp {
             SettingsField::OpenRouterModelFilter => {
                 self.settings_modal.openrouter_model_filter_cursor
             }
+            SettingsField::ExternalEditorOverride => self.settings_modal.editor_override_cursor,
+            SettingsField::ShellOverride => self.settings_modal.shell_override_cursor,
         }
     }
 
@@ -2614,6 +2620,8 @@ impl GitSparkApp {
             SettingsField::OpenRouterModelFilter => {
                 self.settings_modal.openrouter_model_filter_selection
             }
+            SettingsField::ExternalEditorOverride => self.settings_modal.editor_override_selection,
+            SettingsField::ShellOverride => self.settings_modal.shell_override_selection,
         }
     }
 
@@ -2836,6 +2844,34 @@ impl GitSparkApp {
                 self.settings_modal.openrouter_model_filter_selection = state.selection;
                 h
             }
+            SettingsField::ExternalEditorOverride => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.settings_modal.editor_override_cursor,
+                    selection: self.settings_modal.editor_override_selection,
+                };
+                let mut value = self.settings.editor_override.clone().unwrap_or_default();
+                let h = crate::ui::text_field::handle_text_key(
+                    &mut value, &mut state, multiline, event, cx,
+                );
+                self.settings.editor_override = Some(value).filter(|v| !v.trim().is_empty());
+                self.settings_modal.editor_override_cursor = state.cursor;
+                self.settings_modal.editor_override_selection = state.selection;
+                h
+            }
+            SettingsField::ShellOverride => {
+                let mut state = crate::ui::text_field::TextFieldState {
+                    cursor: self.settings_modal.shell_override_cursor,
+                    selection: self.settings_modal.shell_override_selection,
+                };
+                let mut value = self.settings.shell_override.clone().unwrap_or_default();
+                let h = crate::ui::text_field::handle_text_key(
+                    &mut value, &mut state, multiline, event, cx,
+                );
+                self.settings.shell_override = Some(value).filter(|v| !v.trim().is_empty());
+                self.settings_modal.shell_override_cursor = state.cursor;
+                self.settings_modal.shell_override_selection = state.selection;
+                h
+            }
         };
         if handled {
             cx.notify();
@@ -2858,6 +2894,10 @@ impl GitSparkApp {
             SettingsField::OpenRouterModelFilter => {
                 self.settings_modal.openrouter_model_filter_cursor = cursor
             }
+            SettingsField::ExternalEditorOverride => {
+                self.settings_modal.editor_override_cursor = cursor
+            }
+            SettingsField::ShellOverride => self.settings_modal.shell_override_cursor = cursor,
         }
     }
 
@@ -3500,6 +3540,7 @@ impl GitSparkApp {
                                     &self.selection.selected_diff_lines,
                                     None, // History diffs are read-only, no expand controls
                                     &self.diff_list_history,
+                                    self.tab_size(),
                                 ),
                             )),
                     ),
@@ -3519,6 +3560,7 @@ impl GitSparkApp {
                         &self.selection.selected_diff_lines,
                         Some(&view),
                         &self.diff_list_changes,
+                        self.tab_size(),
                     )),
                 )
                 .into_any_element();

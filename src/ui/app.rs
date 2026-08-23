@@ -164,6 +164,9 @@ pub enum SettingsAction {
     ChangeProvider(AiProvider),
     SelectOpenRouterModel(String),
     RetryOpenRouterModels,
+    SetTabSize(u8),
+    SetExternalEditorOverride(Option<String>),
+    SetShellOverride(Option<String>),
     Close,
 }
 

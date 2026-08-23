@@ -683,6 +683,33 @@ fn diff_row_id(file_path: &str, line: &DiffLine) -> String {
     )
 }
 
+/// Expand tab characters to `tab_size` spaces, column-aware (a tab advances
+/// to the next multiple of `tab_size`, like a real terminal/editor, not a
+/// flat replacement).
+///
+/// Runs before syntax highlighting, not after — `highlight_line` returns
+/// byte-offset spans, and expanding post-highlight would desynchronize them
+/// from the (now different-length) rendered string.
+fn expand_tabs(content: &str, tab_size: u8) -> std::borrow::Cow<'_, str> {
+    if !content.contains('\t') {
+        return std::borrow::Cow::Borrowed(content);
+    }
+    let tab_size = (tab_size.max(1)) as usize;
+    let mut result = String::with_capacity(content.len());
+    let mut column = 0usize;
+    for ch in content.chars() {
+        if ch == '\t' {
+            let spaces = tab_size - (column % tab_size);
+            result.push_str(&" ".repeat(spaces));
+            column += spaces;
+        } else {
+            result.push(ch);
+            column += 1;
+        }
+    }
+    std::borrow::Cow::Owned(result)
+}
+
 /// Render code text with syntax colours, falling back to one flat run.
 ///
 /// `base` is what unclassified text keeps, so a deleted row can stay on its
@@ -691,7 +718,10 @@ fn diff_row_id(file_path: &str, line: &DiffLine) -> String {
 /// Returns a single child when there is nothing to colour — a file with no
 /// known syntax, or a line the parser classified as entirely plain — so the
 /// common case does not pay for a wrapper element per row.
-fn render_code_text(content: &str, file_path: &str, base: Hsla) -> AnyElement {
+fn render_code_text(content: &str, file_path: &str, base: Hsla, tab_size: u8) -> AnyElement {
+    let expanded = expand_tabs(content, tab_size);
+    let content = expanded.as_ref();
+
     let Some(syntax) = crate::ui::syntax::syntax_for_path(file_path) else {
         return div()
             .text_color(base)
@@ -752,6 +782,7 @@ fn render_diff_line(
     view: Option<&Entity<GitSparkApp>>,
     excluded_lines: &HashSet<DiffLineSelection>,
     hide_whitespace_changes: bool,
+    tab_size: u8,
 ) -> Stateful<Div> {
     let mut row = h_flex()
         .id(SharedString::from(diff_row_id(file_path, line)))
@@ -814,6 +845,7 @@ fn render_diff_line(
                     &line.content,
                     file_path,
                     theme::diff_add_fg(),
+                    tab_size,
                 )));
         }
         DiffLineKind::Deleted => {
@@ -823,6 +855,7 @@ fn render_diff_line(
                     &line.content,
                     file_path,
                     theme::diff_del_fg(),
+                    tab_size,
                 )));
         }
         DiffLineKind::HunkHeader => {
@@ -846,6 +879,7 @@ fn render_diff_line(
                         &line.content,
                         file_path,
                         theme::text_main(),
+                        tab_size,
                     )),
             );
         }
@@ -1545,6 +1579,7 @@ fn render_empty_state() -> Div {
 ///
 /// Fills the remaining horizontal space (flex-1) and displays either
 /// a unified diff for the selected file or a placeholder message.
+#[allow(clippy::too_many_arguments)]
 pub fn render_workspace(
     repo_path: Option<&Path>,
     selected_file: Option<&str>,
@@ -1555,6 +1590,7 @@ pub fn render_workspace(
     excluded_lines: &HashSet<DiffLineSelection>,
     view: Option<&Entity<GitSparkApp>>,
     diff_list: &DiffListHandle,
+    tab_size: u8,
 ) -> Div {
     let Some(file_path) = selected_file else {
         return render_empty_state();
@@ -1677,10 +1713,11 @@ pub fn render_workspace(
                 }
 
                 let key = format!(
-                    "{file_path}|{}|{}|{}",
+                    "{file_path}|{}|{}|{}|{}",
                     rows.len(),
                     hide_whitespace_changes,
-                    entry.original_diff.is_some()
+                    entry.original_diff.is_some(),
+                    tab_size
                 );
                 let state = diff_list.sync(key, rows.len());
 
@@ -1713,6 +1750,7 @@ pub fn render_workspace(
                             owned_view.as_ref(),
                             &owned_excluded,
                             hide_whitespace_changes,
+                            tab_size,
                         )
                         .into_any_element(),
                         DiffRow::WhitespaceHidden => h_flex()
@@ -1852,7 +1890,36 @@ fn whitespace_normalized(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExpansionType, HunkBounds, compute_expansion_types};
+    use super::{ExpansionType, HunkBounds, compute_expansion_types, expand_tabs};
+
+    #[test]
+    fn leaves_tab_free_content_untouched() {
+        assert_eq!(expand_tabs("no tabs here", 4), "no tabs here");
+    }
+
+    #[test]
+    fn expands_a_leading_tab_to_the_full_width() {
+        assert_eq!(expand_tabs("\tfoo", 4), "    foo");
+    }
+
+    #[test]
+    fn expands_to_the_next_tab_stop_not_a_flat_width() {
+        // A tab after 2 columns of text only needs 2 more spaces to reach
+        // the next 4-column stop, not a flat 4 — matches real terminals and
+        // editors, not a naive "\t" -> "    " replacement.
+        assert_eq!(expand_tabs("ab\tcd", 4), "ab  cd");
+    }
+
+    #[test]
+    fn respects_a_custom_tab_size() {
+        assert_eq!(expand_tabs("\tx", 2), "  x");
+        assert_eq!(expand_tabs("\tx", 8), "        x");
+    }
+
+    #[test]
+    fn treats_a_zero_tab_size_as_one() {
+        assert_eq!(expand_tabs("\tx", 0), " x");
+    }
 
     fn hunk(new_start: usize, new_count: usize) -> HunkBounds {
         HunkBounds {

@@ -414,6 +414,18 @@ pub struct AppSettings {
     /// Which of `open_repos` was in front.
     #[serde(default)]
     pub active_repo: Option<usize>,
+    /// Spaces a tab character expands to in the diff viewer. `None` means
+    /// the default of 4.
+    #[serde(default)]
+    pub tab_size: Option<u8>,
+    /// User-set external editor command, taking priority over
+    /// `GITSPARK_EDITOR_COMMAND`/git `core.editor`/`VISUAL`/`EDITOR`.
+    #[serde(default)]
+    pub editor_override: Option<String>,
+    /// Shell binary used to run `editor_override` (and other shell-based
+    /// commands). `None` means the default of `sh`.
+    #[serde(default)]
+    pub shell_override: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -426,6 +438,9 @@ impl Default for AppSettings {
             appearance: None,
             open_repos: Vec::new(),
             active_repo: None,
+            tab_size: None,
+            editor_override: None,
+            shell_override: None,
         }
     }
 }

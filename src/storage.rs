@@ -91,6 +91,15 @@ fn normalize_settings(mut settings: AppSettings) -> AppSettings {
     settings.ai.api_key = settings.ai.api_key.trim().to_string();
     settings.window_size.width = settings.window_size.width.clamp(720.0, 3840.0);
     settings.window_size.height = settings.window_size.height.clamp(520.0, 2160.0);
+    settings.tab_size = settings.tab_size.map(|size| size.clamp(1, 16));
+    settings.editor_override = settings
+        .editor_override
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    settings.shell_override = settings
+        .shell_override
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
     settings
 }
 

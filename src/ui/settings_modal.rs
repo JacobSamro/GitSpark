@@ -32,6 +32,8 @@ pub(crate) enum SettingsField {
     AiApiKey,
     AiSystemPrompt,
     OpenRouterModelFilter,
+    ExternalEditorOverride,
+    ShellOverride,
 }
 
 pub(crate) struct SettingsModalState {
@@ -47,7 +49,12 @@ pub(crate) struct SettingsModalState {
     pub ai_api_key_cursor: usize,
     pub ai_system_prompt_cursor: usize,
     pub openrouter_model_filter_cursor: usize,
+    pub editor_override_cursor: usize,
+    pub shell_override_cursor: usize,
     pub show_model_picker: bool,
+    pub show_tab_size_picker: bool,
+    pub show_editor_picker: bool,
+    pub show_shell_picker: bool,
     // Per-field selection anchors
     pub git_user_name_selection: Option<usize>,
     pub remote_url_selection: Option<usize>,
@@ -59,6 +66,8 @@ pub(crate) struct SettingsModalState {
     pub ai_api_key_selection: Option<usize>,
     pub ai_system_prompt_selection: Option<usize>,
     pub openrouter_model_filter_selection: Option<usize>,
+    pub editor_override_selection: Option<usize>,
+    pub shell_override_selection: Option<usize>,
 }
 
 impl SettingsModalState {
@@ -76,7 +85,12 @@ impl SettingsModalState {
             ai_api_key_cursor: 0,
             ai_system_prompt_cursor: 0,
             openrouter_model_filter_cursor: 0,
+            editor_override_cursor: 0,
+            shell_override_cursor: 0,
             show_model_picker: false,
+            show_tab_size_picker: false,
+            show_editor_picker: false,
+            show_shell_picker: false,
             remote_url_selection: None,
             ignored_files_selection: None,
             git_user_name_selection: None,
@@ -87,6 +101,8 @@ impl SettingsModalState {
             ai_api_key_selection: None,
             ai_system_prompt_selection: None,
             openrouter_model_filter_selection: None,
+            editor_override_selection: None,
+            shell_override_selection: None,
         }
     }
 }
@@ -164,8 +180,12 @@ pub(crate) fn render_settings_modal(
             render_git_section(app, window, repo_scope.as_deref(), cx).into_any_element()
         }
         SettingsSection::Ai => render_ai_section(app, window, cx).into_any_element(),
-        SettingsSection::Appearance => render_appearance_section(cx).into_any_element(),
-        SettingsSection::Integrations => render_integrations_section().into_any_element(),
+        SettingsSection::Appearance => {
+            render_appearance_section(app, window, cx).into_any_element()
+        }
+        SettingsSection::Integrations => {
+            render_integrations_section(app, window, cx).into_any_element()
+        }
     };
 
     let content_body = v_flex()
@@ -852,7 +872,11 @@ fn render_git_scope_radio(
         )
 }
 
-fn render_appearance_section(cx: &mut Context<GitSparkApp>) -> impl IntoElement {
+fn render_appearance_section(
+    app: &GitSparkApp,
+    _window: &Window,
+    cx: &mut Context<GitSparkApp>,
+) -> impl IntoElement {
     let current = theme::appearance();
 
     v_flex()
@@ -903,14 +927,150 @@ fn render_appearance_section(cx: &mut Context<GitSparkApp>) -> impl IntoElement 
             v_flex()
                 .w_full()
                 .gap(theme::z(8.0))
-                .child(render_field_label("Diff", None))
-                .child(render_static_dropdown(
-                    "settings-tab-size",
+                .child(render_field_label(
                     "Tab Size",
-                    "4 (default)",
                     Some("Used by the diff viewer."),
-                )),
+                ))
+                .child(render_tab_size_picker(app, cx)),
         )
+}
+
+const TAB_SIZE_OPTIONS: [u8; 3] = [2, 4, 8];
+const TAB_SIZE_DEFAULT: u8 = 4;
+
+fn render_tab_size_picker(app: &GitSparkApp, cx: &mut Context<GitSparkApp>) -> impl IntoElement {
+    let current = app.tab_size();
+    let view = cx.entity().clone();
+
+    if !app.settings_modal.show_tab_size_picker {
+        render_dropdown_trigger(
+            "settings-tab-size",
+            tab_size_label(current),
+            view,
+            |app, _cx| app.settings_modal.show_tab_size_picker = true,
+        )
+        .into_any_element()
+    } else {
+        let close_view = view.clone();
+        v_flex()
+            .id("settings-tab-size-expanded")
+            .w_full()
+            .gap(theme::z(2.0))
+            .p(theme::z(4.0))
+            .rounded(theme::z(theme::CORNER_RADIUS))
+            .border_1()
+            .border_color(theme::border())
+            .bg(theme::bg())
+            .on_mouse_down_out(move |_evt, _win, cx| {
+                close_view.update(cx, |app, cx| {
+                    app.settings_modal.show_tab_size_picker = false;
+                    cx.notify();
+                });
+            })
+            .children(TAB_SIZE_OPTIONS.into_iter().map(|size| {
+                render_picker_option(
+                    SharedString::from(format!("settings-tab-size-{size}")),
+                    tab_size_label(size),
+                    size == current,
+                    view.clone(),
+                    move |app, cx| {
+                        app.handle_settings_action(SettingsAction::SetTabSize(size), cx);
+                        app.settings_modal.show_tab_size_picker = false;
+                    },
+                )
+            }))
+            .into_any_element()
+    }
+}
+
+fn tab_size_label(size: u8) -> String {
+    if size == TAB_SIZE_DEFAULT {
+        format!("{size} (default)")
+    } else {
+        size.to_string()
+    }
+}
+
+/// Collapsed dropdown trigger — click to expand. `on_click` runs before the
+/// view's own `cx.notify()`, so callers only need to mutate state.
+fn render_dropdown_trigger(
+    id: impl Into<SharedString>,
+    label: impl Into<SharedString>,
+    view: Entity<GitSparkApp>,
+    on_click: impl Fn(&mut GitSparkApp, &mut Context<GitSparkApp>) + 'static,
+) -> impl IntoElement {
+    h_flex()
+        .id(id.into())
+        .w_full()
+        .h(theme::z(32.0))
+        .px(theme::z(10.0))
+        .items_center()
+        .justify_between()
+        .rounded(theme::z(theme::CORNER_RADIUS))
+        .border_1()
+        .border_color(theme::border())
+        .bg(theme::bg())
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::list_hover_bg()))
+        .child(
+            div()
+                .flex_1()
+                .text_size(theme::z(13.0))
+                .text_color(theme::text_main())
+                .truncate()
+                .child(label.into()),
+        )
+        .child(
+            Icon::new(IconName::ChevronDown)
+                .size(theme::z(12.0))
+                .text_color(theme::text_muted()),
+        )
+        .on_click(move |_evt, _win, cx| {
+            view.update(cx, |app, cx| {
+                on_click(app, cx);
+                cx.notify();
+            });
+        })
+}
+
+/// One row inside an expanded picker. Styling matches the OpenRouter model
+/// picker's option rows for visual consistency between the two.
+fn render_picker_option(
+    id: impl Into<SharedString>,
+    label: impl Into<SharedString>,
+    selected: bool,
+    view: Entity<GitSparkApp>,
+    on_click: impl Fn(&mut GitSparkApp, &mut Context<GitSparkApp>) + 'static,
+) -> impl IntoElement {
+    h_flex()
+        .id(id.into())
+        .w_full()
+        .h(theme::z(28.0))
+        .px(theme::z(10.0))
+        .items_center()
+        .cursor_pointer()
+        .rounded(theme::z(theme::CORNER_RADIUS_SM))
+        .text_size(theme::z(12.0))
+        .text_color(theme::text_main())
+        .bg(if selected {
+            theme::accent()
+        } else {
+            gpui::transparent_black()
+        })
+        .hover(move |s| {
+            s.bg(if selected {
+                theme::accent()
+            } else {
+                theme::list_hover_bg()
+            })
+        })
+        .child(label.into())
+        .on_click(move |_evt, _win, cx| {
+            view.update(cx, |app, cx| {
+                on_click(app, cx);
+                cx.notify();
+            });
+        })
 }
 
 fn render_theme_option(
@@ -1070,7 +1230,28 @@ fn theme_preview_bar(width: Pixels, color: Hsla) -> impl IntoElement {
         .bg(theme::with_alpha(color, 0.78))
 }
 
-fn render_integrations_section() -> impl IntoElement {
+/// (display label, command). The first entry is "unset" — `None` clears the
+/// override so `open_in_external_editor`'s normal fallback chain applies.
+const EDITOR_PRESETS: [(&str, Option<&str>); 6] = [
+    ("Auto (Git config / environment)", None),
+    ("VS Code", Some("code")),
+    ("Sublime Text", Some("subl")),
+    ("Zed", Some("zed")),
+    ("Cursor", Some("cursor")),
+    ("Vim", Some("vim")),
+];
+
+const SHELL_PRESETS: [(&str, Option<&str>); 3] = [
+    ("sh (default)", None),
+    ("bash", Some("bash")),
+    ("zsh", Some("zsh")),
+];
+
+fn render_integrations_section(
+    app: &GitSparkApp,
+    window: &Window,
+    cx: &mut Context<GitSparkApp>,
+) -> impl IntoElement {
     v_flex()
         .w_full()
         .gap(theme::z(22.0))
@@ -1083,58 +1264,144 @@ fn render_integrations_section() -> impl IntoElement {
             v_flex()
                 .w_full()
                 .gap(theme::z(16.0))
-                .child(render_static_dropdown(
-                    "settings-external-editor",
-                    "External Editor",
-                    "Git core.editor, VISUAL, EDITOR, then default app",
-                    Some("Used by Open in External Editor."),
-                ))
-                .child(render_static_dropdown(
-                    "settings-shell",
-                    "Shell",
-                    "macOS Terminal",
-                    Some("Used for shell-based editor commands."),
-                )),
+                .child(
+                    v_flex()
+                        .w_full()
+                        .gap(theme::z(8.0))
+                        .child(render_field_label(
+                            "External Editor",
+                            Some("Used by Open in External Editor."),
+                        ))
+                        .child(render_override_picker(
+                            app,
+                            window,
+                            cx,
+                            "settings-external-editor",
+                            "settings-external-editor-custom",
+                            &EDITOR_PRESETS,
+                            app.settings.editor_override.as_deref(),
+                            app.settings_modal.show_editor_picker,
+                            |app| &mut app.settings_modal.show_editor_picker,
+                            SettingsField::ExternalEditorOverride,
+                            "Custom command",
+                            SettingsAction::SetExternalEditorOverride,
+                        )),
+                )
+                .child(
+                    v_flex()
+                        .w_full()
+                        .gap(theme::z(8.0))
+                        .child(render_field_label(
+                            "Shell",
+                            Some("Used for shell-based editor commands."),
+                        ))
+                        .child(render_override_picker(
+                            app,
+                            window,
+                            cx,
+                            "settings-shell",
+                            "settings-shell-custom",
+                            &SHELL_PRESETS,
+                            app.settings.shell_override.as_deref(),
+                            app.settings_modal.show_shell_picker,
+                            |app| &mut app.settings_modal.show_shell_picker,
+                            SettingsField::ShellOverride,
+                            "Custom shell",
+                            SettingsAction::SetShellOverride,
+                        )),
+                ),
         )
 }
 
-fn render_static_dropdown(
-    id: &'static str,
-    label: &'static str,
-    value: &'static str,
-    note: Option<&str>,
+/// A preset picker with a trailing "type your own" text field — shared by
+/// the External Editor and Shell settings, which differ only in their
+/// preset list, backing field, and action.
+#[allow(clippy::too_many_arguments)]
+fn render_override_picker(
+    app: &GitSparkApp,
+    window: &Window,
+    cx: &mut Context<GitSparkApp>,
+    id_prefix: &'static str,
+    custom_id: &'static str,
+    presets: &'static [(&'static str, Option<&'static str>)],
+    current: Option<&str>,
+    expanded: bool,
+    picker_flag: fn(&mut GitSparkApp) -> &mut bool,
+    field: SettingsField,
+    custom_label: &'static str,
+    action: fn(Option<String>) -> SettingsAction,
 ) -> impl IntoElement {
-    v_flex()
-        .w_full()
-        .gap(theme::z(8.0))
-        .child(render_field_label(label, note))
-        .child(
-            h_flex()
-                .id(id)
-                .w_full()
-                .h(theme::z(34.0))
-                .px(theme::z(10.0))
-                .gap(theme::z(8.0))
-                .items_center()
-                .justify_between()
-                .rounded(theme::z(theme::CORNER_RADIUS))
-                .border_1()
-                .border_color(theme::border())
-                .bg(theme::bg())
-                .child(
-                    div()
-                        .flex_1()
-                        .truncate()
-                        .text_size(theme::z(13.0))
-                        .text_color(theme::text_main())
-                        .child(value),
-                )
-                .child(
-                    Icon::new(IconName::ChevronDown)
-                        .size(theme::z(12.0))
-                        .text_color(theme::text_muted()),
-                ),
+    let view = cx.entity().clone();
+    let current_label = presets
+        .iter()
+        .find(|(_, value)| *value == current)
+        .map(|(label, _)| label.to_string())
+        .unwrap_or_else(|| current.unwrap_or_default().to_string());
+
+    if !expanded {
+        let toggle_view = view.clone();
+        render_dropdown_trigger(
+            SharedString::from(format!("{id_prefix}-trigger")),
+            current_label,
+            toggle_view,
+            move |app, _cx| *picker_flag(app) = true,
         )
+        .into_any_element()
+    } else {
+        let close_view = view.clone();
+        v_flex()
+            .id(SharedString::from(format!("{id_prefix}-expanded")))
+            .w_full()
+            .gap(theme::z(6.0))
+            .p(theme::z(4.0))
+            .rounded(theme::z(theme::CORNER_RADIUS))
+            .border_1()
+            .border_color(theme::border())
+            .bg(theme::bg())
+            .on_mouse_down_out(move |_evt, _win, cx| {
+                close_view.update(cx, |app, cx| {
+                    *picker_flag(app) = false;
+                    cx.notify();
+                });
+            })
+            .child(
+                v_flex()
+                    .w_full()
+                    .gap(theme::z(2.0))
+                    .children(presets.iter().map(|&(label, value)| {
+                        let selected = value == current;
+                        let option_view = view.clone();
+                        render_picker_option(
+                            SharedString::from(format!(
+                                "{id_prefix}-preset-{}",
+                                stable_id_slug(label)
+                            )),
+                            label,
+                            selected,
+                            option_view,
+                            move |app, cx| {
+                                app.handle_settings_action(action(value.map(str::to_string)), cx);
+                                *picker_flag(app) = false;
+                            },
+                        )
+                    })),
+            )
+            .child(div().h(theme::z(1.0)).my(theme::z(2.0)).bg(theme::border()))
+            .child(render_text_input(
+                app,
+                window,
+                cx,
+                custom_id,
+                field,
+                custom_label,
+                "Type a command…",
+                false,
+                false,
+                false,
+                None,
+            ))
+            .into_any_element()
+    }
 }
 
 fn render_ai_section(

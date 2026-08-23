@@ -378,6 +378,18 @@ impl GitSparkApp {
                 self.filters.openrouter_models = OpenRouterModelsState::Idle;
                 self.ensure_openrouter_models(cx);
             }
+            SettingsAction::SetTabSize(size) => {
+                self.settings.tab_size = Some(size);
+                self.persist_settings();
+            }
+            SettingsAction::SetExternalEditorOverride(command) => {
+                self.settings.editor_override = command;
+                self.persist_settings();
+            }
+            SettingsAction::SetShellOverride(shell) => {
+                self.settings.shell_override = shell;
+                self.persist_settings();
+            }
             SettingsAction::Close => {
                 self.close_settings_modal();
             }
@@ -2718,7 +2730,14 @@ impl GitSparkApp {
         };
 
         let full_path = repo_path.join(relative_path);
-        let configured_editor = external_command_from_env("GITSPARK_EDITOR_COMMAND")
+        // A user-set override in Settings beats every environment/git-config
+        // fallback — it's an explicit choice, not an ambient default.
+        let configured_editor = self
+            .settings
+            .editor_override
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| external_command_from_env("GITSPARK_EDITOR_COMMAND"))
             .or_else(|| {
                 self.git
                     .read_config_value(&repo_path, "core.editor")
@@ -2729,8 +2748,9 @@ impl GitSparkApp {
             .or_else(|| external_command_from_env("VISUAL"))
             .or_else(|| external_command_from_env("EDITOR"));
 
+        let shell = self.settings.shell_override.as_deref().unwrap_or("sh");
         let result = if let Some(editor_cmd) = configured_editor {
-            spawn_shell_path_command(&editor_cmd, &full_path)
+            spawn_shell_path_command_with_shell(shell, &editor_cmd, &full_path)
         } else {
             open::that_detached(&full_path)
         };
@@ -3010,6 +3030,11 @@ impl GitSparkApp {
             .snapshot
             .as_ref()
             .map(|snapshot| snapshot.repo.path.as_path())
+    }
+
+    /// Spaces a tab character expands to in the diff viewer.
+    pub(crate) fn tab_size(&self) -> u8 {
+        self.settings.tab_size.unwrap_or(4)
     }
 
     /// Whether the open repository has a GitHub remote.

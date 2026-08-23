@@ -3403,6 +3403,14 @@ impl GitSparkApp {
                 self.filters.openrouter_model_filter = text;
                 self.settings_modal.openrouter_model_filter_selection = None;
             }
+            SettingsField::ExternalEditorOverride => {
+                self.settings.editor_override = Some(text).filter(|v| !v.trim().is_empty());
+                self.settings_modal.editor_override_selection = None;
+            }
+            SettingsField::ShellOverride => {
+                self.settings.shell_override = Some(text).filter(|v| !v.trim().is_empty());
+                self.settings_modal.shell_override_selection = None;
+            }
         }
         self.settings_modal.active_field = Some(field);
         self.set_automation_settings_cursor(field, self.settings_field_value(field).len());
@@ -3424,6 +3432,12 @@ impl GitSparkApp {
             SettingsField::AiSystemPrompt => self.settings_modal.ai_system_prompt_cursor = cursor,
             SettingsField::OpenRouterModelFilter => {
                 self.settings_modal.openrouter_model_filter_cursor = cursor;
+            }
+            SettingsField::ExternalEditorOverride => {
+                self.settings_modal.editor_override_cursor = cursor;
+            }
+            SettingsField::ShellOverride => {
+                self.settings_modal.shell_override_cursor = cursor;
             }
         }
     }

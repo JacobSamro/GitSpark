@@ -240,7 +240,26 @@ pub(super) fn spawn_shell_path_command(command: &str, path: &Path) -> std::io::R
 }
 
 pub(super) fn spawn_shell_arg_command(command: &str, arg: &str) -> std::io::Result<()> {
-    Command::new("sh")
+    spawn_shell_arg_command_with_shell("sh", command, arg)
+}
+
+/// Same as [`spawn_shell_path_command`], but with the shell binary
+/// configurable — the Settings modal's "Shell" override applies here, since
+/// this is what actually runs the (possibly-overridden) editor command.
+pub(super) fn spawn_shell_path_command_with_shell(
+    shell: &str,
+    command: &str,
+    path: &Path,
+) -> std::io::Result<()> {
+    spawn_shell_arg_command_with_shell(shell, command, &path.to_string_lossy())
+}
+
+fn spawn_shell_arg_command_with_shell(
+    shell: &str,
+    command: &str,
+    arg: &str,
+) -> std::io::Result<()> {
+    Command::new(shell)
         .arg("-lc")
         .arg(format!("{} {}", command, shell_escape(arg)))
         .spawn()
