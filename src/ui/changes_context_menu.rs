@@ -51,10 +51,12 @@ fn changes_context_menu_entries(app: &GitSparkApp, path: &str) -> Vec<ChangesCon
         .and_then(|snapshot| snapshot.changes.iter().find(|change| change.path == path))
         .map(|change| change.status.as_str())
         .unwrap_or_default();
-    // An untracked file has never been committed, so there is no blob for it
-    // on the remote to link to yet — "View on GitHub" would just 404.
-    let is_untracked = change_status.contains('?');
-    let show_view_on_github = app.repo_has_github_remote() && !is_untracked;
+    // A file that's untracked ('?') or only staged as newly added ('A', or
+    // 'AM' once further edited) has never been committed, so there is no
+    // blob for it on the remote to link to yet — "View on GitHub" would
+    // just 404.
+    let is_new_file = change_status.contains('?') || change_status.contains('A');
+    let show_view_on_github = app.repo_has_github_remote() && !is_new_file;
     let ignore_enabled = basename != ".gitignore";
     let file_action_enabled = !is_deleted_change_status(change_status);
 

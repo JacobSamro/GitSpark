@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { expect } from "../gitspark.mjs";
 import { assert, shortOid } from "../support/assertions.mjs";
 import { createRemoteOnlyCommit } from "../support/fixtures.mjs";
+import { nodeById } from "../support/tree.mjs";
 import { waitForOpenUrl } from "../support/url-log.mjs";
 
 const exec = promisify(execFile);
@@ -811,6 +812,16 @@ export async function testChangeFileActions(app, fixture) {
     timeoutMs: 10_000,
   });
 
+  // scratch.log is untracked and this repo has a GitHub remote configured
+  // (testGithubOpenActions ran earlier) — it must not offer "View on
+  // GitHub", since an untracked file has no blob on the remote to link to.
+  const scratchLogSnapshot = await app.snapshot();
+  assert(
+    nodeById(scratchLogSnapshot.test_tree, "change-scratch-log-view-on-github") ===
+      null,
+    "untracked file does not offer View on GitHub",
+  );
+
   await app.getByTestId("change-scratch-log-copy-relative-path").click();
   assert(
     (await app.clipboardText()).text === "scratch.log",
@@ -923,6 +934,23 @@ export async function testChangeFileActions(app, fixture) {
     (snapshot) =>
       snapshot.status_message === "Opened '.gitignore' with the default program." &&
       snapshot.error_message === "",
+    { timeoutMs: 10_000 },
+  );
+
+  // View on GitHub only makes sense for a file that actually has a blob on
+  // the remote — commit .gitignore first so this exercises the tracked-file
+  // case, not the untracked one (already covered by the scratch.log check
+  // above). Committing alone would drop it out of the Changes list entirely
+  // (nothing left to diff), so re-modify it afterward to keep its row (and
+  // the button under test) present.
+  await exec("git", ["add", ".gitignore"], { cwd: fixture.workRepo });
+  await exec("git", ["commit", "-m", "add .gitignore"], { cwd: fixture.workRepo });
+  await fs.appendFile(path.join(fixture.workRepo, ".gitignore"), "*.bak\n");
+  await app.command({ command: "refresh_repo" });
+  await app.waitForSnapshot(
+    (snapshot) =>
+      snapshot.status_message === "Repository refreshed." &&
+      snapshot.repo?.changes.some((change) => change.path === ".gitignore"),
     { timeoutMs: 10_000 },
   );
 

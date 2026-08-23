@@ -4277,7 +4277,11 @@ fn change_action_nodes(path: &str, status: &str, has_github_remote: bool) -> Vec
         );
     }
 
-    if has_github_remote {
+    // Matches changes_context_menu.rs's show_view_on_github: a file that's
+    // untracked ('?') or only staged as newly added ('A'/'AM') has no blob
+    // on the remote yet, so the link would just 404.
+    let is_new_file = status.contains('?') || status.contains('A');
+    if has_github_remote && !is_new_file {
         actions.push((
             "view-on-github",
             "View on GitHub".to_string(),
