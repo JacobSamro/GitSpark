@@ -66,7 +66,7 @@ fn status_label(status: &str) -> &'static str {
     }
 }
 
-fn render_stash_row(view: Entity<GitSparkApp>) -> AnyElement {
+fn render_stash_row(view: Entity<GitSparkApp>, selected: bool) -> AnyElement {
     h_flex()
         .id("stash-indicator")
         .w_full()
@@ -74,12 +74,22 @@ fn render_stash_row(view: Entity<GitSparkApp>) -> AnyElement {
         .px(z(10.0))
         .items_center()
         .gap(z(6.0))
-        .bg(theme::surface_bg())
+        .bg(if selected {
+            theme::selected_bg()
+        } else {
+            theme::surface_bg()
+        })
         .border_b_1()
         .border_color(theme::border())
         .flex_shrink_0()
         .cursor_pointer()
-        .hover(|s| s.bg(theme::hover_bg()))
+        .hover(|s| {
+            s.bg(if selected {
+                theme::selected_bg()
+            } else {
+                theme::hover_bg()
+            })
+        })
         .child(
             Icon::new(IconName::Inbox)
                 .size(z(14.0))
@@ -99,7 +109,7 @@ fn render_stash_row(view: Entity<GitSparkApp>) -> AnyElement {
         )
         .on_click(move |_evt, _win, cx| {
             view.update(cx, |app, cx| {
-                app.show_restore_stash_dialog(cx);
+                app.view_stash(cx);
             });
         })
         .into_any_element()
@@ -140,7 +150,7 @@ pub fn render_sidebar_interactive(
         SidebarTab::Changes => {
             if changes.is_empty() {
                 let stash_row = if app.repo.has_stash {
-                    render_stash_row(view.clone())
+                    render_stash_row(view.clone(), app.selection.viewing_stash)
                 } else {
                     div().into_any_element()
                 };
@@ -243,7 +253,7 @@ pub fn render_sidebar_interactive(
                     app.commit.included_files.clone();
 
                 let stash_row = if app.repo.has_stash {
-                    render_stash_row(view.clone())
+                    render_stash_row(view.clone(), app.selection.viewing_stash)
                 } else {
                     div().into_any_element()
                 };

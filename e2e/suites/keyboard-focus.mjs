@@ -20,9 +20,7 @@ export async function testKeyboardFocusPaths(app, fixture) {
     { timeoutMs: 10_000 },
   );
   if (snapshot.active_dialog !== "none") {
-    await app.getByTestId("dialog-cancel").click().catch(async () => {
-      await app.getByTestId("restore-stash-cancel").click();
-    });
+    await app.getByTestId("dialog-cancel").click();
     await app.waitForSnapshot(
       (snapshot) => snapshot.active_dialog === "none",
       { timeoutMs: 10_000 },

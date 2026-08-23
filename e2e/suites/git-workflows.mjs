@@ -612,24 +612,23 @@ export async function testStashFlows(app, fixture) {
   await app.getByTestId("stash-indicator").click();
   await app.waitForSnapshot(
     (snapshot) =>
-      snapshot.active_dialog === "restore_stash" &&
-      snapshot.repo?.stash_count === 1,
+      snapshot.viewing_stash === true && snapshot.repo?.stash_count === 1,
     { timeoutMs: 10_000 },
   );
-  await expect(app.getByTestId("restore-stash-file-readme-md")).toBeVisible({
+  await expect(app.getByTestId("stash-file-readme-md")).toBeVisible({
     timeoutMs: 10_000,
   });
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.test_tree?.children?.some(
-        (node) => node.id === "restore-stash-file-readme-md",
+        (node) => node.id === "stash-file-readme-md",
       ) &&
       snapshot.test_tree?.children?.some(
-        (node) => node.id === "restore-stash-confirm" && node.enabled === true,
+        (node) => node.id === "stash-view-restore" && node.enabled === true,
       ),
     { timeoutMs: 10_000 },
   );
-  await app.getByTestId("restore-stash-confirm").click();
+  await app.getByTestId("stash-view-restore").click();
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.status_message === "Restored stash complete." &&
@@ -731,14 +730,13 @@ export async function testStashAndSwitchDialog(app, fixture) {
   await app.getByTestId("stash-indicator").click();
   await app.waitForSnapshot(
     (snapshot) =>
-      snapshot.active_dialog === "restore_stash" &&
-      snapshot.repo?.stash_count === 1,
+      snapshot.viewing_stash === true && snapshot.repo?.stash_count === 1,
     { timeoutMs: 10_000 },
   );
-  await expect(app.getByTestId("restore-stash-file-readme-md")).toBeVisible({
+  await expect(app.getByTestId("stash-file-readme-md")).toBeVisible({
     timeoutMs: 10_000,
   });
-  await app.getByTestId("restore-stash-confirm").click();
+  await app.getByTestId("stash-view-restore").click();
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.status_message === "Restored stash complete." &&

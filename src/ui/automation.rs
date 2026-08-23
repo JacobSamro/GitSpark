@@ -398,6 +398,8 @@ struct AutomationSnapshot {
     selected_change: Option<String>,
     selected_commit: Option<String>,
     selected_commit_file: Option<String>,
+    viewing_stash: bool,
+    selected_stash_file: Option<String>,
     diff_hide_whitespace_changes: bool,
     diff_show_side_by_side: bool,
     selected_diff_visible_line_count: Option<usize>,
@@ -618,8 +620,8 @@ enum AutomationNodeAction {
     ConfirmResetToCommit,
     ConfirmStashChanges,
     ConfirmStashAndSwitch,
-    ShowRestoreStash,
-    RestoreStash,
+    ViewStash,
+    RestoreStashInline,
     ShowDiscardStash,
     ConfirmDiscardStash,
     SetCreateRepositoryName,
@@ -774,7 +776,7 @@ impl GitSparkApp {
                 AutomationResponse::success(self.automation_snapshot())
             }
             AutomationCommand::StashPop => {
-                self.show_restore_stash_dialog(cx);
+                self.restore_stash(cx);
                 AutomationResponse::success(self.automation_snapshot())
             }
             AutomationCommand::ShowSettings { show } => {
@@ -993,6 +995,8 @@ impl GitSparkApp {
             selected_change: self.selection.selected_change.clone(),
             selected_commit: self.selection.selected_commit.clone(),
             selected_commit_file: self.selection.selected_commit_file.clone(),
+            viewing_stash: self.selection.viewing_stash,
+            selected_stash_file: self.selection.selected_stash_file.clone(),
             diff_hide_whitespace_changes: self.nav.diff_options.hide_whitespace_changes,
             diff_show_side_by_side: self.nav.diff_options.show_side_by_side,
             selected_diff_visible_line_count: self.selected_diff().map(|diff| {
@@ -1960,54 +1964,44 @@ impl GitSparkApp {
             ]);
         }
 
-        if matches!(self.nav.active_dialog, ActiveDialog::RestoreStash) {
+        if self.selection.viewing_stash {
             children.push(automation_node(
-                "restore-stash-file-list",
+                "stash-file-list",
                 AutomationRole::List,
-                Some("restore-stash-file-list"),
-                Some("Stash files"),
-                None,
+                Some("stash-file-list"),
+                Some("Stashed files"),
+                None::<AutomationNodeAction>,
             ));
-            children.extend(self.repo.stash_files.iter().map(|file| {
-                let id = format!("restore-stash-file-{}", stable_test_slug(&file.path));
-                automation_node(
-                    id.clone(),
-                    AutomationRole::ListItem,
-                    Some(id),
-                    Some(file.path.as_str()),
-                    None,
-                )
-            }));
+            if let Some(diffs) = self.selection.stash_diffs.as_ref() {
+                children.extend(diffs.iter().map(|entry| {
+                    let id = format!("stash-file-{}", stable_test_slug(&entry.path));
+                    automation_node(
+                        id.clone(),
+                        AutomationRole::ListItem,
+                        Some(id),
+                        Some(entry.path.as_str()),
+                        None::<AutomationNodeAction>,
+                    )
+                    .selected(
+                        self.selection.selected_stash_file.as_deref() == Some(entry.path.as_str()),
+                    )
+                }));
+            }
             children.extend([
                 automation_node(
-                    "restore-stash-close",
+                    "stash-view-restore",
                     AutomationRole::Button,
-                    Some("restore-stash-close"),
-                    Some("Close"),
-                    Some(AutomationNodeAction::CancelDialog),
+                    Some("stash-view-restore"),
+                    Some("Restore"),
+                    Some(AutomationNodeAction::RestoreStashInline),
                 ),
                 automation_node(
-                    "restore-stash-cancel",
+                    "stash-view-discard",
                     AutomationRole::Button,
-                    Some("restore-stash-cancel"),
-                    Some("Cancel"),
-                    Some(AutomationNodeAction::CancelDialog),
-                ),
-                automation_node(
-                    "restore-stash-discard",
-                    AutomationRole::Button,
-                    Some("restore-stash-discard"),
-                    Some("Discard Stash"),
+                    Some("stash-view-discard"),
+                    Some("Discard"),
                     Some(AutomationNodeAction::ShowDiscardStash),
                 ),
-                automation_node(
-                    "restore-stash-confirm",
-                    AutomationRole::Button,
-                    Some("restore-stash-confirm"),
-                    Some("Restore Stash"),
-                    Some(AutomationNodeAction::RestoreStash),
-                )
-                .enabled(!self.repo.stash_files.is_empty()),
             ]);
         }
 
@@ -2424,13 +2418,16 @@ impl GitSparkApp {
             }
 
             if snapshot.stash_count > 0 {
-                children.push(automation_node(
-                    "stash-indicator",
-                    AutomationRole::Button,
-                    Some("stash-indicator"),
-                    Some("Stashed Changes"),
-                    Some(AutomationNodeAction::ShowRestoreStash),
-                ));
+                children.push(
+                    automation_node(
+                        "stash-indicator",
+                        AutomationRole::Button,
+                        Some("stash-indicator"),
+                        Some("Stashed Changes"),
+                        Some(AutomationNodeAction::ViewStash),
+                    )
+                    .selected(self.selection.viewing_stash),
+                );
             }
 
             for branch in snapshot
@@ -3101,11 +3098,17 @@ impl GitSparkApp {
                 }
                 self.stash_changes(cx);
             }
-            AutomationNodeAction::ShowRestoreStash => {
-                self.show_restore_stash_dialog(cx);
+            AutomationNodeAction::ViewStash => {
+                if self.selection.viewing_stash {
+                    self.close_stash_view(cx);
+                } else {
+                    self.view_stash(cx);
+                }
             }
-            AutomationNodeAction::RestoreStash => {
-                self.nav.active_dialog = ActiveDialog::None;
+            AutomationNodeAction::RestoreStashInline => {
+                if !self.selection.viewing_stash {
+                    return AutomationResponse::failure("stash view is not active");
+                }
                 self.restore_stash(cx);
             }
             AutomationNodeAction::ShowDiscardStash => {
@@ -4585,7 +4588,6 @@ fn active_dialog_name(dialog: &ActiveDialog) -> &'static str {
         ActiveDialog::ResetToCommit { .. } => "reset_to_commit",
         ActiveDialog::CreateRepository => "create_repository",
         ActiveDialog::CloneRepository => "clone_repository",
-        ActiveDialog::RestoreStash => "restore_stash",
         ActiveDialog::DiscardStash => "discard_stash",
         ActiveDialog::PublishRepository => "publish_repository",
     }

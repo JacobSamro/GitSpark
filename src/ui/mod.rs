@@ -21,7 +21,6 @@ pub mod repo_tab_bar;
 pub mod repo_tabs;
 pub mod repository_dialog;
 pub mod reset_dialog;
-pub mod restore_stash_dialog;
 pub mod settings_modal;
 pub mod side_by_side_diff;
 pub mod sidebar;

@@ -601,6 +601,62 @@ impl GitClient {
         Ok(output.lines().filter_map(parse_name_status_line).collect())
     }
 
+    /// Per-file diffs for the current branch's GitSpark stash, for the
+    /// inline stash view (real diffs, not just a file list).
+    ///
+    /// Deliberately `git stash show -p`, not a `<stash>^1..<stash>` two-tree
+    /// diff: a stash with `-u` keeps untracked files on a *third* parent, not
+    /// merged into the main stash commit's own tree, so a plain parent diff
+    /// silently drops them (confirmed by a failing test, not assumed) —
+    /// `stash show` is what actually reproduces both parts together. Splits
+    /// the combined output with the same `split_combined_diff` helper
+    /// `batch_diff` uses, rather than one `git show` per file.
+    pub fn latest_stash_diff(&self, repo_path: &Path) -> Result<Vec<DiffEntry>> {
+        let repo_path = self.resolve_repo_root(repo_path)?;
+        let stash_ref = self.latest_gitspark_stash_ref_for_current_branch(&repo_path)?;
+        let changes = self.latest_stash_files(&repo_path)?;
+        let paths: Vec<&str> = changes.iter().map(|change| change.path.as_str()).collect();
+
+        let output = self.run_git(
+            &repo_path,
+            &[
+                "-c",
+                "core.quotepath=off",
+                "stash",
+                "show",
+                "-p",
+                "--include-untracked",
+                "--no-color",
+                stash_ref.as_str(),
+            ],
+        )?;
+        let (sections, _unattributed) = split_combined_diff(&output, &paths);
+
+        Ok(changes
+            .into_iter()
+            .map(|change| {
+                let diff = sections.get(&change.path).cloned().unwrap_or_default();
+                let is_image = path_is_supported_image(&change.path);
+                let submodule = submodule_diff_metadata(&diff);
+                let is_binary = !submodule.is_submodule && looks_binary_diff(&diff);
+                DiffEntry {
+                    path: change.path,
+                    diff: if diff.trim().is_empty() {
+                        "No textual diff available".to_string()
+                    } else {
+                        diff
+                    },
+                    is_binary,
+                    is_image,
+                    is_submodule: submodule.is_submodule,
+                    submodule_old_oid: submodule.old_oid,
+                    submodule_new_oid: submodule.new_oid,
+                    ..Default::default()
+                }
+            })
+            .collect())
+    }
+
     pub fn undo_last_commit(&self, repo_path: &Path) -> Result<RepoSnapshot> {
         let repo_path = self.resolve_repo_root(repo_path)?;
         self.run_git(&repo_path, &["reset", "--soft", "HEAD~1"])
@@ -3567,6 +3623,41 @@ mod tests {
 
         let snapshot = GitClient::new().open_repo(&repo).unwrap();
         assert_eq!(snapshot.stash_count, 0);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn latest_stash_diff_shows_real_content_for_tracked_and_untracked_files() {
+        let repo = temp_repo("stash-diff");
+        fs::write(repo.join("README.md"), "one\ntwo\nthree\n").unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.name", "GitSpark Test"]);
+        run_git(&repo, &["config", "user.email", "test@gitspark.local"]);
+        run_git(&repo, &["add", "--all"]);
+        run_git(&repo, &["commit", "-m", "initial"]);
+
+        fs::write(repo.join("README.md"), "one\ntwo\nTHREE\n").unwrap();
+        fs::write(repo.join("new-file.txt"), "brand new\n").unwrap();
+        let snapshot = GitClient::new().stash_all(&repo).unwrap();
+        assert_eq!(snapshot.stash_count, 1);
+
+        let diffs = GitClient::new().latest_stash_diff(&repo).unwrap();
+        let by_path = |path: &str| diffs.iter().find(|d| d.path == path);
+
+        let readme_diff = by_path("README.md").expect("README.md diff present");
+        assert!(
+            readme_diff.diff.contains("-three") && readme_diff.diff.contains("+THREE"),
+            "expected a real line-level diff, got:\n{}",
+            readme_diff.diff
+        );
+
+        let new_file_diff = by_path("new-file.txt").expect("new-file.txt diff present");
+        assert!(
+            new_file_diff.diff.contains("+brand new"),
+            "expected the untracked file's content to show as added, got:\n{}",
+            new_file_diff.diff
+        );
 
         let _ = fs::remove_dir_all(repo);
     }

@@ -31,7 +31,6 @@ pub(super) fn render_active_dialog(
         ActiveDialog::DiscardChanges { .. } => (420.0, 230.0),
         ActiveDialog::StashAndSwitch { .. } => (576.0, 360.0),
         ActiveDialog::StashChanges => (500.0, 360.0),
-        ActiveDialog::RestoreStash => (500.0, 360.0),
         ActiveDialog::DiscardStash => (kit::dialog::DIALOG_WIDTH_WIDE, 400.0),
         ActiveDialog::PublishRepository => (
             crate::ui::publish_dialog::PUBLISH_DIALOG_WIDTH,
@@ -92,10 +91,6 @@ pub(super) fn render_active_dialog(
         ActiveDialog::StashAndSwitch { target_branch } => {
             change_dialogs::render_stash_and_switch_dialog(app, target_branch, cx)
         }
-        ActiveDialog::RestoreStash => crate::ui::restore_stash_dialog::render_restore_stash_dialog(
-            Arc::new(app.repo.stash_files.clone()),
-            cx,
-        ),
         ActiveDialog::PublishRepository => {
             crate::ui::publish_dialog::render_publish_dialog(app, window, cx)
         }

@@ -262,11 +262,13 @@ pub struct GitSparkApp {
     repo_filter_cursor: usize,
     worktree_filter_focus: FocusHandle,
     worktree_filter_cursor: usize,
-    /// Virtualized-diff list state. Two handles, not one: Changes and History
-    /// can show the SAME file path, and a shared handle would carry one tab's
-    /// scroll offset and measured heights into the other.
+    /// Virtualized-diff list state. Three handles, not one: Changes, History,
+    /// and the stash view can all show the SAME file path, and a shared
+    /// handle would carry one view's scroll offset and measured heights
+    /// into another.
     diff_list_changes: crate::ui::workspace::DiffListHandle,
     diff_list_history: crate::ui::workspace::DiffListHandle,
+    diff_list_stash: crate::ui::workspace::DiffListHandle,
     new_branch_focus: FocusHandle,
     pub(crate) new_branch_cursor: usize,
     pub(crate) new_branch_selection: Option<usize>,
@@ -392,6 +394,7 @@ impl GitSparkApp {
             worktree_filter_cursor: 0,
             diff_list_changes: Default::default(),
             diff_list_history: Default::default(),
+            diff_list_stash: Default::default(),
             new_branch_focus: cx.focus_handle(),
             new_branch_cursor: 0,
             new_branch_selection: None,

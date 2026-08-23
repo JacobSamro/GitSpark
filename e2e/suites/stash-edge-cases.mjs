@@ -91,11 +91,11 @@ export async function testStashEdgeCases(app) {
   await app.getByTestId("stash-indicator").click();
   await app.waitForSnapshot(
     (snapshot) =>
-      snapshot.active_dialog === "restore_stash" &&
-      nodeById(snapshot.test_tree, "restore-stash-file-main-only-txt"),
+      snapshot.viewing_stash === true &&
+      nodeById(snapshot.test_tree, "stash-file-main-only-txt"),
     { timeoutMs: 10_000 },
   );
-  await app.getByTestId("restore-stash-confirm").click();
+  await app.getByTestId("stash-view-restore").click();
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.status_message === "Restored stash complete." &&
@@ -138,7 +138,10 @@ export async function testStashEdgeCases(app) {
     { timeoutMs: 10_000 },
   );
   await app.getByTestId("stash-indicator").click();
-  await app.getByTestId("restore-stash-discard").click();
+  await app.waitForSnapshot((snapshot) => snapshot.viewing_stash === true, {
+    timeoutMs: 10_000,
+  });
+  await app.getByTestId("stash-view-discard").click();
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.active_dialog === "discard_stash" &&
@@ -149,11 +152,15 @@ export async function testStashEdgeCases(app) {
   await app.getByTestId("discard-stash-cancel").click();
   await app.waitForSnapshot(
     (snapshot) =>
-      snapshot.active_dialog === "none" && snapshot.repo?.stash_count === 1,
+      snapshot.active_dialog === "none" &&
+      snapshot.repo?.stash_count === 1 &&
+      snapshot.viewing_stash === true,
     { timeoutMs: 10_000 },
   );
-  await app.getByTestId("stash-indicator").click();
-  await app.getByTestId("restore-stash-discard").click();
+  // The discard confirm dialog sits on top of the stash view rather than
+  // replacing it, so canceling leaves the view open — no need to re-click
+  // stash-indicator (which would now toggle it closed).
+  await app.getByTestId("stash-view-discard").click();
   await app.getByTestId("discard-stash-confirm").click();
   await app.waitForSnapshot(
     (snapshot) =>
@@ -188,11 +195,15 @@ export async function testStashEdgeCases(app) {
   await app.getByTestId("stash-indicator").click();
   await app.waitForSnapshot(
     (snapshot) =>
-      nodeById(snapshot.test_tree, "restore-stash-file-rename-new-txt") &&
-      nodeById(snapshot.test_tree, "restore-stash-file-delete-stash-txt"),
+      nodeById(snapshot.test_tree, "stash-file-rename-new-txt") &&
+      nodeById(snapshot.test_tree, "stash-file-delete-stash-txt"),
     { timeoutMs: 10_000 },
   );
-  await app.getByTestId("restore-stash-cancel").click();
+  // Closes the stash view (stash-indicator toggles while it's active).
+  await app.getByTestId("stash-indicator").click();
+  await app.waitForSnapshot((snapshot) => snapshot.viewing_stash === false, {
+    timeoutMs: 10_000,
+  });
 
   await testStashPopConflict(app);
 }
@@ -249,7 +260,10 @@ async function testStashPopConflict(app) {
   await exec("git", ["commit", "-m", "current conflicting edit"], { cwd: repo });
   await app.command({ command: "refresh_repo" });
   await app.getByTestId("stash-indicator").click();
-  await app.getByTestId("restore-stash-confirm").click();
+  await app.waitForSnapshot((snapshot) => snapshot.viewing_stash === true, {
+    timeoutMs: 10_000,
+  });
+  await app.getByTestId("stash-view-restore").click();
   await app.waitForSnapshot(
     (snapshot) =>
       snapshot.error_message.startsWith("Restored stash failed:") &&

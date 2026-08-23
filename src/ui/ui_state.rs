@@ -86,7 +86,6 @@ pub enum ActiveDialog {
     CreateRepository,
     CloneRepository,
     StashChanges,
-    RestoreStash,
     DiscardStash,
     PublishRepository,
 }

@@ -452,9 +452,8 @@ impl GitSparkApp {
     }
 
     pub fn menu_show_stashed_changes(&mut self, cx: &mut Context<Self>) {
-        if matches!(self.nav.active_dialog, ActiveDialog::RestoreStash) {
-            self.nav.active_dialog = ActiveDialog::None;
-            cx.notify();
+        if self.selection.viewing_stash {
+            self.close_stash_view(cx);
             return;
         }
 
@@ -470,7 +469,7 @@ impl GitSparkApp {
             return;
         }
 
-        self.show_restore_stash_dialog(cx);
+        self.view_stash(cx);
     }
 
     /// Cmd+R / Ctrl+R. Re-reads the working tree and history from disk —
@@ -3451,6 +3450,10 @@ impl GitSparkApp {
                 .into_any_element();
         }
 
+        if self.selection.viewing_stash {
+            return self.render_stash_workspace(cx);
+        }
+
         // Determine the active file list and selected file based on tab.
         let (diffs, selected_file): (&[DiffEntry], Option<&str>) = match sidebar_tab {
             SidebarTab::Changes => {
@@ -3568,6 +3571,50 @@ impl GitSparkApp {
         }
     }
 
+    /// The stash's inline diff view — same shape as the History branch
+    /// above (header + file list + diff pane), just fed from
+    /// `selection.stash_diffs` instead of a commit's diffs.
+    fn render_stash_workspace(&self, cx: &mut Context<Self>) -> AnyElement {
+        let diffs: &[DiffEntry] = self.selection.stash_diffs.as_deref().unwrap_or(&[]);
+        let selected_file = self.selection.selected_stash_file.as_deref();
+        let selected_diff = selected_file.and_then(|path| diffs.iter().find(|d| d.path == path));
+
+        let header = self.render_stash_detail_header(diffs, cx);
+        let file_list = self.render_commit_file_list(diffs, selected_file, SidebarTab::Changes, cx);
+
+        let content = v_flex()
+            .size_full()
+            .min_h_0()
+            .child(header)
+            .child(
+                div().w_full().flex_1().min_h_0().child(
+                    h_resizable("workspace-panels")
+                        .child(
+                            resizable_panel()
+                                .size(px(200.0))
+                                .size_range(px(120.0)..px(350.0))
+                                .child(file_list),
+                        )
+                        .child(
+                            resizable_panel().child(crate::ui::workspace::render_workspace(
+                                None,
+                                selected_file,
+                                selected_diff,
+                                self.nav.diff_options.hide_whitespace_changes,
+                                self.nav.diff_options.show_side_by_side,
+                                false,
+                                &self.selection.selected_diff_lines,
+                                None, // Stashed diffs are read-only, no expand controls
+                                &self.diff_list_stash,
+                                self.tab_size(),
+                            )),
+                        ),
+                ),
+            )
+            .into_any_element();
+        self.render_workspace_with_operation(content, cx)
+    }
+
     fn render_workspace_with_operation(
         &self,
         content: AnyElement,
@@ -3585,6 +3632,102 @@ impl GitSparkApp {
         } else {
             content
         }
+    }
+
+    /// Header for the inline stash view — "Stashed changes" plus Restore
+    /// and Discard, right there instead of behind a modal. Restore has no
+    /// confirm step (it only ever moves the stash back into Changes, which
+    /// is easily undone by stashing again); Discard keeps the existing
+    /// confirm dialog since it is destructive.
+    fn render_stash_detail_header(
+        &self,
+        diffs: &[DiffEntry],
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let (added, deleted) = diff_line_stats(diffs);
+        let file_count = diffs.len();
+
+        h_flex()
+            .id("stash-detail-header")
+            .w_full()
+            .h(px(58.0))
+            .flex_shrink_0()
+            .px(px(12.0))
+            .py(px(8.0))
+            .items_center()
+            .justify_between()
+            .bg(theme::panel_bg())
+            .border_b_1()
+            .border_color(theme::border())
+            .child(
+                v_flex()
+                    .min_w_0()
+                    .gap(px(4.0))
+                    .child(
+                        div()
+                            .text_size(theme::z(13.0))
+                            .text_color(theme::text_main())
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child("Stashed changes"),
+                    )
+                    .child(
+                        div()
+                            .text_size(theme::z(12.0))
+                            .text_color(theme::text_muted())
+                            .child(crate::ui::labels::commit_files(file_count)),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .flex_shrink_0()
+                    .items_center()
+                    .gap(px(10.0))
+                    .child(
+                        div()
+                            .text_size(theme::z(12.0))
+                            .text_color(theme::success())
+                            .child(format!("+{added}")),
+                    )
+                    .child(
+                        div()
+                            .text_size(theme::z(12.0))
+                            .text_color(theme::danger())
+                            .child(format!("-{deleted}")),
+                    )
+                    .child(
+                        div()
+                            .id("stash-view-discard")
+                            .px(px(10.0))
+                            .py(px(5.0))
+                            .rounded(theme::z(theme::CORNER_RADIUS))
+                            .border_1()
+                            .border_color(theme::border())
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme::hover_bg()))
+                            .text_size(theme::z(12.0))
+                            .text_color(theme::text_main())
+                            .child("Discard")
+                            .on_click(cx.listener(|app, _evt, _win, cx| {
+                                app.show_discard_stash_dialog(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("stash-view-restore")
+                            .label("Restore")
+                            .small()
+                            .custom(
+                                ButtonCustomVariant::new(cx)
+                                    .color(theme::commit_button_bg())
+                                    .foreground(theme::commit_button_text())
+                                    .hover(theme::commit_button_hover_bg())
+                                    .active(theme::commit_button_hover_bg()),
+                            )
+                            .on_click(cx.listener(|app, _evt, _win, cx| {
+                                app.restore_stash(cx);
+                            })),
+                    ),
+            )
+            .into_any_element()
     }
 
     fn render_commit_detail_header(
@@ -3765,17 +3908,21 @@ impl GitSparkApp {
                                 .on_click(move |_evt, _win, cx| {
                                     let path = path.clone();
                                     vh.update(cx, |app, cx| {
-                                        match tab {
-                                            SidebarTab::Changes => {
-                                                if app.selection.selected_change.as_deref()
-                                                    != Some(path.as_str())
-                                                {
-                                                    app.selection.selected_diff_lines.clear();
+                                        if app.selection.viewing_stash {
+                                            app.selection.selected_stash_file = Some(path);
+                                        } else {
+                                            match tab {
+                                                SidebarTab::Changes => {
+                                                    if app.selection.selected_change.as_deref()
+                                                        != Some(path.as_str())
+                                                    {
+                                                        app.selection.selected_diff_lines.clear();
+                                                    }
+                                                    app.selection.selected_change = Some(path);
                                                 }
-                                                app.selection.selected_change = Some(path);
-                                            }
-                                            SidebarTab::History => {
-                                                app.selection.selected_commit_file = Some(path);
+                                                SidebarTab::History => {
+                                                    app.selection.selected_commit_file = Some(path);
+                                                }
                                             }
                                         }
                                         cx.notify();

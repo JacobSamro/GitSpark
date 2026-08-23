@@ -1146,22 +1146,39 @@ impl GitSparkApp {
         cx.notify();
     }
 
-    pub(crate) fn show_restore_stash_dialog(&mut self, cx: &mut Context<Self>) {
-        if let Some(path) = self.repo_path().map(PathBuf::from) {
-            match self.git.latest_stash_files(&path) {
-                Ok(files) => {
-                    self.repo.stash_files = files;
-                    self.messages.error_message.clear();
-                }
-                Err(err) => {
-                    self.repo.stash_files.clear();
-                    self.messages.error_message = format!("Could not read stash files: {err:#}");
-                }
+    /// Switch the Changes tab into the stash's inline diff view — the same
+    /// selection-based approach GitHub Desktop uses (`ChangesSelectionKind`),
+    /// rather than a modal dialog. `adopt_snapshot` exits this view on its
+    /// own once the stash is gone (restored or discarded).
+    pub(crate) fn view_stash(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.repo_path().map(PathBuf::from) else {
+            self.messages.error_message = "No repository selected.".to_string();
+            cx.notify();
+            return;
+        };
+
+        self.nav.sidebar_tab = SidebarTab::Changes;
+        self.selection.selected_change = None;
+        self.selection.viewing_stash = true;
+        match self.git.latest_stash_diff(&path) {
+            Ok(diffs) => {
+                self.selection.selected_stash_file = diffs.first().map(|d| d.path.clone());
+                self.selection.stash_diffs = Some(diffs);
+                self.messages.error_message.clear();
             }
-        } else {
-            self.repo.stash_files.clear();
+            Err(err) => {
+                self.selection.selected_stash_file = None;
+                self.selection.stash_diffs = None;
+                self.messages.error_message = format!("Could not read stash diff: {err:#}");
+            }
         }
-        self.nav.active_dialog = ActiveDialog::RestoreStash;
+        cx.notify();
+    }
+
+    pub(crate) fn close_stash_view(&mut self, cx: &mut Context<Self>) {
+        self.selection.viewing_stash = false;
+        self.selection.selected_stash_file = None;
+        self.selection.stash_diffs = None;
         cx.notify();
     }
 
@@ -2957,6 +2974,14 @@ impl GitSparkApp {
                 .unwrap_or_default();
         } else {
             self.repo.stash_files.clear();
+            // The stash the user was looking at is gone — restored or
+            // discarded. Nothing to show any more, so fall back to the
+            // normal Changes view rather than leaving a stale diff on screen.
+            if self.selection.viewing_stash {
+                self.selection.viewing_stash = false;
+                self.selection.selected_stash_file = None;
+                self.selection.stash_diffs = None;
+            }
         }
         self.repo.snapshot = Some(snapshot);
         self.repo.worktrees = worktrees;
@@ -3329,14 +3354,42 @@ impl GitSparkApp {
         self.set_settings_field_cursor(field, self.settings_field_value(field).len());
     }
 
-    #[allow(dead_code)]
+    /// The diff for whatever the workspace is actually showing right now —
+    /// a change, a commit's file, or a stashed file. Used by automation to
+    /// report diff stats regardless of which of those three is active; a
+    /// prior version only ever checked the Changes case, so History's (and
+    /// now the stash view's) diff stats were always reported as null.
     pub fn selected_diff(&self) -> Option<&DiffEntry> {
-        let snapshot = self.repo.snapshot.as_ref()?;
-        let selected_change = self.selection.selected_change.as_ref()?;
-        snapshot
-            .diffs
-            .iter()
-            .find(|diff| &diff.path == selected_change)
+        if self.selection.viewing_stash {
+            let path = self.selection.selected_stash_file.as_ref()?;
+            return self
+                .selection
+                .stash_diffs
+                .as_ref()?
+                .iter()
+                .find(|diff| &diff.path == path);
+        }
+
+        match self.nav.sidebar_tab {
+            SidebarTab::History => {
+                let path = self.selection.selected_commit_file.as_ref()?;
+                let diffs = self
+                    .repo
+                    .comparison
+                    .as_ref()
+                    .map(|comparison| comparison.diffs.as_slice())
+                    .or_else(|| self.selection.commit_diffs.as_deref())?;
+                diffs.iter().find(|diff| &diff.path == path)
+            }
+            SidebarTab::Changes => {
+                let snapshot = self.repo.snapshot.as_ref()?;
+                let selected_change = self.selection.selected_change.as_ref()?;
+                snapshot
+                    .diffs
+                    .iter()
+                    .find(|diff| &diff.path == selected_change)
+            }
+        }
     }
 }
 

@@ -180,6 +180,12 @@ pub struct SelectionState {
     pub selected_commit_file: Option<String>,
     pub commit_diffs: Option<Vec<DiffEntry>>,
     pub selected_diff_lines: HashSet<DiffLineSelection>,
+    /// Whether the Changes tab is showing the stash's inline diff view
+    /// rather than the working tree — GitHub Desktop's `ChangesSelectionKind`,
+    /// a selection mode within Changes rather than a separate sidebar tab.
+    pub viewing_stash: bool,
+    pub selected_stash_file: Option<String>,
+    pub stash_diffs: Option<Vec<DiffEntry>>,
 }
 
 impl Default for SelectionState {
@@ -190,6 +196,9 @@ impl Default for SelectionState {
             selected_commit_file: None,
             commit_diffs: None,
             selected_diff_lines: HashSet::new(),
+            viewing_stash: false,
+            selected_stash_file: None,
+            stash_diffs: None,
         }
     }
 }
