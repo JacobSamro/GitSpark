@@ -266,6 +266,16 @@ impl Render for GitSparkApp {
             root = root.child(dialogs::render_active_dialog(self, window, cx));
         }
 
+        if let Some(context_menu) =
+            changes_context_menu::render_changes_context_menu_overlay(self, window, cx)
+        {
+            root = root.child(context_menu);
+        }
+
+        if let Some(toast) = self.messages.toast.as_ref() {
+            root = root.child(kit::render_toast(&toast.message));
+        }
+
         root = root
             .on_action(cx.listener(Self::handle_menu_open_repository))
             .on_action(cx.listener(Self::handle_menu_new_repository))

@@ -269,21 +269,6 @@ impl GitSparkApp {
             SidebarAction::DiscardChange(path) => self.discard_change(&path),
             SidebarAction::IgnorePath(path) => self.ignore_path(&path),
             SidebarAction::IgnoreExtension(ext) => self.ignore_extension(&ext),
-            SidebarAction::CopyFullPath(path) => {
-                if let Some(repo_path) = self.repo_path() {
-                    let full_path = repo_path.join(&path);
-                    cx.write_to_clipboard(ClipboardItem::new_string(
-                        full_path.to_string_lossy().to_string(),
-                    ));
-                    self.messages.status_message = format!("Copied absolute path for '{path}'.");
-                    self.messages.error_message.clear();
-                }
-            }
-            SidebarAction::CopyRelativePath(path) => {
-                cx.write_to_clipboard(ClipboardItem::new_string(path.clone()));
-                self.messages.status_message = format!("Copied relative path for '{path}'.");
-                self.messages.error_message.clear();
-            }
             SidebarAction::RevealInFinder(path) => self.reveal_in_finder(&path),
             SidebarAction::OpenInEditor(path) => self.open_in_external_editor(&path),
             SidebarAction::OpenWithDefault(path) => self.open_with_default_program(&path),
@@ -2320,6 +2305,36 @@ impl GitSparkApp {
         cx.notify();
     }
 
+    /// Shows a brief, self-dismissing confirmation over the window — for
+    /// quick actions like a clipboard copy, where the status bar text alone
+    /// is too easy to miss.
+    pub(crate) fn show_toast(&mut self, message: impl Into<String>, cx: &mut Context<Self>) {
+        let id = self.messages.next_toast_id();
+        self.messages.toast = Some(ToastState {
+            message: message.into(),
+            id,
+        });
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_secs(2))
+                .await;
+            let _ = this.update(cx, |app, cx| {
+                if app
+                    .messages
+                    .toast
+                    .as_ref()
+                    .is_some_and(|toast| toast.id == id)
+                {
+                    app.messages.toast = None;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
     pub(crate) fn handle_changes_context_action(
         &mut self,
         path: String,
@@ -2353,12 +2368,14 @@ impl GitSparkApp {
                     cx.write_to_clipboard(ClipboardItem::new_string(full));
                     self.messages.status_message = "Copied file path.".to_string();
                     self.messages.error_message.clear();
+                    self.show_toast("Copied file path.", cx);
                 }
             }
             ChangesContextAction::CopyRelativePath => {
                 cx.write_to_clipboard(ClipboardItem::new_string(path.clone()));
                 self.messages.status_message = "Copied relative path.".to_string();
                 self.messages.error_message.clear();
+                self.show_toast("Copied relative path.", cx);
             }
             ChangesContextAction::RevealInFinder => {
                 self.reveal_in_finder(&path);

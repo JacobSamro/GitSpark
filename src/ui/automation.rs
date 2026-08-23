@@ -420,6 +420,7 @@ struct AutomationSnapshot {
     branch_filter_text: String,
     status_message: String,
     error_message: String,
+    toast_message: Option<String>,
     compare: Option<AutomationCompareSnapshot>,
     operation: Option<AutomationOperationSnapshot>,
     settings_scope: AutomationSettingsScope,
@@ -1047,6 +1048,11 @@ impl GitSparkApp {
             branch_filter_text: self.filters.branch_filter_text.clone(),
             status_message: self.messages.status_message.clone(),
             error_message: self.messages.error_message.clone(),
+            toast_message: self
+                .messages
+                .toast
+                .as_ref()
+                .map(|toast| toast.message.clone()),
             compare: self
                 .repo
                 .comparison
@@ -3504,8 +3510,18 @@ impl GitSparkApp {
                     .unwrap_or_default();
                 SidebarAction::IgnoreExtension(ext)
             }
-            AutomationChangeAction::CopyFullPath => SidebarAction::CopyFullPath(path),
-            AutomationChangeAction::CopyRelativePath => SidebarAction::CopyRelativePath(path),
+            AutomationChangeAction::CopyFullPath => {
+                self.handle_changes_context_action(path, ChangesContextAction::CopyFilePath, cx);
+                return;
+            }
+            AutomationChangeAction::CopyRelativePath => {
+                self.handle_changes_context_action(
+                    path,
+                    ChangesContextAction::CopyRelativePath,
+                    cx,
+                );
+                return;
+            }
             AutomationChangeAction::RevealInFinder => SidebarAction::RevealInFinder(path),
             AutomationChangeAction::OpenInEditor => SidebarAction::OpenInEditor(path),
             AutomationChangeAction::OpenWithDefault => SidebarAction::OpenWithDefault(path),

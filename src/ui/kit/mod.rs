@@ -41,6 +41,7 @@ pub mod picker;
 pub mod surface;
 #[allow(dead_code)]
 pub mod tag;
+pub mod toast;
 
 #[allow(unused_imports)]
 pub use button::{ButtonVariant, button, button_state, icon_button};
@@ -54,3 +55,4 @@ pub use picker::{filter_bar, filter_input};
 pub use surface::Surface;
 #[allow(unused_imports)]
 pub use tag::{pill, status_tag};
+pub use toast::render_toast;
