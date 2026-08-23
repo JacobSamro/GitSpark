@@ -1,3 +1,4 @@
+pub mod about_dialog;
 pub mod app;
 pub mod automation;
 pub mod binary_diff;

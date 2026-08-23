@@ -2618,6 +2618,24 @@ impl GitSparkApp {
         }
     }
 
+    /// "View Changelog" in the About dialog. Not repo-scoped like the other
+    /// `open_url` call sites — this is the app's own changelog, not
+    /// anything about the repo currently open.
+    pub(crate) fn open_changelog(&mut self, cx: &mut Context<Self>) {
+        const CHANGELOG_URL: &str =
+            "https://github.com/JacobSamro/GitSpark/blob/master/CHANGELOG.md";
+        match open_url(CHANGELOG_URL) {
+            Ok(_) => {
+                self.messages.status_message = "Opened changelog.".to_string();
+                self.messages.error_message.clear();
+            }
+            Err(err) => {
+                self.messages.error_message = format!("Failed to open changelog: {err:#}");
+            }
+        }
+        cx.notify();
+    }
+
     fn view_file_on_github(&mut self, relative_path: &str) {
         let Some(path) = self.repo_path().map(PathBuf::from) else {
             self.messages.error_message = "No repository selected.".to_string();

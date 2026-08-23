@@ -88,6 +88,7 @@ pub enum ActiveDialog {
     StashChanges,
     DiscardStash,
     PublishRepository,
+    About,
 }
 
 impl Default for ActiveDialog {

@@ -664,6 +664,7 @@ enum AutomationNodeAction {
     RevealConflictFile(String),
     MarkConflictResolved(String),
     CancelDialog,
+    OpenChangelog,
     ConfirmDiscardChanges,
     ChangeFile(String, AutomationChangeAction),
     History(String, AutomationHistoryAction),
@@ -2042,6 +2043,25 @@ impl GitSparkApp {
             ]);
         }
 
+        if matches!(self.nav.active_dialog, ActiveDialog::About) {
+            children.extend([
+                automation_node(
+                    "about-changelog",
+                    AutomationRole::Button,
+                    Some("about-changelog"),
+                    Some("View Changelog"),
+                    Some(AutomationNodeAction::OpenChangelog),
+                ),
+                automation_node(
+                    "about-close-btn",
+                    AutomationRole::Button,
+                    Some("about-close-btn"),
+                    Some("Close"),
+                    Some(AutomationNodeAction::CancelDialog),
+                ),
+            ]);
+        }
+
         if let ActiveDialog::RenameBranch { old_name } = &self.nav.active_dialog {
             let rename_validation = self.rename_branch_validation_message(old_name);
             let show_rename_validation = !self.repo.new_branch_name.trim().is_empty()
@@ -3318,6 +3338,9 @@ impl GitSparkApp {
                 self.nav.active_dialog = ActiveDialog::None;
                 cx.notify();
             }
+            AutomationNodeAction::OpenChangelog => {
+                self.open_changelog(cx);
+            }
             AutomationNodeAction::ConfirmDiscardChanges => {
                 if let ActiveDialog::DiscardChanges { paths } = &self.nav.active_dialog {
                     let paths = paths.clone();
@@ -4590,6 +4613,7 @@ fn active_dialog_name(dialog: &ActiveDialog) -> &'static str {
         ActiveDialog::CloneRepository => "clone_repository",
         ActiveDialog::DiscardStash => "discard_stash",
         ActiveDialog::PublishRepository => "publish_repository",
+        ActiveDialog::About => "about",
     }
 }
 

@@ -36,6 +36,7 @@ pub(super) fn render_active_dialog(
             crate::ui::publish_dialog::PUBLISH_DIALOG_WIDTH,
             crate::ui::publish_dialog::PUBLISH_DIALOG_HEIGHT,
         ),
+        ActiveDialog::About => (kit::dialog::DIALOG_WIDTH, 200.0),
         ActiveDialog::None => (0.0, 0.0),
     };
     let bounds = window.bounds();
@@ -94,6 +95,7 @@ pub(super) fn render_active_dialog(
         ActiveDialog::PublishRepository => {
             crate::ui::publish_dialog::render_publish_dialog(app, window, cx)
         }
+        ActiveDialog::About => crate::ui::about_dialog::render_about_dialog(cx),
         _ => div(),
     };
 
