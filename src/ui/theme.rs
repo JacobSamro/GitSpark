@@ -194,14 +194,17 @@ pub fn accent_muted() -> Hsla {
     pick(0x5b93cc, 0x35489f)
 }
 
+/// Same blue as a selected History row ([`list_selected_active_bg`]), not
+/// [`accent`] — the lighter Zed accent read as washed-out next to it.
 pub fn checkbox_selected_bg() -> Hsla {
-    accent()
+    list_selected_active_bg()
 }
 
-/// The check glyph, knocked out of the accent fill. Resolving to [`bg`] is
-/// correct in both arms: near-black on light blue, white on deep blue.
+/// The check glyph, knocked out of the checkbox fill. White in both arms,
+/// same reasoning as [`list_selected_active_fg`]: the fill is dark enough
+/// either way.
 pub fn checkbox_selected_fg() -> Hsla {
-    bg()
+    list_selected_active_fg()
 }
 
 pub fn text_selection_bg() -> Hsla {
@@ -439,12 +442,16 @@ pub fn syntax_number() -> Hsla {
     pick(0xbf956a, 0x8a5a00)
 }
 
+/// Same blue as a selected History row ([`list_selected_active_bg`]), not
+/// [`accent`] — the lighter Zed accent read as a dull, washed-out blue next
+/// to the saturated blue everywhere else a selection reads as "selected".
 pub fn commit_button_bg() -> Hsla {
-    accent()
+    list_selected_active_bg()
 }
 
+/// A touch lighter than [`commit_button_bg`], same hue family.
 pub fn commit_button_hover_bg() -> Hsla {
-    pick(0x8cbcec, 0x3a4eb8)
+    pick(0x2882e6, 0x2882e6)
 }
 
 /// Text and glyphs knocked out of an `accent()` fill.
@@ -457,10 +464,11 @@ pub fn on_accent() -> Hsla {
     pick(0x0e1013, 0xffffff)
 }
 
-/// The commit CTA's label. Same thing as [`on_accent`]; kept as its own name
-/// because that is what the callsites read as.
+/// The commit CTA's label, knocked out of [`commit_button_bg`]. White in
+/// both arms — same reasoning as [`list_selected_active_fg`], not
+/// [`on_accent`]: the new fill is dark enough for white text either way.
 pub fn commit_button_text() -> Hsla {
-    on_accent()
+    list_selected_active_fg()
 }
 
 /// Fill for the title-bar update button.

@@ -1502,9 +1502,9 @@ impl GitSparkApp {
                                     .px(theme::z(8.0))
                                     .py(theme::z(2.0))
                                     .rounded(theme::z(4.0))
-                                    .bg(theme::accent())
+                                    .bg(theme::commit_button_bg())
                                     .text_size(theme::z(11.0))
-                                    .text_color(theme::on_accent())
+                                    .text_color(theme::commit_button_text())
                                     .cursor_pointer()
                                     .hover(|s| s.bg(theme::commit_button_hover_bg()))
                                     .on_click(cx.listener(|app, _evt, _win, cx| {
