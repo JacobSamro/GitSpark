@@ -2,6 +2,57 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-23
+
+### Added
+
+- **Windows now ships a real installer.** `GitSpark-Setup.exe` (Inno Setup)
+  installs per-user to `%LOCALAPPDATA%\GitSpark` — no admin prompt, matching
+  macOS's single-`.dmg` download instead of a portable zip.
+- **Tab Size, External Editor, and Shell in Settings are now real,
+  functional pickers.** They previously looked like dropdowns but had no
+  click handler and no backing state at all — Tab Size always showed a
+  hardcoded "4 (default)". Editor and Shell now support presets (VS Code,
+  Sublime, Zed, Cursor, Vim; sh/bash/zsh) plus a custom command, and the
+  editor override takes priority over `GITSPARK_EDITOR_COMMAND`/git
+  `core.editor`/`VISUAL`/`EDITOR`.
+- **Stash now works like GitHub Desktop: an inline view, not a dialog.**
+  Clicking "Stashed Changes" shows a real diff with inline Restore/Discard,
+  the same shape as selecting a commit, instead of a "Restore Stashed
+  Changes" modal with a flat file list and no diff content.
+- Right-click "Open in Editor" and the rest of the file actions (copy path,
+  reveal in Finder, open with default, view on GitHub) now also work on
+  files in the History tab's commit file list, not just the Changes list.
+- The README now links straight to each platform's installer from the top
+  of the page and the Downloads table, instead of only to the Releases
+  page.
+
+### Fixed
+
+- **Windows self-update would have corrupted the install.** The updater's
+  Windows path expects to copy a bare executable over the running one, but
+  the signed update manifest pointed it at the portable `.zip` instead —
+  so a real update would have copied zip bytes over `gitspark.exe`. Fixed
+  by publishing a bare `.exe` as the update artifact; no app code needed to
+  change.
+- **The History tab reset mid-comparison on unrelated background changes.**
+  Comparing two branches and having the working tree change elsewhere (e.g.
+  a background file watcher tick) snapped the selected commit back to the
+  top of the list, even though nothing about the comparison itself had
+  changed. A prior fix covered plain History browsing but missed the
+  Compare-branches path.
+- **Buttons and checkmarks used a washed-out blue** (`#74ade8`/`#4257c9`)
+  next to the saturated blue used for a selected History row
+  (`#0366d6`). They now use the same blue.
+- Removed the stale "E2E automation" section from the README (an internal
+  testing channel, not something end users need) and added a note that
+  `gh` (GitHub CLI) is required for "Publish repository".
+
+### Chore
+
+- Dropped `restore_stash_dialog.rs` and the `RestoreStash` dialog state,
+  superseded by the inline stash view.
+
 ## [0.8.2] - 2026-08-23
 
 ### Fixed
