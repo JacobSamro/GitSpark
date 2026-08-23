@@ -108,20 +108,12 @@ pub struct NavState {
     pub show_branch_selector: bool,
     pub show_network_dropdown: bool,
     pub show_diff_options_menu: bool,
-    pub change_context_menu: Option<ChangeContextMenuState>,
     pub settings_section: SettingsSection,
     pub branch_selector_mode: BranchSelectorMode,
     pub active_dialog: ActiveDialog,
     pub diff_options: DiffViewOptions,
     /// Undo commit: Some((summary, timestamp)) after a successful commit
     pub undo_commit: Option<(String, std::time::Instant)>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct ChangeContextMenuState {
-    pub path: String,
-    pub x: f32,
-    pub y: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -159,7 +151,6 @@ impl Default for NavState {
             show_branch_selector: false,
             show_network_dropdown: false,
             show_diff_options_menu: false,
-            change_context_menu: None,
             settings_section: SettingsSection::Git,
             branch_selector_mode: BranchSelectorMode::Switch,
             active_dialog: ActiveDialog::None,

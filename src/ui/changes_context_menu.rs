@@ -1,12 +1,9 @@
 use gpui::prelude::FluentBuilder as _;
-use gpui::*;
-use gpui_component::{h_flex, v_flex};
+use gpui::{Context, Entity, Window};
+use gpui_component::menu::{ContextMenu, ContextMenuExt, PopupMenu, PopupMenuItem};
 
 use crate::ui::app::GitSparkApp;
-use crate::ui::ids::stable_id_slug;
 use crate::ui::labels;
-use crate::ui::theme;
-use crate::ui::ui_state::ChangeContextMenuState;
 
 #[derive(Clone, Debug)]
 pub(crate) enum ChangesContextAction {
@@ -22,30 +19,24 @@ pub(crate) enum ChangesContextAction {
     ViewOnGitHub,
 }
 
-#[derive(Clone)]
-struct ChangesContextMenuItem {
-    suffix: &'static str,
-    label: String,
-    enabled: bool,
-    action: ChangesContextAction,
-}
-
-enum ChangesContextMenuEntry {
-    Item(ChangesContextMenuItem),
-    Separator,
-}
-
-fn changes_context_menu_entries(app: &GitSparkApp, path: &str) -> Vec<ChangesContextMenuEntry> {
+pub(crate) fn build_changes_context_menu(
+    menu: PopupMenu,
+    view: Entity<GitSparkApp>,
+    path: String,
+    _window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
     let ext = std::path::Path::new(&path)
         .extension()
         .map(|e| e.to_string_lossy().to_string());
-    let folder = parent_folder_pattern(path);
+    let folder = parent_folder_pattern(&path);
     let basename = std::path::Path::new(&path)
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or_default();
-    let show_view_on_github = app.repo_has_github_remote();
-    let change_status = app
+    let show_view_on_github = view.read(cx).repo_has_github_remote();
+    let change_status = view
+        .read(cx)
         .repo
         .snapshot
         .as_ref()
@@ -55,88 +46,107 @@ fn changes_context_menu_entries(app: &GitSparkApp, path: &str) -> Vec<ChangesCon
     let ignore_enabled = basename != ".gitignore";
     let file_action_enabled = !is_deleted_change_status(change_status);
 
-    let mut entries = vec![
-        ChangesContextMenuEntry::Item(ChangesContextMenuItem {
-            suffix: "discard",
-            label: labels::discard_changes_menu().to_string(),
-            enabled: true,
-            action: ChangesContextAction::DiscardChanges,
-        }),
-        ChangesContextMenuEntry::Separator,
-        ChangesContextMenuEntry::Item(ChangesContextMenuItem {
-            suffix: "ignore-path",
-            label: labels::ignore_file_menu().to_string(),
-            enabled: ignore_enabled,
-            action: ChangesContextAction::IgnoreFile,
-        }),
-    ];
+    let menu = menu
+        .min_w(gpui::px(220.0))
+        .max_w(gpui::px(280.0))
+        .item(menu_item(
+            labels::discard_changes_menu(),
+            true,
+            view.clone(),
+            path.clone(),
+            ChangesContextAction::DiscardChanges,
+        ))
+        .separator()
+        .item(menu_item(
+            labels::ignore_file_menu(),
+            ignore_enabled,
+            view.clone(),
+            path.clone(),
+            ChangesContextAction::IgnoreFile,
+        ))
+        .when_some(folder, |menu, folder| {
+            menu.item(menu_item(
+                labels::ignore_folder_menu(),
+                ignore_enabled,
+                view.clone(),
+                path.clone(),
+                ChangesContextAction::IgnoreFolder(folder),
+            ))
+        })
+        .when_some(ext, |menu, ext| {
+            menu.item(menu_item(
+                labels::ignore_all_extension_menu(&ext),
+                ignore_enabled,
+                view.clone(),
+                path.clone(),
+                ChangesContextAction::IgnoreExtension,
+            ))
+        })
+        .separator()
+        .item(menu_item(
+            labels::copy_file_path_menu(),
+            true,
+            view.clone(),
+            path.clone(),
+            ChangesContextAction::CopyFilePath,
+        ))
+        .item(menu_item(
+            labels::copy_relative_file_path_menu(),
+            true,
+            view.clone(),
+            path.clone(),
+            ChangesContextAction::CopyRelativePath,
+        ))
+        .separator()
+        .item(menu_item(
+            labels::reveal_in_file_manager_menu(),
+            file_action_enabled,
+            view.clone(),
+            path.clone(),
+            ChangesContextAction::RevealInFinder,
+        ))
+        .item(menu_item(
+            labels::open_in_external_editor_menu(),
+            file_action_enabled,
+            view.clone(),
+            path.clone(),
+            ChangesContextAction::OpenInExternalEditor,
+        ))
+        .item(menu_item(
+            labels::open_with_default_program_menu(),
+            file_action_enabled,
+            view.clone(),
+            path.clone(),
+            ChangesContextAction::OpenWithDefault,
+        ));
 
-    if let Some(folder) = folder {
-        entries.push(ChangesContextMenuEntry::Item(ChangesContextMenuItem {
-            suffix: "ignore-folder",
-            label: labels::ignore_folder_menu().to_string(),
-            enabled: ignore_enabled,
-            action: ChangesContextAction::IgnoreFolder(folder),
-        }));
-    }
+    menu.when(show_view_on_github, |menu| {
+        menu.separator().item(menu_item(
+            "View on GitHub",
+            true,
+            view,
+            path,
+            ChangesContextAction::ViewOnGitHub,
+        ))
+    })
+}
 
-    if let Some(ext) = ext {
-        entries.push(ChangesContextMenuEntry::Item(ChangesContextMenuItem {
-            suffix: "ignore-extension",
-            label: labels::ignore_all_extension_menu(&ext),
-            enabled: ignore_enabled,
-            action: ChangesContextAction::IgnoreExtension,
-        }));
-    }
-
-    entries.extend([
-        ChangesContextMenuEntry::Separator,
-        ChangesContextMenuEntry::Item(ChangesContextMenuItem {
-            suffix: "copy-full-path",
-            label: labels::copy_file_path_menu().to_string(),
-            enabled: true,
-            action: ChangesContextAction::CopyFilePath,
-        }),
-        ChangesContextMenuEntry::Item(ChangesContextMenuItem {
-            suffix: "copy-relative-path",
-            label: labels::copy_relative_file_path_menu().to_string(),
-            enabled: true,
-            action: ChangesContextAction::CopyRelativePath,
-        }),
-        ChangesContextMenuEntry::Separator,
-        ChangesContextMenuEntry::Item(ChangesContextMenuItem {
-            suffix: "reveal-in-finder",
-            label: labels::reveal_in_file_manager_menu().to_string(),
-            enabled: file_action_enabled,
-            action: ChangesContextAction::RevealInFinder,
-        }),
-        ChangesContextMenuEntry::Item(ChangesContextMenuItem {
-            suffix: "open-in-editor",
-            label: labels::open_in_external_editor_menu().to_string(),
-            enabled: file_action_enabled,
-            action: ChangesContextAction::OpenInExternalEditor,
-        }),
-        ChangesContextMenuEntry::Item(ChangesContextMenuItem {
-            suffix: "open-with-default",
-            label: labels::open_with_default_program_menu().to_string(),
-            enabled: file_action_enabled,
-            action: ChangesContextAction::OpenWithDefault,
-        }),
-    ]);
-
-    if show_view_on_github {
-        entries.extend([
-            ChangesContextMenuEntry::Separator,
-            ChangesContextMenuEntry::Item(ChangesContextMenuItem {
-                suffix: "view-on-github",
-                label: "View on GitHub".to_string(),
-                enabled: true,
-                action: ChangesContextAction::ViewOnGitHub,
-            }),
-        ]);
-    }
-
-    entries
+fn menu_item(
+    label: impl Into<String>,
+    enabled: bool,
+    view: Entity<GitSparkApp>,
+    path: String,
+    action: ChangesContextAction,
+) -> PopupMenuItem {
+    PopupMenuItem::new(label.into())
+        .disabled(!enabled)
+        .on_click(move |_event, _window, cx| {
+            let path = path.clone();
+            let action = action.clone();
+            view.update(cx, |app, cx| {
+                app.handle_changes_context_action(path, action, cx);
+            });
+        })
 }
 
 fn parent_folder_pattern(path: &str) -> Option<String> {
@@ -155,130 +165,22 @@ fn is_deleted_change_status(status: &str) -> bool {
 }
 
 pub(crate) fn bind_changes_context_click(
-    row: Stateful<Div>,
+    row: gpui::Stateful<gpui::Div>,
     view: Entity<GitSparkApp>,
     path: String,
-) -> Stateful<Div> {
-    row.on_mouse_down(MouseButton::Right, move |event, _window, cx| {
-        let path = path.clone();
-        let position = event.position;
-        view.update(cx, |app, cx| {
-            if app.selection.selected_change.as_deref() != Some(path.as_str()) {
-                app.selection.selected_diff_lines.clear();
-            }
-            app.selection.selected_change = Some(path.clone());
-            app.refresh_file_diff(path.clone());
-            app.nav.change_context_menu = Some(ChangeContextMenuState {
-                path,
-                x: position.x / px(1.0),
-                y: position.y / px(1.0),
-            });
-            cx.notify();
-        });
-    })
-}
-
-pub(crate) fn render_changes_context_menu_overlay(
-    app: &GitSparkApp,
-    window: &Window,
-    cx: &mut Context<GitSparkApp>,
-) -> Option<Stateful<Div>> {
-    let state = app.nav.change_context_menu.clone()?;
-    let entries = changes_context_menu_entries(app, &state.path);
-    if entries.is_empty() {
-        return None;
-    }
-
-    let view = cx.entity().clone();
-    let window_size = window.window_bounds().get_bounds().size;
-    let max_left = ((window_size.width / px(1.0)) - 292.0).max(8.0);
-    let max_top = ((window_size.height / px(1.0)) - 360.0).max(8.0);
-    let left = state.x.clamp(8.0, max_left);
-    let top = state.y.clamp(8.0, max_top);
-    let path = state.path.clone();
-    let slug = stable_id_slug(&path);
-
-    let backdrop_view = view.clone();
-    let backdrop = div()
-        .id("change-context-menu-backdrop")
-        .absolute()
-        .top_0()
-        .left_0()
-        .size_full()
-        .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-            backdrop_view.update(cx, |app, cx| {
-                app.nav.change_context_menu = None;
+) -> ContextMenu<gpui::Stateful<gpui::Div>> {
+    row.context_menu(move |menu, window, cx| {
+        {
+            let path = path.clone();
+            view.update(cx, |app, cx| {
+                if app.selection.selected_change.as_deref() != Some(path.as_str()) {
+                    app.selection.selected_diff_lines.clear();
+                }
+                app.selection.selected_change = Some(path.clone());
+                app.refresh_file_diff(path);
                 cx.notify();
             });
-        });
-
-    let menu = v_flex()
-        .id("change-context-menu")
-        .absolute()
-        .left(px(left))
-        .top(px(top))
-        .w(px(280.0))
-        .p(px(4.0))
-        .gap(px(2.0))
-        .bg(theme::panel_bg())
-        .border_1()
-        .border_color(theme::border())
-        .rounded(theme::z(theme::CORNER_RADIUS))
-        .shadow_lg()
-        .children(entries.into_iter().map(|entry| {
-            match entry {
-                ChangesContextMenuEntry::Separator => div()
-                    .h(px(1.0))
-                    .mx(px(6.0))
-                    .my(px(3.0))
-                    .bg(theme::border())
-                    .into_any_element(),
-                ChangesContextMenuEntry::Item(item) => {
-                    let item_view = view.clone();
-                    let item_path = path.clone();
-                    let action = item.action.clone();
-                    let id =
-                        SharedString::from(format!("change-context-menu-{slug}-{}", item.suffix));
-                    let item_row = h_flex()
-                        .id(id)
-                        .w_full()
-                        .h(px(28.0))
-                        .px(px(9.0))
-                        .items_center()
-                        .rounded(px(4.0))
-                        .text_size(px(12.0))
-                        .text_color(if item.enabled {
-                            theme::text_main()
-                        } else {
-                            theme::text_muted()
-                        })
-                        .when(item.enabled, |row| {
-                            row.cursor_pointer()
-                                .hover(|style| style.bg(theme::hover_bg()))
-                                .on_click(move |_event, _window, cx| {
-                                    let path = item_path.clone();
-                                    let action = action.clone();
-                                    item_view.update(cx, |app, cx| {
-                                        app.nav.change_context_menu = None;
-                                        app.handle_changes_context_action(path, action, cx);
-                                        cx.notify();
-                                    });
-                                })
-                        })
-                        .child(item.label);
-                    item_row.into_any_element()
-                }
-            }
-        }));
-
-    Some(
-        div()
-            .id("change-context-menu-overlay")
-            .absolute()
-            .top_0()
-            .left_0()
-            .size_full()
-            .child(backdrop)
-            .child(menu),
-    )
+        }
+        build_changes_context_menu(menu, view.clone(), path.clone(), window, cx)
+    })
 }

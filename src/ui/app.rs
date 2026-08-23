@@ -25,7 +25,7 @@ use crate::models::{
 use crate::storage::{push_recent_repo, save_settings};
 use crate::ui::automation;
 use crate::ui::branch_context_menu::BranchContextAction;
-use crate::ui::changes_context_menu::{self, ChangesContextAction};
+use crate::ui::changes_context_menu::ChangesContextAction;
 use crate::ui::diff_line_selection::DiffLineSelection;
 use crate::ui::domain_state::{
     CommitState, NetworkAction, NetworkState, RepoState, SelectionState,
