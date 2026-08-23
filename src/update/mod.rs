@@ -26,7 +26,9 @@
 //! [`driver::run`] performs check → download → verify on a worker thread and
 //! reports each transition as an [`UpdateState`]. When it ends on
 //! [`UpdateState::ReadyToInstall`], [`apply::install`] replaces the installed
-//! application and [`apply::relaunch`] starts the new one. Nothing is applied
+//! application and `cx.restart()` (GPUI's own, not a hand-rolled relaunch)
+//! starts the new one — it waits for this process to actually exit before
+//! launching the replacement, rather than racing the two. Nothing is applied
 //! without the user asking: the download is silent, the restart is not.
 //!
 //! Applying differs per platform for reasons that are not stylistic — a

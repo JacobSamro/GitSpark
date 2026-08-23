@@ -45,32 +45,6 @@ pub fn install(artifact: &Path, staging: &Path) -> Result<()> {
     }
 }
 
-/// Restart into the freshly installed build.
-///
-/// Spawns a detached copy and returns; the caller exits so the new process
-/// takes over. On macOS this launches the bundle rather than the binary, so
-/// the app comes back with its dock icon and activation policy intact.
-pub fn relaunch() -> Result<()> {
-    let exe = std::env::current_exe().context("cannot determine the running executable")?;
-
-    #[cfg(target_os = "macos")]
-    {
-        if let Some(bundle) = app_bundle_for(&exe) {
-            Command::new("/usr/bin/open")
-                .arg("-n")
-                .arg(&bundle)
-                .spawn()
-                .with_context(|| format!("failed to relaunch {}", bundle.display()))?;
-            return Ok(());
-        }
-    }
-
-    Command::new(&exe)
-        .spawn()
-        .with_context(|| format!("failed to relaunch {}", exe.display()))?;
-    Ok(())
-}
-
 // ---------------------------------------------------------------------------
 // macOS
 // ---------------------------------------------------------------------------

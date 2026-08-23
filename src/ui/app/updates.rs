@@ -164,17 +164,14 @@ impl GitSparkApp {
             return;
         }
 
-        // Relaunch before quitting: if spawning the new process fails, the
-        // user still has the running one, and is told why rather than being
-        // left with no app at all.
-        if let Err(error) = apply::relaunch() {
-            self.update_state = UpdateState::Failed {
-                message: format!("{error:#}"),
-            };
-            cx.notify();
-            return;
-        }
-
-        cx.quit();
+        // GPUI's own restart(), not our own relaunch-then-quit: it spawns a
+        // helper that waits for THIS process to actually exit before
+        // launching the new one. Doing that ourselves (spawn new, then
+        // cx.quit() the old) raced the two — quit() dispatches
+        // NSApplication.terminate: asynchronously, so for a window after
+        // relaunch both the old and new process were genuinely running at
+        // once, which showed up on macOS as a second Dock icon that never
+        // merged back into one.
+        cx.restart();
     }
 }
