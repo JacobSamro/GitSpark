@@ -87,7 +87,7 @@ jobs:
             os: windows-2022
             target: x86_64-pc-windows-msvc
             binary: gitspark.exe
-            archive_ext: zip
+            archive_ext: exe
     steps:
       - name: Check out source
         uses: actions/checkout@v5
@@ -285,19 +285,52 @@ jobs:
           TARGET: ${{ matrix.target }}
           BIN_NAME: ${{ matrix.binary }}
         run: |
+          # Windows ships as an installer, same as macOS ships a .dmg — no
+          # portable zip. The staging directory is left in place (not zipped)
+          # for the installer step below, which needs a plain directory to
+          # point Inno Setup's SourceDir at.
           $archiveBase = "$env:APP_NAME-$env:RELEASE_TAG-$env:TARGET"
           $stageRoot = Join-Path "dist" $archiveBase
           New-Item -ItemType Directory -Force -Path $stageRoot | Out-Null
           Copy-Item "target\$env:TARGET\release\$env:BIN_NAME" $stageRoot
-          if (Test-Path README.md) {
-            Copy-Item README.md $stageRoot
+
+          # Bare exe — this is what the signed update manifest points at, so
+          # apply::install_windows's `fs::copy(artifact, exe)` gets a real
+          # executable rather than an archive.
+          Copy-Item (Join-Path $stageRoot $env:BIN_NAME) (Join-Path "dist" "$archiveBase.exe")
+          echo "STAGE_ROOT=$stageRoot" >> $env:GITHUB_ENV
+
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $isccDir = "C:\Program Files (x86)\Inno Setup 6"
+          if (Test-Path $isccDir) {
+            echo "$isccDir" >> $env:GITHUB_PATH
           }
-          $archivePath = Join-Path "dist" "$archiveBase.zip"
-          if (Test-Path $archivePath) {
-            Remove-Item $archivePath
+
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          $bareVersion = $env:RELEASE_TAG.TrimStart('v')
+          $setupName = "$env:APP_NAME-$env:RELEASE_TAG-$env:TARGET-Setup.exe"
+          $expectedOutput = "installer\windows\Output\gitspark-setup.exe"
+          # Inno Setup resolves a relative SourceDir against the .iss file's
+          # own directory, not the process's working directory — an absolute
+          # path avoids that mismatch.
+          $sourceDir = (Resolve-Path $env:STAGE_ROOT).Path
+          iscc "/DAppVersion=$bareVersion" "/DSourceDir=$sourceDir" "installer\windows\gitspark.iss"
+          if (-not (Test-Path $expectedOutput)) {
+            Write-Error "Inno Setup did not produce expected output: $expectedOutput"
+            exit 1
           }
-          Compress-Archive -Path $stageRoot -DestinationPath $archivePath
-          Remove-Item -Recurse -Force $stageRoot
+          Move-Item $expectedOutput (Join-Path "dist" $setupName)
+          Remove-Item -Recurse -Force $env:STAGE_ROOT
 
       - name: Upload packaged artifact
         uses: actions/upload-artifact@v4
@@ -447,7 +480,7 @@ jobs:
           }
 
           add_asset "macos-universal" "gitspark-${RELEASE_TAG}-universal2-apple-darwin.dmg"
-          add_asset "windows-x64"     "gitspark-${RELEASE_TAG}-x86_64-pc-windows-msvc.zip"
+          add_asset "windows-x64"     "gitspark-${RELEASE_TAG}-x86_64-pc-windows-msvc.exe"
           add_asset "linux-x64"       "gitspark-${RELEASE_TAG}-x86_64-unknown-linux-gnu.tar.gz"
 
           if [[ "$(jq 'length' <<<"$assets")" -eq 0 ]]; then
