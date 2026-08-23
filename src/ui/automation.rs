@@ -606,6 +606,7 @@ enum AutomationNodeAction {
     SetSettingsSection(SettingsSection),
     ShowBranchSelector(bool),
     ShowRepoSelector(bool),
+    ShowNetworkDropdown(bool),
     ShowSettings(bool),
     SwitchBranch(String),
     StartCreateBranch,
@@ -2549,7 +2550,9 @@ impl GitSparkApp {
                 AutomationRole::Button,
                 Some("network-caret"),
                 Some("Network options"),
-                None,
+                Some(AutomationNodeAction::ShowNetworkDropdown(
+                    !self.nav.show_network_dropdown,
+                )),
             )
             .visible(has_dropdown)
             .enabled(has_dropdown && actions_enabled),
@@ -3010,6 +3013,15 @@ impl GitSparkApp {
                     self.nav.branch_selector_mode = BranchSelectorMode::Switch;
                     self.repo.pending_cherry_pick_oid = None;
                     self.nav.show_network_dropdown = false;
+                }
+                cx.notify();
+            }
+            AutomationNodeAction::ShowNetworkDropdown(show) => {
+                self.nav.show_network_dropdown = show;
+                if show {
+                    self.nav.show_repo_selector = false;
+                    self.nav.show_branch_selector = false;
+                    self.nav.branch_selector_mode = BranchSelectorMode::Switch;
                 }
                 cx.notify();
             }
