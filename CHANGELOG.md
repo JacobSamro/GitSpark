@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-08-23
+
+### Added
+
+- **"About GitSpark" and "Check for Updates…"** are now in the app menu.
+  About shows the running version and links to the changelog; Check for
+  Updates triggers the same check that normally only runs once at launch.
+
+### Fixed
+
+- **Error messages from push, pull, fetch, commit, stash, merge, rebase,
+  and other background git operations only ever showed a generic wrapper**
+  ("Push failed: failed to push to 'origin'"), never git's actual reason
+  — a rejected push's `[rejected]` line, a diverged pull's "Not possible to
+  fast-forward", an auth failure, etc. The conversion to a cross-thread
+  `String` used `.to_string()`, which silently drops anyhow's chained
+  context; switched to the alternate `{:#}` format everywhere so the real
+  reason survives.
+- **Auto-update left a duplicate Dock icon on macOS** instead of replacing
+  the running app. The hand-rolled relaunch raced a forced new launch
+  against an asynchronous quit, so both processes were briefly alive at
+  once. Replaced with GPUI's own `cx.restart()`, which waits for the old
+  process to actually exit first.
+- The "Pull origin"/"Push origin" suggestion-card button's text was
+  illegible against the button's own background (missed by the earlier
+  accent-color fix).
+
+### Chore
+
+- Added an end-to-end suite that drives push/pull/fetch/clone against a
+  real, self-hosted Gitea server over HTTP (locally via
+  `docker-compose.gitea.yml`, and in CI) — the existing suite only ever
+  exercised a local bare repo, with no real transport or auth involved.
+
 ## [0.9.0] - 2026-08-23
 
 ### Added
